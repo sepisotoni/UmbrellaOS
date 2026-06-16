@@ -4,12 +4,10 @@ services/roles_service.py — Role and permission management.
 Seeds the four default roles on first boot.
 Future phases will add staff_members table with role assignments.
 """
-import json
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from models.permissions import Role, Permission
-from models.audit_log import AuditLog
 
 # Seed data: (role_name, description, [permission_keys])
 DEFAULT_PERMISSIONS = [
