@@ -22,8 +22,6 @@ from api.routers.health import router as health_router
 from api.routers.settings import router as settings_router
 from api.routers.roles import router as roles_router
 from api.routers.audit import router as audit_router
-from api.routers.plugin import router as plugin_router
-from api.routers.plugin import router as plugin_router
 
 settings = get_settings()
 
@@ -81,8 +79,6 @@ app.include_router(health_router)
 app.include_router(settings_router)
 app.include_router(roles_router)
 app.include_router(audit_router)
-app.include_router(plugin_router)
-app.include_router(plugin_router)
 
 
 @app.get("/")

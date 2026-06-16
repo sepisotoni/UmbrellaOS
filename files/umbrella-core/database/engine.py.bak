@@ -16,9 +16,9 @@ settings = get_settings()
 engine = create_async_engine(
     settings.database_url,
     echo=settings.debug,
-    # Reconnect on stale connections
-    
-    
+    pool_pre_ping=True,        # Reconnect on stale connections
+    pool_size=10,
+    max_overflow=20,
 )
 
 # Session factory — produces async sessions
