@@ -27,6 +27,8 @@ from api.routers.plugin import router as plugin_router
 from api.routers.players import router as players_router
 from api.routers.punishments import router as punishments_router
 from api.routers.appeals import router as appeals_router
+from api.routers.moderation import router as moderation_router
+from api.routers.auth import router as auth_router
 
 settings = get_settings()
 
@@ -88,6 +90,8 @@ app.include_router(plugin_router)
 app.include_router(players_router)
 app.include_router(punishments_router)
 app.include_router(appeals_router)
+app.include_router(moderation_router)
+app.include_router(auth_router)
 
 
 @app.get("/")

@@ -5,6 +5,7 @@ from .setting import Setting       # noqa: F401
 from .audit_log import AuditLog   # noqa: F401
 from .permissions import Role, Permission, role_permissions  # noqa: F401
 from .player import Player, IPAddress, Punishment, Appeal  # noqa: F401
+from .user import User, Session, DiscordOAuthPending  # noqa: F401
 
 __all__ = [
     "Base",
@@ -17,4 +18,7 @@ __all__ = [
     "IPAddress",
     "Punishment",
     "Appeal",
+    "User",
+    "Session",
+    "DiscordOAuthPending",
 ]
