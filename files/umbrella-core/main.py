@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import get_settings
 from database import get_db, create_tables, AsyncSessionLocal
 from services import SettingsService, RolesService
+import models  # noqa: F401
 
 # Import routers
 from api.routers.health import router as health_router
@@ -23,7 +24,9 @@ from api.routers.settings import router as settings_router
 from api.routers.roles import router as roles_router
 from api.routers.audit import router as audit_router
 from api.routers.plugin import router as plugin_router
-from api.routers.plugin import router as plugin_router
+from api.routers.players import router as players_router
+from api.routers.punishments import router as punishments_router
+from api.routers.appeals import router as appeals_router
 
 settings = get_settings()
 
@@ -82,7 +85,9 @@ app.include_router(settings_router)
 app.include_router(roles_router)
 app.include_router(audit_router)
 app.include_router(plugin_router)
-app.include_router(plugin_router)
+app.include_router(players_router)
+app.include_router(punishments_router)
+app.include_router(appeals_router)
 
 
 @app.get("/")

@@ -229,6 +229,9 @@ PostgreSQL (async via asyncpg)
 | `GET` | `/api/v1/roles` | `X-Admin-Key` | List roles with permissions |
 | `GET` | `/api/v1/roles/permissions` | `X-Admin-Key` | List all permission keys |
 | `GET` | `/api/v1/audit` | `X-Admin-Key` | Paginated audit log |
+| `GET` | `/api/v1/audit/{action}` | `X-Admin-Key` | Audit log filtered by action |
+| `GET` | `/api/v1/plugin/health` | `X-Plugin-Key` | Plugin authenticated heartbeat |
+| `GET` | `/api/v1/plugin/config` | `X-Plugin-Key` | Non-sensitive settings bundle for plugin |
 
 ---
 
@@ -239,7 +242,7 @@ PostgreSQL (async via asyncpg)
 | Phase | Name | Status | Rationale |
 |-------|------|--------|-----------|
 | 1 | Core Foundation | **In Progress** (~85%) | Settings, audit, roles, REST API, PostgreSQL, Docker all exist. Gaps: Redis unused, permissions not enforced, plugin auth unwired, no tests |
-| 2 | Client Config Integration | **Not Started** | No bot or plugin code exists to consume settings API |
+| 2 | Client Config Integration | **In Progress** | `GET /api/v1/plugin/config` delivers non-sensitive settings bundle to plugin; Redis cache and bot config client remain |
 | 3 | Authentication & Sessions | **Not Started** | Only shared-secret `X-Admin-Key`; no OAuth, sessions, or staff accounts |
 | 4 | Dashboard | **Not Started** | No frontend; CORS placeholder only |
 | 5 | Audit Enhancement | **Not Started** | Only `settings.update` action implemented; no undo, no action filter endpoint |
