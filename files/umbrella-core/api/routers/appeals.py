@@ -15,7 +15,7 @@ from datetime import datetime
 
 from database import get_db
 from models import Appeal, Player, Punishment
-from api.middleware.auth import require_admin_key
+from api.dependencies.permissions import require_permission
 
 router = APIRouter(prefix="/api/v1/appeals", tags=["appeals"])
 
@@ -49,7 +49,7 @@ async def list_appeals(
     skip: int = Query(0, ge=0, description="Number of appeals to skip"),
     limit: int = Query(10, ge=1, le=100, description="Number of appeals to return"),
     db: AsyncSession = Depends(get_db),
-    _auth: str = Depends(require_admin_key),
+    _auth: str = Depends(require_permission("appeals.view")),
 ) -> list[AppealSchema]:
     """List all appeals with optional filtering by status or player."""
     query = select(Appeal)
@@ -72,7 +72,6 @@ async def list_appeals(
 async def create_appeal(
     body: AppealCreateRequest,
     db: AsyncSession = Depends(get_db),
-    _auth: str = Depends(require_admin_key),
 ) -> AppealSchema:
     """Create a new appeal for a punishment."""
     # Verify player exists
@@ -117,7 +116,7 @@ async def update_appeal(
     appeal_id: str,
     body: AppealUpdateRequest,
     db: AsyncSession = Depends(get_db),
-    _auth: str = Depends(require_admin_key),
+    _auth: str = Depends(require_permission("appeals.manage")),
 ) -> AppealSchema:
     """Update an appeal status."""
     result = await db.execute(

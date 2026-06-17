@@ -1,221 +1,164 @@
 'use client'
 
-import {
-  Area,
-  AreaChart,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Line,
-  LineChart,
-  Pie,
-  PieChart,
-  XAxis,
-  YAxis,
-} from 'recharts'
-import { useAnalytics } from '@/lib/queries'
+import { useState } from 'react'
+import { useServerSummary, useAnalyticsEvents, usePlayerStats } from '@/lib/queries'
 import { PageHeader } from '@/components/page-header'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
-import {
-  ChartContainer,
-  ChartLegend,
-  ChartLegendContent,
-  ChartTooltip,
-  ChartTooltipContent,
-  type ChartConfig,
-} from '@/components/ui/chart'
+import { timeAgo } from '@/lib/format'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-
-const axis = { tickLine: false, axisLine: false, tickMargin: 8, fontSize: 11 }
-const PIE_COLORS = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-5)']
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Input } from '@/components/ui/input'
 
 export default function AnalyticsPage() {
-  const { data, isLoading } = useAnalytics()
-
-  if (isLoading || !data) {
-    return (
-      <>
-        <PageHeader title="Analytics" description="Advanced network intelligence and trends." />
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} className="h-[320px] rounded-xl" />
-          ))}
-        </div>
-      </>
-    )
-  }
+  const { data: summary, isLoading: summaryLoading } = useServerSummary()
+  const { data: events, isLoading: eventsLoading } = useAnalyticsEvents({ limit: 50 })
+  const [playerUuid, setPlayerUuid] = useState('')
+  const { data: playerStats, isLoading: playerStatsLoading } = usePlayerStats(playerUuid, 'alltime')
 
   return (
     <>
-      <PageHeader title="Analytics" description="Advanced network intelligence and trends." />
+      <PageHeader
+        title="Analytics"
+        description="Server-wide analytics and player statistics."
+      />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <ChartCard title="Player Growth" description="Daily active players (30 days)" className="lg:col-span-2">
-          <ChartContainer
-            config={{ value: { label: 'Players', color: 'var(--chart-1)' } } satisfies ChartConfig}
-            className="h-[260px] w-full"
-          >
-            <AreaChart data={data.playerGrowth} margin={{ left: 4, right: 8, top: 8 }}>
-              <defs>
-                <linearGradient id="fill-growth" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="var(--chart-1)" stopOpacity={0.4} />
-                  <stop offset="95%" stopColor="var(--chart-1)" stopOpacity={0.04} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis dataKey="label" interval={4} {...axis} />
-              <YAxis width={44} {...axis} />
-              <ChartTooltip content={<ChartTooltipContent />} />
-              <Area dataKey="value" type="monotone" stroke="var(--chart-1)" fill="url(#fill-growth)" strokeWidth={2} />
-            </AreaChart>
-          </ChartContainer>
-        </ChartCard>
-
-        <ChartCard title="Retention" description="Cohort retention by day">
-          <ChartContainer
-            config={{ value: { label: 'Retained %', color: 'var(--chart-2)' } } satisfies ChartConfig}
-            className="h-[240px] w-full"
-          >
-            <BarChart data={data.retention} margin={{ left: 4, right: 8, top: 8 }}>
-              <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis dataKey="label" {...axis} />
-              <YAxis width={32} {...axis} />
-              <ChartTooltip content={<ChartTooltipContent />} />
-              <Bar dataKey="value" fill="var(--chart-2)" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ChartContainer>
-        </ChartCard>
-
-        <ChartCard title="Punishment Frequency" description="Issued by type (14 days)">
-          <ChartContainer
-            config={{
-              warns: { label: 'Warns', color: 'var(--chart-3)' },
-              mutes: { label: 'Mutes', color: 'var(--chart-1)' },
-              tempbans: { label: 'Temp Bans', color: 'var(--chart-5)' },
-              bans: { label: 'Bans', color: 'var(--chart-4)' },
-            } satisfies ChartConfig}
-            className="h-[240px] w-full"
-          >
-            <BarChart data={data.punishmentFrequency} margin={{ left: 4, right: 8, top: 8 }}>
-              <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis dataKey="day" interval={2} {...axis} />
-              <YAxis width={28} {...axis} />
-              <ChartTooltip content={<ChartTooltipContent />} />
-              <Bar dataKey="warns" stackId="a" fill="var(--chart-3)" />
-              <Bar dataKey="mutes" stackId="a" fill="var(--chart-1)" />
-              <Bar dataKey="tempbans" stackId="a" fill="var(--chart-5)" />
-              <Bar dataKey="bans" stackId="a" fill="var(--chart-4)" radius={[3, 3, 0, 0]} />
-            </BarChart>
-          </ChartContainer>
-        </ChartCard>
-
-        <ChartCard title="Appeal Success Rate" description="Outcome distribution">
-          <ChartContainer config={{} satisfies ChartConfig} className="mx-auto h-[240px] w-full">
-            <PieChart>
-              <ChartTooltip content={<ChartTooltipContent />} />
-              <Pie data={data.appealSuccess} dataKey="value" nameKey="name" innerRadius={55} outerRadius={90} paddingAngle={2}>
-                {data.appealSuccess.map((_, i) => (
-                  <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                ))}
-              </Pie>
-              <ChartLegend content={<ChartLegendContent nameKey="name" />} />
-            </PieChart>
-          </ChartContainer>
-        </ChartCard>
-
-        <ChartCard title="Risk Distribution" description="Players by risk tier">
-          <ChartContainer config={{} satisfies ChartConfig} className="mx-auto h-[240px] w-full">
-            <PieChart>
-              <ChartTooltip content={<ChartTooltipContent />} />
-              <Pie data={data.riskDistribution} dataKey="value" nameKey="name" outerRadius={90}>
-                {data.riskDistribution.map((_, i) => (
-                  <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                ))}
-              </Pie>
-              <ChartLegend content={<ChartLegendContent nameKey="name" />} />
-            </PieChart>
-          </ChartContainer>
-        </ChartCard>
-
-        <ChartCard title="Peak Hours" description="Average concurrency by hour">
-          <ChartContainer
-            config={{ value: { label: 'Players', color: 'var(--chart-1)' } } satisfies ChartConfig}
-            className="h-[240px] w-full"
-          >
-            <LineChart data={data.peakHours} margin={{ left: 4, right: 8, top: 8 }}>
-              <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis dataKey="label" interval={3} {...axis} />
-              <YAxis width={44} {...axis} />
-              <ChartTooltip content={<ChartTooltipContent />} />
-              <Line dataKey="value" type="monotone" stroke="var(--chart-1)" strokeWidth={2} dot={false} />
-            </LineChart>
-          </ChartContainer>
-        </ChartCard>
-
-        <ChartCard title="Top Staff Actions" description="Moderation actions this week">
-          <ChartContainer
-            config={{ actions: { label: 'Actions', color: 'var(--chart-2)' } } satisfies ChartConfig}
-            className="h-[240px] w-full"
-          >
-            <BarChart data={data.topStaff} layout="vertical" margin={{ left: 8, right: 8, top: 4 }}>
-              <CartesianGrid horizontal={false} strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis type="number" {...axis} />
-              <YAxis type="category" dataKey="name" width={64} {...axis} />
-              <ChartTooltip content={<ChartTooltipContent />} />
-              <Bar dataKey="actions" fill="var(--chart-2)" radius={[0, 4, 4, 0]} />
-            </BarChart>
-          </ChartContainer>
-        </ChartCard>
-
-        <ChartCard title="Server Performance" description="TPS and CPU by server">
-          <ChartContainer
-            config={{
-              tps: { label: 'TPS', color: 'var(--chart-2)' },
-              cpu: { label: 'CPU %', color: 'var(--chart-4)' },
-            } satisfies ChartConfig}
-            className="h-[240px] w-full"
-          >
-            <BarChart data={data.serverPerformance} margin={{ left: 4, right: 8, top: 8 }}>
-              <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis dataKey="name" {...axis} />
-              <YAxis width={32} {...axis} />
-              <ChartTooltip content={<ChartTooltipContent />} />
-              <ChartLegend content={<ChartLegendContent />} />
-              <Bar dataKey="tps" fill="var(--chart-2)" radius={[3, 3, 0, 0]} />
-              <Bar dataKey="cpu" fill="var(--chart-4)" radius={[3, 3, 0, 0]} />
-            </BarChart>
-          </ChartContainer>
-        </ChartCard>
+      {/* Server Summary Cards */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
+        {summaryLoading ? (
+          <Skeleton className="h-24" />
+        ) : (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Total Joins</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{summary?.joins || 0}</div>
+            </CardContent>
+          </Card>
+        )}
+        {summaryLoading ? (
+          <Skeleton className="h-24" />
+        ) : (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Total Deaths</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{summary?.deaths || 0}</div>
+            </CardContent>
+          </Card>
+        )}
+        {summaryLoading ? (
+          <Skeleton className="h-24" />
+        ) : (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Total Kills</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{summary?.kills || 0}</div>
+            </CardContent>
+          </Card>
+        )}
+        {summaryLoading ? (
+          <Skeleton className="h-24" />
+        ) : (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Chat Volume</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{summary?.chat_volume || 0}</div>
+            </CardContent>
+          </Card>
+        )}
       </div>
-    </>
-  )
-}
 
-function ChartCard({
-  title,
-  description,
-  className,
-  children,
-}: {
-  title: string
-  description: string
-  className?: string
-  children: React.ReactNode
-}) {
-  return (
-    <Card className={className}>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
-      </CardHeader>
-      <CardContent>{children}</CardContent>
-    </Card>
+      {/* Recent Events Table */}
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>Recent Events</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {eventsLoading ? (
+            <Skeleton className="h-64" />
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Event Type</TableHead>
+                  <TableHead>Player UUID</TableHead>
+                  <TableHead>Created At</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {events && events.length > 0 ? (
+                  events.map((event: any) => (
+                    <TableRow key={event.id}>
+                      <TableCell className="font-medium">{event.event_type}</TableCell>
+                      <TableCell className="font-mono text-sm">{event.minecraft_uuid || '-'}</TableCell>
+                      <TableCell>{timeAgo(event.created_at)}</TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={3} className="text-center text-muted-foreground">
+                      No events recorded.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Player Stats Lookup */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Player Statistics Lookup</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-2 mb-4">
+            <Input
+              placeholder="Enter player UUID"
+              value={playerUuid}
+              onChange={(e) => setPlayerUuid(e.target.value)}
+              className="font-mono"
+            />
+            <Button onClick={() => setPlayerUuid(playerUuid)}>Lookup</Button>
+          </div>
+          {playerUuid && playerStatsLoading ? (
+            <Skeleton className="h-32" />
+          ) : playerUuid && playerStats && playerStats.length > 0 ? (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Metric</TableHead>
+                  <TableHead>Value</TableHead>
+                  <TableHead>Period</TableHead>
+                  <TableHead>Updated At</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {playerStats.map((stat: any, index: number) => (
+                  <TableRow key={index}>
+                    <TableCell className="font-medium">{stat.metric}</TableCell>
+                    <TableCell className="font-mono">{stat.value}</TableCell>
+                    <TableCell>{stat.period}</TableCell>
+                    <TableCell>{timeAgo(stat.updated_at)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          ) : playerUuid ? (
+            <div className="text-center text-muted-foreground py-4">
+              No statistics found for this player.
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
+    </>
   )
 }

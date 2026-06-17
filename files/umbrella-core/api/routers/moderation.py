@@ -19,7 +19,7 @@ from datetime import datetime
 
 from database import get_db
 from models import Player, Punishment, IPAddress
-from api.middleware.auth import require_admin_key
+from api.dependencies.permissions import require_permission
 
 router = APIRouter(prefix="/api/v1/moderation", tags=["moderation"])
 
@@ -77,7 +77,7 @@ class ModerationResponseSchema(BaseModel):
 async def kick_player(
     body: KickRequest,
     db: AsyncSession = Depends(get_db),
-    _auth: str = Depends(require_admin_key),
+    _auth: str = Depends(require_permission("moderation.kick")),
 ) -> dict:
     """Kick a player from the server (disconnects immediately)."""
     player_result = await db.execute(
@@ -111,7 +111,7 @@ async def kick_player(
 async def warn_player(
     body: WarnRequest,
     db: AsyncSession = Depends(get_db),
-    _auth: str = Depends(require_admin_key),
+    _auth: str = Depends(require_permission("moderation.warn")),
 ) -> ModerationResponseSchema:
     """Issue a warning to a player."""
     player_result = await db.execute(
@@ -139,7 +139,7 @@ async def warn_player(
 async def ban_player(
     body: BanRequest,
     db: AsyncSession = Depends(get_db),
-    _auth: str = Depends(require_admin_key),
+    _auth: str = Depends(require_permission("moderation.ban")),
 ) -> ModerationResponseSchema:
     """Ban a player (permanent or temporary)."""
     player_result = await db.execute(
@@ -168,7 +168,7 @@ async def ban_player(
 async def unban_player(
     body: UnbanRequest,
     db: AsyncSession = Depends(get_db),
-    _auth: str = Depends(require_admin_key),
+    _auth: str = Depends(require_permission("moderation.ban")),
 ) -> ModerationResponseSchema:
     """Revoke a ban for a player."""
     # Get active ban
@@ -196,7 +196,7 @@ async def unban_player(
 async def ipban_address(
     body: IPBanRequest,
     db: AsyncSession = Depends(get_db),
-    _auth: str = Depends(require_admin_key),
+    _auth: str = Depends(require_permission("moderation.ipban")),
 ) -> dict:
     """Ban an IP address (affects all players from that IP)."""
     # Create a system punishment for IP ban
@@ -222,7 +222,7 @@ async def ipban_address(
 async def ipunban_address(
     body: IPUnbanRequest,
     db: AsyncSession = Depends(get_db),
-    _auth: str = Depends(require_admin_key),
+    _auth: str = Depends(require_permission("moderation.ipban")),
 ) -> dict:
     """Revoke an IP ban."""
     # Find active IP ban
@@ -254,7 +254,7 @@ async def ipunban_address(
 async def get_active_punishments(
     player_uuid: str,
     db: AsyncSession = Depends(get_db),
-    _auth: str = Depends(require_admin_key),
+    _auth: str = Depends(require_permission("punishments.view")),
 ) -> list[ModerationResponseSchema]:
     """Get all active punishments for a player."""
     result = await db.execute(

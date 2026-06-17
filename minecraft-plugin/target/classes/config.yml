@@ -1,0 +1,8 @@
+umbrella:
+  core_url: "http://localhost:8765"
+  admin_key: "changeme"
+  verify_on_join: true
+  bridge_mode_cache_seconds: 30
+  snapshot_interval_seconds: 300
+  replay_buffer_seconds: 300
+  heartbeat_interval_seconds: 30

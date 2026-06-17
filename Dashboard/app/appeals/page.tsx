@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useMemo } from 'react'
 import { Check, X, ArrowUpRight, UserPlus } from 'lucide-react'
-import { useAppeals } from '@/lib/queries'
+import { useAppeals, useUpdateAppeal } from '@/lib/queries'
 import { PageHeader } from '@/components/page-header'
 import { GenericStatusBadge, PunishmentTypeBadge } from '@/components/status-badge'
 import { timeAgo } from '@/lib/format'
@@ -14,6 +14,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 
 export default function AppealsPage() {
   const { data, isLoading } = useAppeals()
+  const updateAppeal = useUpdateAppeal()
 
   const groups = useMemo(() => {
     const base = { open: [] as Appeal[], accepted: [] as Appeal[], denied: [] as Appeal[] }
@@ -41,7 +42,7 @@ export default function AppealsPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <AppealColumn title="Open" tone="warning" appeals={groups.open} actionable />
+          <AppealColumn title="Open" tone="warning" appeals={groups.open} actionable onApprove={(id) => updateAppeal.mutate({ id, status: 'accepted' })} onDeny={(id) => updateAppeal.mutate({ id, status: 'denied' })} />
           <AppealColumn title="Accepted" tone="success" appeals={groups.accepted} />
           <AppealColumn title="Denied" tone="danger" appeals={groups.denied} />
         </div>
@@ -55,11 +56,15 @@ function AppealColumn({
   tone,
   appeals,
   actionable,
+  onApprove,
+  onDeny,
 }: {
   title: string
   tone: 'warning' | 'success' | 'danger'
   appeals: Appeal[]
   actionable?: boolean
+  onApprove?: (id: string) => void
+  onDeny?: (id: string) => void
 }) {
   const dot =
     tone === 'warning' ? 'bg-warning' : tone === 'success' ? 'bg-success' : 'bg-destructive'
@@ -80,14 +85,14 @@ function AppealColumn({
             </CardContent>
           </Card>
         ) : (
-          appeals.map((a) => <AppealCard key={a.id} a={a} actionable={actionable} />)
+          appeals.map((a) => <AppealCard key={a.id} a={a} actionable={actionable} onApprove={onApprove} onDeny={onDeny} />)
         )}
       </div>
     </section>
   )
 }
 
-function AppealCard({ a, actionable }: { a: Appeal; actionable?: boolean }) {
+function AppealCard({ a, actionable, onApprove, onDeny }: { a: Appeal; actionable?: boolean; onApprove?: (id: string) => void; onDeny?: (id: string) => void }) {
   return (
     <Card>
       <CardHeader className="flex-row items-start justify-between gap-2 space-y-0 pb-3">
@@ -119,12 +124,12 @@ function AppealCard({ a, actionable }: { a: Appeal; actionable?: boolean }) {
             <span className="text-xs text-muted-foreground">@{a.assignedTo}</span>
           ) : null}
         </div>
-        {actionable ? (
+        {actionable && onApprove && onDeny ? (
           <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" className="flex-1">
+            <Button size="sm" className="flex-1" onClick={() => onApprove(a.id)}>
               <Check className="size-4" aria-hidden /> Accept
             </Button>
-            <Button size="sm" variant="outline" className="flex-1">
+            <Button size="sm" variant="outline" className="flex-1" onClick={() => onDeny(a.id)}>
               <X className="size-4" aria-hidden /> Deny
             </Button>
             <Button size="sm" variant="ghost" aria-label="Escalate">

@@ -1,43 +1,47 @@
 """
 services/roles_service.py — Role and permission management.
 
-Seeds the four default roles on first boot.
-Future phases will add staff_members table with role assignments.
+Seeds default roles and permissions on first boot.
 """
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from models.permissions import Role, Permission
 
-# Seed data: (role_name, description, [permission_keys])
+# Seed data: (permission_key, description)
 DEFAULT_PERMISSIONS = [
-    ("kick_players",        "Kick players from the server"),
-    ("warn_players",        "Warn players"),
-    ("lookup_players",      "View player history and records"),
-    ("mute_players",        "Mute/unmute players"),
-    ("ban_players",         "Ban/unban players"),
-    ("tempban_players",     "Temporarily ban players"),
-    ("manage_appeals",      "Review and action ban appeals"),
-    ("manage_announcements","Send server-wide announcements"),
-    ("ipban",               "IP-ban addresses"),
-    ("view_audit_log",      "View the audit log"),
-    ("manage_settings",     "Edit Core settings from dashboard"),
-    ("manage_roles",        "Create and edit staff roles"),
-    ("manage_api_keys",     "Issue and revoke API keys"),
-    ("manage_secrets",      "View unmasked sensitive settings"),
+    ("players.view",         "View player records"),
+    ("players.manage",       "Create and edit player records"),
+    ("punishments.view",     "View punishments"),
+    ("punishments.create",   "Create punishments"),
+    ("punishments.revoke",   "Revoke punishments"),
+    ("appeals.view",         "View appeals"),
+    ("appeals.manage",       "Review and manage appeals"),
+    ("moderation.kick",      "Kick players from the server"),
+    ("moderation.warn",      "Warn players"),
+    ("moderation.ban",       "Ban and unban players"),
+    ("moderation.ipban",     "IP ban and unban addresses"),
+    ("settings.view",        "View server settings"),
+    ("settings.manage",      "Edit server settings"),
+    ("audit.view",           "View the audit log"),
+    ("roles.manage",         "Manage roles and permissions"),
 ]
 
+ALL_PERMISSION_KEYS = [p[0] for p in DEFAULT_PERMISSIONS]
+
+# Seed data: (role_name, description, [permission_keys])
 DEFAULT_ROLES = [
-    ("owner",     "Full access to everything",
-     [p[0] for p in DEFAULT_PERMISSIONS]),
-    ("admin",     "Full access except role management and API keys",
-     [p[0] for p in DEFAULT_PERMISSIONS
-      if p[0] not in ("manage_roles", "manage_api_keys", "manage_secrets")]),
+    ("owner", "Full access to everything", ALL_PERMISSION_KEYS),
+    ("admin", "Full access except role management",
+     [p for p in ALL_PERMISSION_KEYS if p != "roles.manage"]),
     ("moderator", "Moderation access",
-     ["kick_players","warn_players","lookup_players","mute_players",
-      "ban_players","tempban_players","manage_appeals","manage_announcements"]),
-    ("helper",    "Basic helper access",
-     ["kick_players","warn_players","lookup_players"]),
+     ["players.view", "punishments.view", "punishments.create", "punishments.revoke",
+      "moderation.kick", "moderation.warn", "moderation.ban", "moderation.ipban",
+      "appeals.view", "appeals.manage"]),
+    ("helper", "Basic helper access",
+     ["players.view", "punishments.view", "appeals.view"]),
+    ("member", "Regular member",
+     ["appeals.view"]),
 ]
 
 
@@ -46,7 +50,6 @@ class RolesService:
     @staticmethod
     async def seed_defaults(db: AsyncSession) -> None:
         """Seed default permissions and roles if they don't exist. Idempotent."""
-        # Seed permissions first
         perm_map: dict[str, Permission] = {}
         for key, desc in DEFAULT_PERMISSIONS:
             perm = await db.scalar(
@@ -58,7 +61,6 @@ class RolesService:
                 await db.flush()
             perm_map[key] = perm
 
-        # Seed roles
         for role_name, role_desc, perm_keys in DEFAULT_ROLES:
             role = await db.scalar(
                 select(Role).where(Role.name == role_name).options(selectinload(Role.permissions))

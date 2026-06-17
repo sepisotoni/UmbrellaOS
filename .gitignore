@@ -40,3 +40,23 @@ Thumbs.db
 # Archives (do not commit generated zips/tarballs)
 *.zip
 *.tar.gz
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+umbrella.db
+
+# Node / Next.js (Dashboard)
+node_modules/
+.next/
+out/
+build/
+dist/
+*.tsbuildinfo
+next-env.d.ts
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.vercel/

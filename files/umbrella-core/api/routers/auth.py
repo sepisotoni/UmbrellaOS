@@ -21,11 +21,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel, EmailStr
 
+from config import get_settings
 from database import get_db
 from models import User, Session, DiscordOAuthPending
+from models.permissions import Role
 from api.middleware.auth import require_admin_key
+from services import discord_service
+from services.discord_service import DiscordOAuthError
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+
+SESSION_EXPIRY_DAYS = 7
 
 
 class UserSchema(BaseModel):
@@ -72,6 +78,7 @@ class DiscordOAuthStartRequest(BaseModel):
 class DiscordOAuthCallbackRequest(BaseModel):
     state: str
     code: str
+    redirect_uri: str
 
 
 class DiscordOAuthCallbackResponse(BaseModel):
@@ -202,8 +209,11 @@ async def discord_authorize(
     """
     Start Discord OAuth2 flow.
     Returns authorization URL for frontend redirect.
-    Phase 5: Returns OAuth state and code_verifier for PKCE.
     """
+    settings = get_settings()
+    if not settings.discord_client_id:
+        raise HTTPException(status_code=503, detail="Discord OAuth is not configured")
+
     state = secrets.token_urlsafe(32)
     code_verifier = secrets.token_urlsafe(128)[:128]
 
@@ -214,10 +224,9 @@ async def discord_authorize(
     db.add(pending)
     await db.flush()
 
-    # NOTE: In production, use actual Discord client ID and redirect URI
     discord_authorize_url = (
         f"https://discord.com/api/oauth2/authorize?"
-        f"client_id=YOUR_DISCORD_CLIENT_ID&"
+        f"client_id={settings.discord_client_id}&"
         f"response_type=code&"
         f"scope=identify%20email&"
         f"redirect_uri={body.redirect_uri}&"
@@ -237,13 +246,12 @@ async def discord_callback(
 ) -> DiscordOAuthCallbackResponse:
     """
     Handle Discord OAuth callback.
-    Phase 5 Prep: Exchange code for token and create user.
+    Exchanges code for token, fetches profile, creates or matches user, issues session.
     """
-    # Verify state is valid
     pending_result = await db.execute(
         select(DiscordOAuthPending).where(
-            (DiscordOAuthPending.state == body.state) &
-            (DiscordOAuthPending.expires_at > datetime.now(timezone.utc))
+            (DiscordOAuthPending.state == body.state)
+            & (DiscordOAuthPending.expires_at > datetime.now(timezone.utc))
         )
     )
     pending = pending_result.scalar_one_or_none()
@@ -251,17 +259,59 @@ async def discord_callback(
     if pending is None:
         raise HTTPException(status_code=400, detail="Invalid or expired OAuth state")
 
-    # NOTE: In production, exchange code for token with Discord API
-    # For now, this is a placeholder that demonstrates the flow
+    try:
+        token_data = await discord_service.exchange_code(body.code, body.redirect_uri)
+        discord_user = await discord_service.fetch_user(token_data["access_token"])
+    except DiscordOAuthError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
-    # In real implementation:
-    # 1. POST to https://discord.com/api/v10/oauth2/token with code
-    # 2. GET https://discord.com/api/v10/users/@me with access_token
-    # 3. Create or update user with Discord ID and email
+    discord_id = discord_user["id"]
+    username = discord_user.get("global_name") or discord_user.get("username", "unknown")
+    email = discord_user.get("email")
 
-    raise HTTPException(
-        status_code=501,
-        detail="Discord OAuth callback not fully implemented - pending Phase 5 completion"
+    user_result = await db.execute(select(User).where(User.discord_id == discord_id))
+    user = user_result.scalar_one_or_none()
+
+    if user is None:
+        role_id = None
+        settings = get_settings()
+        if settings.initial_admin_discord_id and discord_id == settings.initial_admin_discord_id:
+            owner_role = await db.scalar(select(Role).where(Role.name == "owner"))
+            if owner_role:
+                role_id = owner_role.id
+
+        user = User(
+            discord_id=discord_id,
+            username=username,
+            email=email,
+            role_id=role_id,
+        )
+        db.add(user)
+        await db.flush()
+    else:
+        if not user.is_active:
+            raise HTTPException(status_code=403, detail="Account is deactivated")
+
+        user.username = username
+        if email:
+            user.email = email
+        await db.flush()
+
+    expires_at = datetime.now(timezone.utc) + timedelta(days=SESSION_EXPIRY_DAYS)
+    session_token = secrets.token_urlsafe(32)
+    session = Session(
+        user_id=user.id,
+        token=session_token,
+        expires_at=expires_at,
+    )
+    db.add(session)
+    await db.delete(pending)
+    await db.flush()
+
+    return DiscordOAuthCallbackResponse(
+        token=session_token,
+        user=UserSchema.model_validate(user),
+        expires_in=SESSION_EXPIRY_DAYS * 24 * 3600,
     )
 
 

@@ -4,17 +4,18 @@ api/routers/players.py — Player endpoints.
 GET  /api/v1/players           — list all players (with optional search by username)
 GET  /api/v1/players/{uuid}    — get a single player by UUID
 
-All responses require admin key authentication.
+All responses require admin key or session authentication.
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
+from sqlalchemy.orm import selectinload
 from pydantic import BaseModel
 from datetime import datetime
 
 from database import get_db
 from models import Player
-from api.middleware.auth import require_admin_key
+from api.dependencies.permissions import require_permission
 
 router = APIRouter(prefix="/api/v1/players", tags=["players"])
 
@@ -57,7 +58,7 @@ async def list_players(
     skip: int = Query(0, ge=0, description="Number of players to skip"),
     limit: int = Query(10, ge=1, le=100, description="Number of players to return"),
     db: AsyncSession = Depends(get_db),
-    _auth: str = Depends(require_admin_key),
+    _auth: str = Depends(require_permission("players.view")),
 ) -> list[PlayerSchema]:
     """
     List all players with optional username search.
@@ -84,11 +85,13 @@ async def list_players(
 async def get_player(
     uuid: str,
     db: AsyncSession = Depends(get_db),
-    _auth: str = Depends(require_admin_key),
+    _auth: str = Depends(require_permission("players.view")),
 ) -> PlayerDetailSchema:
     """Get a player by UUID with all related data (IP addresses)."""
     result = await db.execute(
-        select(Player).where(Player.uuid == uuid)
+        select(Player)
+        .options(selectinload(Player.ip_addresses))
+        .where(Player.uuid == uuid)
     )
     player = result.scalar_one_or_none()
 

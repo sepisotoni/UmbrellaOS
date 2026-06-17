@@ -1,7 +1,8 @@
 'use client'
 
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from './api'
+import type { BridgeSettings, VerificationCode, SuspicionEvent } from './types'
 
 export function useDashboard() {
   return useQuery({ queryKey: ['dashboard'], queryFn: api.getDashboard })
@@ -21,6 +22,15 @@ export function usePlayerPunishments(uuid: string) {
     queryFn: () => api.getPlayerPunishments(uuid),
   })
 }
+export function useRevokePunishment() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.revokePunishment(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['punishments'] })
+    },
+  })
+}
 export function useAppeals() {
   return useQuery({ queryKey: ['appeals'], queryFn: api.getAppeals })
 }
@@ -28,6 +38,15 @@ export function usePlayerAppeals(uuid: string) {
   return useQuery({
     queryKey: ['player-appeals', uuid],
     queryFn: () => api.getPlayerAppeals(uuid),
+  })
+}
+export function useUpdateAppeal() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) => api.updateAppeal(id, status),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['appeals'] })
+    },
   })
 }
 export function useStaff() {
@@ -56,5 +75,143 @@ export function useSystemHealth() {
     queryKey: ['system-health'],
     queryFn: api.getSystemHealth,
     refetchInterval: 5000,
+  })
+}
+export function useBridgeSettings() {
+  return useQuery({ queryKey: ['bridge-settings'], queryFn: api.getBridgeSettings })
+}
+export function useUpdateBridgeSettings() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (settings: Partial<BridgeSettings>) => api.updateBridgeSettings(settings),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bridge-settings'] })
+    },
+  })
+}
+export function usePendingVerifications() {
+  return useQuery({
+    queryKey: ['pending-verifications'],
+    queryFn: api.getPendingVerifications,
+    refetchInterval: 30000,
+  })
+}
+export function useRevokeVerification() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (player_uuid: string) => api.revokeVerification(player_uuid),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pending-verifications'] })
+    },
+  })
+}
+export function useFlaggedPlayers(skip = 0, limit = 50) {
+  return useQuery({
+    queryKey: ['flagged-players', skip, limit],
+    queryFn: () => api.getFlaggedPlayers(skip, limit),
+  })
+}
+export function usePlayerSuspicion(uuid: string) {
+  return useQuery({
+    queryKey: ['player-suspicion', uuid],
+    queryFn: () => api.getPlayerSuspicion(uuid),
+  })
+}
+export function useMarkFalsePositive() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ event_id, reviewed_by }: { event_id: number; reviewed_by: string }) => 
+      api.markFalsePositive(event_id, reviewed_by),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['player-suspicion'] })
+    },
+  })
+}
+export function useCreateAltGroup() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ player_uuids, notes, confirmed }: { player_uuids: string[]; notes?: string; confirmed?: boolean }) => 
+      api.createAltGroup(player_uuids, notes, confirmed),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['alt-groups'] })
+    },
+  })
+}
+export function useAltGroups() {
+  return useQuery({
+    queryKey: ['alt-groups'],
+    queryFn: api.getAltGroups,
+  })
+}
+export function useAnalyticsEvents(params?: { limit?: number, event_type?: string, minecraft_uuid?: string }) {
+  return useQuery({
+    queryKey: ['analytics-events', params],
+    queryFn: () => api.getAnalyticsEvents(params),
+  })
+}
+export function usePlayerStats(uuid: string, period = 'alltime') {
+  return useQuery({
+    queryKey: ['player-stats', uuid, period],
+    queryFn: () => api.getPlayerStats(uuid, period),
+  })
+}
+export function useServerSummary() {
+  return useQuery({
+    queryKey: ['server-summary'],
+    queryFn: api.getServerSummary,
+  })
+}
+export function useReplaySessions(params?: { minecraft_uuid?: string, trigger?: string, limit?: number, offset?: number }) {
+  return useQuery({
+    queryKey: ['replay-sessions', params],
+    queryFn: () => api.listReplaySessions(params),
+  })
+}
+export function useReplaySession(replayId: string) {
+  return useQuery({
+    queryKey: ['replay-session', replayId],
+    queryFn: () => api.getReplaySession(replayId),
+  })
+}
+export function useReplayEvents(replayId: string, params?: { event_type?: string, minecraft_uuid?: string, limit?: number, offset?: number }) {
+  return useQuery({
+    queryKey: ['replay-events', replayId, params],
+    queryFn: () => api.getReplayEvents(replayId, params),
+  })
+}
+export function useSnapshots(uuid: string, params?: { limit?: number, offset?: number, trigger?: string, since?: string, until?: string }) {
+  return useQuery({
+    queryKey: ['snapshots', uuid, params],
+    queryFn: () => api.listSnapshots(uuid, params),
+  })
+}
+export function useLatestSnapshot(uuid: string) {
+  return useQuery({
+    queryKey: ['latest-snapshot', uuid],
+    queryFn: () => api.getLatestSnapshot(uuid),
+  })
+}
+export function useSnapshot(snapshotId: string) {
+  return useQuery({
+    queryKey: ['snapshot', snapshotId],
+    queryFn: () => api.getSnapshot(snapshotId),
+  })
+}
+export function useSnapshotsNearReplay(replayId: string, params?: { window_minutes?: number }) {
+  return useQuery({
+    queryKey: ['snapshots-near-replay', replayId, params],
+    queryFn: () => api.getSnapshotsNearReplay(replayId, params),
+  })
+}
+export function useAITasks(params?: { status?: string, task_type?: string, skip?: number, limit?: number }) {
+  return useQuery({
+    queryKey: ['ai-tasks', params],
+    queryFn: () => api.getAITasks(params),
+  })
+}
+export function useAITask(taskId: number) {
+  return useQuery({
+    queryKey: ['ai-task', taskId],
+    queryFn: () => api.getAITask(taskId),
   })
 }

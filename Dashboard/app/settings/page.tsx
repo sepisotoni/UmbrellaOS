@@ -3,16 +3,17 @@
 import { useState } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
 import { toast } from 'sonner'
-import { useSettings } from '@/lib/queries'
+import { useSettings, useBridgeSettings, useUpdateBridgeSettings } from '@/lib/queries'
 import { PageHeader } from '@/components/page-header'
 import { StatusPill } from '@/components/status-badge'
-import type { SettingItem, SettingsCategory } from '@/lib/types'
+import type { SettingItem, SettingsCategory, BridgeMode } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import {
   Select,
   SelectContent,
@@ -56,6 +57,12 @@ export default function SettingsPage() {
           </TabsContent>
         ))}
       </Tabs>
+
+      <Card className="mt-6">
+        <CardContent className="p-6">
+          <ChatBridgeSection />
+        </CardContent>
+      </Card>
     </>
   )
 }
@@ -153,5 +160,146 @@ function SettingControl({ item }: { item: SettingItem }) {
       type={item.type === 'number' ? 'number' : 'text'}
       defaultValue={String(item.value)}
     />
+  )
+}
+
+function ChatBridgeSection() {
+  const { data: bridgeSettings, isLoading } = useBridgeSettings()
+  const updateBridgeSettings = useUpdateBridgeSettings()
+  const [mode, setMode] = useState<BridgeMode>('off')
+  const [mcToDiscord, setMcToDiscord] = useState(true)
+  const [discordToMc, setDiscordToMc] = useState(true)
+  const [showAvatars, setShowAvatars] = useState(true)
+  const [discordChannelId, setDiscordChannelId] = useState('')
+
+  // Load current values on mount
+  useState(() => {
+    if (bridgeSettings) {
+      setMode(bridgeSettings.mode)
+      setMcToDiscord(bridgeSettings.mc_to_discord)
+      setDiscordToMc(bridgeSettings.discord_to_mc)
+      setShowAvatars(bridgeSettings.show_avatars)
+      setDiscordChannelId(bridgeSettings.discord_channel_id)
+    }
+  })
+
+  const handleSave = async () => {
+    try {
+      await updateBridgeSettings.mutateAsync({
+        mode,
+        mc_to_discord: mcToDiscord,
+        discord_to_mc: discordToMc,
+        show_avatars: showAvatars,
+        discord_channel_id: discordChannelId,
+      })
+      toast.success('Bridge settings saved')
+    } catch (error) {
+      toast.error('Failed to save bridge settings')
+    }
+  }
+
+  if (isLoading) {
+    return <Skeleton className="h-64 w-full" />
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div>
+        <h3 className="text-lg font-semibold">Chat Bridge</h3>
+        <p className="text-sm text-muted-foreground">
+          Configure the Minecraft-Discord chat bridge settings
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-2">
+          <Label className="text-sm font-medium">Bridge Mode</Label>
+          <RadioGroup value={mode} onValueChange={(v) => setMode(v as BridgeMode)}>
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="off" id="mode-off" />
+              <Label htmlFor="mode-off" className="text-sm">
+                Off — no connection
+              </Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="partial" id="mode-partial" />
+              <Label htmlFor="mode-partial" className="text-sm">
+                Partial — players type /disc message to send to Discord
+              </Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="full" id="mode-full" />
+              <Label htmlFor="mode-full" className="text-sm">
+                Full — everything mirrors automatically
+              </Label>
+            </div>
+          </RadioGroup>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="mc-to-discord" className="text-sm font-medium">
+              Minecraft → Discord
+            </Label>
+            <p className="text-xs text-muted-foreground">
+              Forward Minecraft chat to Discord
+            </p>
+          </div>
+          <Switch
+            id="mc-to-discord"
+            checked={mcToDiscord}
+            onCheckedChange={setMcToDiscord}
+          />
+        </div>
+
+        <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="discord-to-mc" className="text-sm font-medium">
+              Discord → Minecraft
+            </Label>
+            <p className="text-xs text-muted-foreground">
+              Forward Discord chat to Minecraft
+            </p>
+          </div>
+          <Switch
+            id="discord-to-mc"
+            checked={discordToMc}
+            onCheckedChange={setDiscordToMc}
+          />
+        </div>
+
+        <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="show-avatars" className="text-sm font-medium">
+              Show player avatars
+            </Label>
+            <p className="text-xs text-muted-foreground">
+              Display player avatars in bridged messages
+            </p>
+          </div>
+          <Switch
+            id="show-avatars"
+            checked={showAvatars}
+            onCheckedChange={setShowAvatars}
+          />
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="discord-channel-id" className="text-sm font-medium">
+            Discord Channel ID
+          </Label>
+          <Input
+            id="discord-channel-id"
+            value={discordChannelId}
+            onChange={(e) => setDiscordChannelId(e.target.value)}
+            placeholder="123456789012345678"
+          />
+        </div>
+
+        <Button onClick={handleSave} className="w-fit">
+          Save Bridge Settings
+        </Button>
+      </div>
+    </div>
   )
 }

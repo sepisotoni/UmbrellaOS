@@ -2,8 +2,8 @@
 
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
-import { Plus, Search } from 'lucide-react'
-import { usePunishments } from '@/lib/queries'
+import { Plus, Search, Ban } from 'lucide-react'
+import { usePunishments, useRevokePunishment } from '@/lib/queries'
 import { PageHeader } from '@/components/page-header'
 import { GenericStatusBadge, PunishmentTypeBadge } from '@/components/status-badge'
 import { formatDate, formatNumber, timeAgo } from '@/lib/format'
@@ -30,6 +30,7 @@ import {
 
 export default function PunishmentsPage() {
   const { data, isLoading } = usePunishments()
+  const revokePunishment = useRevokePunishment()
   const [search, setSearch] = useState('')
   const [type, setType] = useState('all')
   const [status, setStatus] = useState('all')
@@ -115,21 +116,22 @@ export default function PunishmentsPage() {
                 <TableHead className="hidden lg:table-cell">Created</TableHead>
                 <TableHead className="hidden lg:table-cell">Expires</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading
                 ? Array.from({ length: 10 }).map((_, i) => (
                     <TableRow key={i}>
-                      <TableCell colSpan={7}>
+                      <TableCell colSpan={8}>
                         <Skeleton className="h-8 w-full" />
                       </TableCell>
                     </TableRow>
                   ))
-                : filtered.map((p) => <PunishmentRow key={p.id} p={p} />)}
+                : filtered.map((p) => <PunishmentRow key={p.id} p={p} onRevoke={() => revokePunishment.mutate(p.id)} />)}
               {!isLoading && filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
                     No punishments match your filters.
                   </TableCell>
                 </TableRow>
@@ -147,7 +149,7 @@ export default function PunishmentsPage() {
   )
 }
 
-function PunishmentRow({ p }: { p: Punishment }) {
+function PunishmentRow({ p, onRevoke }: { p: Punishment; onRevoke: () => void }) {
   return (
     <TableRow>
       <TableCell>
@@ -171,6 +173,13 @@ function PunishmentRow({ p }: { p: Punishment }) {
       </TableCell>
       <TableCell>
         <GenericStatusBadge status={p.status} />
+      </TableCell>
+      <TableCell>
+        {p.status === 'active' && (
+          <Button size="sm" variant="outline" onClick={onRevoke} disabled={p.status === 'revoked'}>
+            <Ban className="size-4" aria-hidden /> Revoke
+          </Button>
+        )}
       </TableCell>
     </TableRow>
   )

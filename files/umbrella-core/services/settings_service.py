@@ -33,6 +33,7 @@ DEFAULT_SETTINGS: list[tuple] = [
     ("rcon.password",          "",          "rcon", "Minecraft RCON password",  True,  False),
     ("ai.openrouter_key",      "",     "ai",     "OpenRouter API key",          True,  False),
     ("ai.model",               "openai/gpt-4o-mini", "ai", "AI model string",  False, False),
+    ("ai.anthropic_api_key",   "",     "ai",     "Anthropic API key",          True,  False),
     ("server.name",            "UmbrellaMC", "server", "Server display name",  False, False),
     ("server.max_players",     "50",   "server", "Max player slots",            False, False),
     ("moderation.require_discord_link", "true", "moderation",

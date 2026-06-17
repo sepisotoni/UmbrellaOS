@@ -25,6 +25,7 @@ class Player(Base):
     joins: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     deaths: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     risk_score: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    suspicion_score: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     discord_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     ip_addresses: Mapped[list["IPAddress"]] = relationship(

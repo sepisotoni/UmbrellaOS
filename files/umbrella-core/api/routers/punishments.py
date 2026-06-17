@@ -16,7 +16,7 @@ from datetime import datetime
 
 from database import get_db
 from models import Punishment, Player
-from api.middleware.auth import require_admin_key
+from api.dependencies.permissions import require_permission
 
 router = APIRouter(prefix="/api/v1/punishments", tags=["punishments"])
 
@@ -56,7 +56,7 @@ async def list_punishments(
     skip: int = Query(0, ge=0, description="Number of punishments to skip"),
     limit: int = Query(10, ge=1, le=100, description="Number of punishments to return"),
     db: AsyncSession = Depends(get_db),
-    _auth: str = Depends(require_admin_key),
+    _auth: str = Depends(require_permission("punishments.view")),
 ) -> list[PunishmentSchema]:
     """List all punishments with optional filtering."""
     query = select(Punishment)
@@ -79,7 +79,7 @@ async def list_punishments(
 async def create_punishment(
     body: PunishmentCreateRequest,
     db: AsyncSession = Depends(get_db),
-    _auth: str = Depends(require_admin_key),
+    _auth: str = Depends(require_permission("punishments.create")),
 ) -> PunishmentSchema:
     """Create a new punishment for a player."""
     # Verify player exists
@@ -112,7 +112,7 @@ async def update_punishment(
     punishment_id: str,
     body: PunishmentUpdateRequest,
     db: AsyncSession = Depends(get_db),
-    _auth: str = Depends(require_admin_key),
+    _auth: str = Depends(require_permission("punishments.create")),
 ) -> PunishmentSchema:
     """Update a punishment (type, reason, or expiry)."""
     result = await db.execute(
@@ -140,7 +140,7 @@ async def update_punishment(
 async def revoke_punishment(
     punishment_id: str,
     db: AsyncSession = Depends(get_db),
-    _auth: str = Depends(require_admin_key),
+    _auth: str = Depends(require_permission("punishments.revoke")),
 ) -> PunishmentSchema:
     """Revoke (deactivate) a punishment."""
     result = await db.execute(

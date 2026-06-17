@@ -51,3 +51,9 @@ alembic/versions/*.pyc
 # Logs
 *.log
 logs/
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+umbrella.db

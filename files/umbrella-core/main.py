@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import get_settings
 from database import get_db, create_tables, AsyncSessionLocal
 from services import SettingsService, RolesService
+from api.middleware.errors import register_error_handlers
 import models  # noqa: F401
 
 # Import routers
@@ -29,6 +30,13 @@ from api.routers.punishments import router as punishments_router
 from api.routers.appeals import router as appeals_router
 from api.routers.moderation import router as moderation_router
 from api.routers.auth import router as auth_router
+from api.routers.bridge import router as bridge_router
+from api.routers.verification import router as verification_router
+from api.routers.alt_detection import router as alt_detection_router
+from api.routers.analytics import router as analytics_router
+from api.routers.replay import router as replay_router
+from api.routers.snapshot import router as snapshot_router
+from api.routers.ai_tasks import router as ai_tasks_router
 
 settings = get_settings()
 
@@ -72,6 +80,9 @@ app = FastAPI(
     redoc_url="/redoc" if settings.debug else None,
 )
 
+# Register global error handlers
+register_error_handlers(app)
+
 # CORS — restrict to your dashboard domain in production
 app.add_middleware(
     CORSMiddleware,
@@ -92,6 +103,13 @@ app.include_router(punishments_router)
 app.include_router(appeals_router)
 app.include_router(moderation_router)
 app.include_router(auth_router)
+app.include_router(bridge_router)
+app.include_router(verification_router)
+app.include_router(alt_detection_router)
+app.include_router(analytics_router)
+app.include_router(replay_router)
+app.include_router(snapshot_router)
+app.include_router(ai_tasks_router)
 
 
 @app.get("/")
