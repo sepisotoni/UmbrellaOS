@@ -38,7 +38,7 @@ Return ONLY valid JSON of setting key/value pairs.""",
 
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-MODEL_NAME = "google/gemini-2.0-flash-exp:free"
+MODEL_NAME = "openai/gpt-oss-20b:free"
 
 
 class AIConfigServiceError(Exception):
@@ -136,7 +136,7 @@ async def process_ai_config_request(
             
             return config_action
             
-    except httpx.TimeoutError:
+    except httpx.TimeoutException:
         raise AIConfigServiceError("OpenRouter API timeout")
     except httpx.RequestError as e:
         raise AIConfigServiceError(f"OpenRouter API request failed: {e}")
