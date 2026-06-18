@@ -62,9 +62,15 @@ export default function DashboardPage() {
           </>
         ) : (
           <>
-            <ActivityChart data={data.activity} />
-            <PunishmentChart data={data.punishments} />
-            <AppealChart data={data.appeals} />
+            <div style={{ width: '100%', height: 300 }}>
+              <ActivityChart data={data.activity} />
+            </div>
+            <div style={{ width: '100%', height: 300 }}>
+              <PunishmentChart data={data.punishments} />
+            </div>
+            <div style={{ width: '100%', height: 300 }}>
+              <AppealChart data={data.appeals} />
+            </div>
           </>
         )}
       </section>

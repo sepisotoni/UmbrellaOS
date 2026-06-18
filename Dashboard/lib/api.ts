@@ -49,8 +49,7 @@ import type {
 const BASE_URL = process.env.NEXT_PUBLIC_UMBRELLA_API_URL
 const ADMIN_KEY = process.env.NEXT_PUBLIC_UMBRELLA_ADMIN_KEY
 
-async function delay<T>(data: T, ms = 350): Promise<T> {
-  await new Promise((r) => setTimeout(r, ms))
+async function delay<T>(data: T): Promise<T> {
   return data
 }
 

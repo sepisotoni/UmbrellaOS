@@ -77,24 +77,26 @@ export default function SystemHealthPage() {
             <CardDescription>Response time over recent samples (ms)</CardDescription>
           </CardHeader>
           <CardContent>
-            <ChartContainer
-              config={{ value: { label: 'Latency (ms)', color: 'var(--chart-1)' } } satisfies ChartConfig}
-              className="h-[240px] w-full"
-            >
-              <AreaChart data={data.latencyHistory} margin={{ left: 4, right: 8, top: 8 }}>
-                <defs>
-                  <linearGradient id="fill-latency" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="var(--chart-1)" stopOpacity={0.4} />
-                    <stop offset="95%" stopColor="var(--chart-1)" stopOpacity={0.04} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis dataKey="label" interval={4} {...axis} />
-                <YAxis width={36} {...axis} />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Area dataKey="value" type="monotone" stroke="var(--chart-1)" fill="url(#fill-latency)" strokeWidth={2} />
-              </AreaChart>
-            </ChartContainer>
+            <div style={{ width: '100%', height: 300 }}>
+              <ChartContainer
+                config={{ value: { label: 'Latency (ms)', color: 'var(--chart-1)' } } satisfies ChartConfig}
+                className="h-[240px] w-full"
+              >
+                <AreaChart data={data.latencyHistory} margin={{ left: 4, right: 8, top: 8 }}>
+                  <defs>
+                    <linearGradient id="fill-latency" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="var(--chart-1)" stopOpacity={0.4} />
+                      <stop offset="95%" stopColor="var(--chart-1)" stopOpacity={0.04} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="var(--border)" />
+                  <XAxis dataKey="label" interval={4} {...axis} />
+                  <YAxis width={36} {...axis} />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Area dataKey="value" type="monotone" stroke="var(--chart-1)" fill="url(#fill-latency)" strokeWidth={2} />
+                </AreaChart>
+              </ChartContainer>
+            </div>
           </CardContent>
         </Card>
 
