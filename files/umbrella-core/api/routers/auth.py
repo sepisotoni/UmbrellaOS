@@ -19,6 +19,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from sqlalchemy.orm import selectinload
 from pydantic import BaseModel, EmailStr
 
 from config import get_settings
@@ -338,7 +339,7 @@ async def logout(
     Phase 5: Accept session token from Authorization header or query.
     """
     result = await db.execute(
-        select(Session).where(Session.token == session_token)
+        select(Session).options(selectinload(Session.user)).where(Session.token == session_token)
     )
     session = result.scalar_one_or_none()
 
@@ -361,7 +362,7 @@ async def get_current_user(
     Phase 5: Extract user from valid session token.
     """
     result = await db.execute(
-        select(Session).where(Session.token == session_token)
+        select(Session).options(selectinload(Session.user)).where(Session.token == session_token)
     )
     session = result.scalar_one_or_none()
 

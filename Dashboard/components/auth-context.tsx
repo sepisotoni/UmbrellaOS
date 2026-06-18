@@ -35,9 +35,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     setIsLoading(true)
     try {
-      const response = await fetch(`${BASE_URL}/api/v1/auth/me`, {
+      const response = await fetch(`${BASE_URL}/api/v1/auth/me?session_token=${token}`, {
         headers: {
-          'Authorization': `Bearer ${token}`,
         },
       })
 
