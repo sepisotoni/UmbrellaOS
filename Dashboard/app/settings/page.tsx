@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSettings, useBridgeSettings, useUpdateBridgeSettings } from '@/lib/queries'
+import { api } from '@/lib/api'
 import { PageHeader } from '@/components/page-header'
 import { StatusPill } from '@/components/status-badge'
 import type { SettingItem, SettingsCategory, BridgeMode } from '@/lib/types'
@@ -24,7 +25,9 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 export default function SettingsPage() {
-  const { data, isLoading } = useSettings()
+  const { data, isLoading, refetch } = useSettings()
+  const [isSaving, setIsSaving] = useState(false)
+  const [modifiedSettings, setModifiedSettings] = useState<Record<string, string>>({})
 
   if (isLoading || !data) {
     return (
@@ -35,11 +38,31 @@ export default function SettingsPage() {
     )
   }
 
+  const handleSave = async () => {
+    setIsSaving(true)
+    try {
+      const savePromises = Object.entries(modifiedSettings).map(([key, value]) =>
+        api.updateSetting(key, value)
+      )
+      await Promise.all(savePromises)
+      setModifiedSettings({})
+      await refetch()
+      toast.success('Settings saved successfully')
+    } catch (error) {
+      toast.error('Failed to save settings')
+      console.error(error)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const hasChanges = Object.keys(modifiedSettings).length > 0
+
   return (
     <>
       <PageHeader title="Settings" description="Configure the Umbrella Core platform.">
-        <Button size="sm" onClick={() => toast.success('Settings saved')}>
-          Save changes
+        <Button size="sm" onClick={handleSave} disabled={!hasChanges || isSaving}>
+          {isSaving ? 'Saving...' : hasChanges ? 'Save changes' : 'No changes'}
         </Button>
       </PageHeader>
 
@@ -53,7 +76,7 @@ export default function SettingsPage() {
         </TabsList>
         {data.map((cat) => (
           <TabsContent key={cat.id} value={cat.id} className="mt-4">
-            <CategoryPanel category={cat} />
+            <CategoryPanel category={cat} modifiedSettings={modifiedSettings} onSettingChange={setModifiedSettings} />
           </TabsContent>
         ))}
       </Tabs>
@@ -67,14 +90,14 @@ export default function SettingsPage() {
   )
 }
 
-function CategoryPanel({ category }: { category: SettingsCategory }) {
+function CategoryPanel({ category, modifiedSettings, onSettingChange }: { category: SettingsCategory; modifiedSettings: Record<string, string>; onSettingChange: (settings: Record<string, string>) => void }) {
   return (
     <Card>
       <CardContent className="flex flex-col gap-1 p-0">
         {(category.items || []).map((item, i) => (
           <div key={item.key}>
             {i > 0 ? <div className="h-px bg-border" /> : null}
-            <SettingRow item={item} />
+            <SettingRow item={item} modifiedSettings={modifiedSettings} onSettingChange={onSettingChange} />
           </div>
         ))}
       </CardContent>
@@ -82,7 +105,9 @@ function CategoryPanel({ category }: { category: SettingsCategory }) {
   )
 }
 
-function SettingRow({ item }: { item: SettingItem }) {
+function SettingRow({ item, modifiedSettings, onSettingChange }: { item: SettingItem; modifiedSettings: Record<string, string>; onSettingChange: (settings: Record<string, string>) => void }) {
+  const currentValue = modifiedSettings[item.key] !== undefined ? modifiedSettings[item.key] : item.value
+
   return (
     <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex flex-col gap-1">
@@ -99,26 +124,35 @@ function SettingRow({ item }: { item: SettingItem }) {
         <p className="text-xs text-muted-foreground">{item.description}</p>
       </div>
       <div className="w-full sm:w-64">
-        <SettingControl item={item} />
+        <SettingControl item={item} value={currentValue} onChange={(newValue) => {
+          onSettingChange({ ...modifiedSettings, [item.key]: newValue })
+        }} />
       </div>
     </div>
   )
 }
 
-function SettingControl({ item }: { item: SettingItem }) {
+function SettingControl({ item, value, onChange }: { item: SettingItem; value: string | number | boolean; onChange: (newValue: string) => void }) {
   const [reveal, setReveal] = useState(false)
 
   if (item.type === 'boolean') {
     return (
       <div className="flex sm:justify-end">
-        <Switch id={item.key} defaultChecked={Boolean(item.value)} />
+        <Switch
+          id={item.key}
+          checked={Boolean(value)}
+          onCheckedChange={(checked) => onChange(String(checked))}
+        />
       </div>
     )
   }
 
   if (item.type === 'select') {
     return (
-      <Select defaultValue={String(item.value)}>
+      <Select
+        value={String(value)}
+        onValueChange={(val) => onChange(val)}
+      >
         <SelectTrigger id={item.key} className="w-full capitalize">
           <SelectValue />
         </SelectTrigger>
@@ -139,7 +173,8 @@ function SettingControl({ item }: { item: SettingItem }) {
         <Input
           id={item.key}
           type={reveal ? 'text' : 'password'}
-          defaultValue={String(item.value)}
+          value={String(value)}
+          onChange={(e) => onChange(e.target.value)}
           className="pr-9 font-mono"
         />
         <button
@@ -158,7 +193,8 @@ function SettingControl({ item }: { item: SettingItem }) {
     <Input
       id={item.key}
       type={item.type === 'number' ? 'number' : 'text'}
-      defaultValue={String(item.value)}
+      value={String(value)}
+      onChange={(e) => onChange(e.target.value)}
     />
   )
 }

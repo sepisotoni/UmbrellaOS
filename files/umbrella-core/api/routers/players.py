@@ -39,6 +39,7 @@ class PlayerSchema(BaseModel):
     joins: int
     deaths: int
     risk_score: int
+    suspicion_score: int
     discord_id: str | None
 
     class Config:

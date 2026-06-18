@@ -243,6 +243,8 @@ export const api = {
   getServers: () => request<MinecraftServer[]>('/servers', () => servers),
   getAnalytics: () => request<AnalyticsData>('/analytics', () => analytics),
   getSettings: () => request<SettingsCategory[]>('/settings', () => settings),
+  updateSetting: (key: string, value: string) =>
+    request<any>(`/settings/${key}`, () => ({ key, value }), { method: 'PATCH', body: JSON.stringify({ value }) }),
   getAudit: () => request<AuditEntry[]>('/audit', () => audit),
   getSystemHealth: () =>
     request<SystemMetrics>('/system/health', () => systemMetrics),

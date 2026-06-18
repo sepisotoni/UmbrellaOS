@@ -5,9 +5,13 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 const BASE_URL = process.env.NEXT_PUBLIC_UMBRELLA_API_URL || ''
 
 interface User {
+  id: string
+  discord_id: string
   username: string
-  role: string
-  // Add other user fields as needed
+  email?: string
+  role?: string
+  role_id?: string
+  is_active: boolean
 }
 
 interface AuthContextType {

@@ -28,8 +28,13 @@ const NOTIFICATIONS = [
 
 export function TopBar() {
   const router = useRouter()
-  const { user, isLoading: authLoading } = useAuth()
+  const { user, isLoading: authLoading, refreshUser } = useAuth()
   const [searchOpen, setSearchOpen] = useState(false)
+
+  const handleSignOut = () => {
+    localStorage.removeItem('umbrella_token')
+    router.push('/login')
+  }
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -129,7 +134,7 @@ export function TopBar() {
             <Button variant="ghost" className="gap-2 px-1.5">
               <Avatar className="size-7">
                 <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-                  {user?.username?.slice(0, 2).toUpperCase() || 'AU'}
+                  {user?.discord_id?.slice(0, 2).toUpperCase() || user?.username?.slice(0, 2).toUpperCase() || 'AU'}
                 </AvatarFallback>
               </Avatar>
               <span className="hidden text-sm font-medium md:inline">
@@ -141,13 +146,15 @@ export function TopBar() {
         <DropdownMenuContent align="end" className="w-48">
           <DropdownMenuLabel className="flex flex-col">
             <span>{user?.username || 'User'}</span>
-            <span className="text-xs font-normal text-muted-foreground">{user?.role || 'Staff'}</span>
+            <span className="text-xs font-normal text-muted-foreground">
+              {user?.is_active ? (user?.role || 'Staff') : 'Inactive'}
+            </span>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => router.push('/staff')}>Staff</DropdownMenuItem>
           <DropdownMenuItem onClick={() => router.push('/settings')}>Settings</DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem variant="destructive">Sign out</DropdownMenuItem>
+          <DropdownMenuItem variant="destructive" onClick={handleSignOut}>Sign out</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 

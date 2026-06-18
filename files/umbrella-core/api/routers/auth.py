@@ -18,7 +18,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from pydantic import BaseModel, EmailStr
 
 from config import get_settings
@@ -277,7 +277,18 @@ async def discord_callback(
     if user is None:
         role_id = None
         settings = get_settings()
-        if settings.initial_admin_discord_id and discord_id == settings.initial_admin_discord_id:
+
+        # Check if this is the first user (assign owner role automatically)
+        user_count_result = await db.execute(select(func.count(User.id)))
+        user_count = user_count_result.scalar()
+
+        if user_count == 0:
+            # First user gets owner role
+            owner_role = await db.scalar(select(Role).where(Role.name == "owner"))
+            if owner_role:
+                role_id = owner_role.id
+        elif settings.initial_admin_discord_id and discord_id == settings.initial_admin_discord_id:
+            # If INITIAL_ADMIN_DISCORD_ID matches, assign owner role
             owner_role = await db.scalar(select(Role).where(Role.name == "owner"))
             if owner_role:
                 role_id = owner_role.id
