@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Separator } from '@/components/ui/separator'
 import { SidebarTrigger } from '@/components/ui/sidebar'
+import { useAuth } from '@/components/auth-context'
 
 const NOTIFICATIONS = [
   { id: 1, title: 'New appeal submitted', detail: 'EnderByte appealed a tempban', tone: 'warning' as const },
@@ -27,6 +28,7 @@ const NOTIFICATIONS = [
 
 export function TopBar() {
   const router = useRouter()
+  const { user, isLoading: authLoading } = useAuth()
   const [searchOpen, setSearchOpen] = useState(false)
 
   useEffect(() => {
@@ -127,17 +129,19 @@ export function TopBar() {
             <Button variant="ghost" className="gap-2 px-1.5">
               <Avatar className="size-7">
                 <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-                  AU
+                  {user?.username?.slice(0, 2).toUpperCase() || 'AU'}
                 </AvatarFallback>
               </Avatar>
-              <span className="hidden text-sm font-medium md:inline">Aurora</span>
+              <span className="hidden text-sm font-medium md:inline">
+                {authLoading ? 'Loading...' : user?.username || 'User'}
+              </span>
             </Button>
           }
         />
         <DropdownMenuContent align="end" className="w-48">
           <DropdownMenuLabel className="flex flex-col">
-            <span>Aurora</span>
-            <span className="text-xs font-normal text-muted-foreground">Owner</span>
+            <span>{user?.username || 'User'}</span>
+            <span className="text-xs font-normal text-muted-foreground">{user?.role || 'Staff'}</span>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => router.push('/staff')}>Staff</DropdownMenuItem>

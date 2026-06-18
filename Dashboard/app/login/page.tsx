@@ -45,23 +45,33 @@ export default function LoginPage() {
   }
 
   const handleCallback = async (code: string, state: string) => {
+    console.log('[OAuth Callback] Code received:', code)
+    console.log('[OAuth Callback] State received:', state)
     setIsLoading(true)
     setError(null)
     try {
       const redirectUri = window.location.origin + '/login'
+      console.log('[OAuth Callback] Redirect URI:', redirectUri)
+      console.log('[OAuth Callback] Fetching callback endpoint...')
       const response = await fetch(BASE_URL + '/auth/discord/callback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code, state, redirect_uri: redirectUri }),
       })
+      console.log('[OAuth Callback] Response status:', response.status)
       if (!response.ok) {
         const text = await response.text().catch(() => '')
+        console.log('[OAuth Callback] Error response:', text)
         throw new Error('OAuth callback failed (' + response.status + '): ' + text)
       }
       const data = await response.json()
+      console.log('[OAuth Callback] Response data:', data)
+      console.log('[OAuth Callback] Token received, saving to localStorage...')
       localStorage.setItem('umbrella_token', data.token)
+      console.log('[OAuth Callback] Token saved successfully, redirecting to /')
       window.location.href = '/'
     } catch (err) {
+      console.log('[OAuth Callback] Error:', err)
       setError(err instanceof Error ? err.message : 'Login failed')
       setIsLoading(false)
     }
