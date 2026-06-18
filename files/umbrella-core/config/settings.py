@@ -16,6 +16,7 @@ class Settings(BaseSettings):
 
     # Security
     secret_key: str = "change-me-in-production"
+    admin_key: str = "change-me-in-production"
 
     # Initial admin bootstrap
     initial_admin_discord_id: str = ""

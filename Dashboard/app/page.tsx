@@ -9,10 +9,13 @@ import { StatCard } from '@/components/dashboard/stat-card'
 import { PageHeader } from '@/components/page-header'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useDashboard } from '@/lib/queries'
+import { useDashboard, useConnectionTest } from '@/lib/queries'
 
 export default function DashboardPage() {
   const { data, isLoading } = useDashboard()
+  const { data: connectionData, isLoading: connectionLoading, isError: connectionError } = useConnectionTest()
+
+  const isLive = !connectionLoading && !connectionError && connectionData
 
   return (
     <>
@@ -20,10 +23,23 @@ export default function DashboardPage() {
         title="Network Overview"
         description="Live operational snapshot of the entire Minecraft network."
       >
-        <Button variant="outline" size="sm">
-          Last 24 hours
-        </Button>
-        <Button size="sm">Export report</Button>
+        <div className="flex items-center gap-3">
+          {isLive ? (
+            <div className="flex items-center gap-1.5 rounded-full bg-green-500/10 border border-green-500/20 px-3 py-1">
+              <div className="size-2 rounded-full bg-green-500 animate-pulse" />
+              <span className="text-xs font-medium text-green-500">Live</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 rounded-full bg-red-500/10 border border-red-500/20 px-3 py-1">
+              <div className="size-2 rounded-full bg-red-500" />
+              <span className="text-xs font-medium text-red-500">Demo</span>
+            </div>
+          )}
+          <Button variant="outline" size="sm">
+            Last 24 hours
+          </Button>
+          <Button size="sm">Export report</Button>
+        </div>
       </PageHeader>
 
       <section

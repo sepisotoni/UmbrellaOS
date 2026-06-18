@@ -49,6 +49,7 @@ bot.load_extension("cogs.events")
 bot.load_extension("cogs.verification")
 bot.load_extension("cogs.alt_alerts")
 bot.load_extension("cogs.ai_alerts")
+bot.load_extension("cogs.mc_commands")
 
 if __name__ == "__main__":
     print("[Discord Bot] Starting...")

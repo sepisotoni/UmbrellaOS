@@ -14,8 +14,8 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from config import get_settings
-from models import Base  # noqa: F401 — triggers all model imports
+from config.settings import get_settings
+from database.engine import Base  # noqa: F401 — triggers all model imports
 
 settings = get_settings()
 

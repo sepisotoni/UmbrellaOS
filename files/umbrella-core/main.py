@@ -37,6 +37,9 @@ from api.routers.analytics import router as analytics_router
 from api.routers.replay import router as replay_router
 from api.routers.snapshot import router as snapshot_router
 from api.routers.ai_tasks import router as ai_tasks_router
+from api.routers.mc_commands import router as mc_commands_router
+from api.routers.translation import router as translation_router
+from api.routers.ai_config import router as ai_config_router
 
 settings = get_settings()
 
@@ -110,6 +113,9 @@ app.include_router(analytics_router)
 app.include_router(replay_router)
 app.include_router(snapshot_router)
 app.include_router(ai_tasks_router)
+app.include_router(mc_commands_router)
+app.include_router(translation_router)
+app.include_router(ai_config_router)
 
 
 @app.get("/")

@@ -48,16 +48,24 @@ class AuditAction(str, Enum):
     PLUGIN_INSTALLED = "plugin.installed"
     PLUGIN_UPDATED = "plugin.updated"
     PLUGIN_REMOVED = "plugin.removed"
+    
+    # MC command actions
+    MC_COMMAND_REQUESTED = "mc_command.requested"
+    MC_COMMAND_EXECUTED = "mc_command.executed"
+    
+    # AI config actions
+    AI_CONFIG_REQUESTED = "ai_config.requested"
+    AI_CONFIG_APPLIED = "ai_config.applied"
+    AI_CONFIG_REJECTED = "ai_config.rejected"
 
 
 async def create_audit_log(
     db: AsyncSession,
     action: AuditAction,
-    staff_id: Optional[str] = "SYSTEM",
-    target_uuid: Optional[str] = None,
+    actor: Optional[str] = "SYSTEM",
+    actor_type: Optional[str] = "system",
+    target: Optional[str] = None,
     details: Optional[Dict[str, Any]] = None,
-    ip_address: Optional[str] = None,
-    user_agent: Optional[str] = None,
 ) -> AuditLog:
     """
     Create an audit log entry.
@@ -65,23 +73,22 @@ async def create_audit_log(
     Args:
         db: Database session
         action: Action type (from AuditAction enum)
-        staff_id: User who performed action (defaults to SYSTEM)
-        target_uuid: UUID of affected resource
+        actor: Who performed the action (defaults to SYSTEM)
+        actor_type: Type of actor (staff|plugin|bot|system|ai, defaults to system)
+        target: UUID of affected resource
         details: Additional details (JSON)
-        ip_address: IP address of requester
-        user_agent: User agent string
     
     Returns:
         Created AuditLog instance
     """
+    import json
     audit_log = AuditLog(
         id=str(uuid4()),
         action=action.value,
-        staff_id=staff_id or "SYSTEM",
-        target_uuid=target_uuid,
-        details=details or {},
-        ip_address=ip_address,
-        user_agent=user_agent,
+        actor=actor or "SYSTEM",
+        actor_type=actor_type or "system",
+        target=target,
+        details_json=json.dumps(details or {}) if details else "{}",
         created_at=datetime.utcnow()
     )
     db.add(audit_log)
@@ -93,8 +100,8 @@ async def log_action(
     db: AsyncSession,
     action: str,
     description: Optional[str] = None,
-    staff_id: Optional[str] = None,
-    target_id: Optional[str] = None,
+    actor: Optional[str] = None,
+    target: Optional[str] = None,
 ) -> AuditLog:
     """
     Simplified audit logging.
@@ -106,8 +113,8 @@ async def log_action(
     return await create_audit_log(
         db=db,
         action=AuditAction(action),
-        staff_id=staff_id,
-        target_uuid=target_id,
+        actor=actor,
+        target=target,
         details=details
     )
 
@@ -122,16 +129,16 @@ class AuditContext:
     async def add(
         self,
         action: AuditAction,
-        staff_id: Optional[str] = None,
-        target_uuid: Optional[str] = None,
+        actor: Optional[str] = None,
+        target: Optional[str] = None,
         details: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Add audit log to batch."""
         log = await create_audit_log(
             self.db,
             action=action,
-            staff_id=staff_id,
-            target_uuid=target_uuid,
+            actor=actor,
+            target=target,
             details=details
         )
         self.logs.append(log)

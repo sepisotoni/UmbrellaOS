@@ -5,6 +5,7 @@ import com.comphenix.protocol.ProtocolManager;
 import com.umbrellaos.plugin.api.CoreApiClient;
 import com.umbrellaos.plugin.commands.DiscCommand;
 import com.umbrellaos.plugin.commands.VerifyCommand;
+import com.umbrellaos.plugin.commands.LangCommand;
 import com.umbrellaos.plugin.config.PluginConfig;
 import com.umbrellaos.plugin.listeners.*;
 import com.umbrellaos.plugin.managers.BridgeManager;
@@ -13,6 +14,7 @@ import com.umbrellaos.plugin.managers.VerificationManager;
 import com.umbrellaos.plugin.tasks.HeartbeatTask;
 import com.umbrellaos.plugin.tasks.ReplayBufferTask;
 import com.umbrellaos.plugin.tasks.SnapshotTask;
+import com.umbrellaos.plugin.tasks.CommandPollingTask;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
@@ -26,6 +28,7 @@ public class UmbrellaPlugin extends JavaPlugin {
     private HeartbeatTask heartbeatTask;
     private SnapshotTask snapshotTask;
     private ReplayBufferTask replayBufferTask;
+    private CommandPollingTask commandPollingTask;
 
     @Override
     public void onEnable() {
@@ -47,6 +50,7 @@ public class UmbrellaPlugin extends JavaPlugin {
         heartbeatTask = new HeartbeatTask(apiClient);
         snapshotTask = new SnapshotTask(apiClient);
         replayBufferTask = new ReplayBufferTask(apiClient, config.getReplayBufferSeconds());
+        commandPollingTask = new CommandPollingTask(apiClient, this);
 
         // Register listeners
         getServer().getPluginManager().registerEvents(new PlayerJoinListener(apiClient, verificationManager, punishmentManager, config.isVerifyOnJoin()), this);
@@ -67,11 +71,14 @@ public class UmbrellaPlugin extends JavaPlugin {
         // Register commands
         getCommand("verify").setExecutor(new VerifyCommand(verificationManager));
         getCommand("disc").setExecutor(new DiscCommand(apiClient, bridgeManager));
+        getCommand("lang").setExecutor(new LangCommand(apiClient, this));
+        getCommand("translate").setExecutor(new LangCommand(apiClient, this));
 
         // Start scheduled tasks
         heartbeatTask.runTaskTimerAsynchronously(this, config.getHeartbeatIntervalSeconds() * 20L, config.getHeartbeatIntervalSeconds() * 20L);
         snapshotTask.runTaskTimerAsynchronously(this, config.getSnapshotIntervalSeconds() * 20L, config.getSnapshotIntervalSeconds() * 20L);
         replayBufferTask.runTaskTimerAsynchronously(this, 20L, 20L); // Run every second
+        commandPollingTask.runTaskTimerAsynchronously(this, 0L, 100L); // Run every 5 seconds (100 ticks)
 
         // Post server start event
         apiClient.postEvent("server_start", null, "Server started", null).thenRun(() -> {
@@ -103,6 +110,9 @@ public class UmbrellaPlugin extends JavaPlugin {
         }
         if (replayBufferTask != null) {
             replayBufferTask.cancel();
+        }
+        if (commandPollingTask != null) {
+            commandPollingTask.cancel();
         }
 
         // Shutdown managers

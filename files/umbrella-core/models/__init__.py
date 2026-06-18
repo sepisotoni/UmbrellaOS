@@ -13,6 +13,9 @@ from .analytics import AnalyticsEvent, PlayerStat  # noqa: F401
 from .replay import ReplaySession, ReplayEvent  # noqa: F401
 from .snapshot import PlayerSnapshot  # noqa: F401
 from .ai_tasks import AITask  # noqa: F401
+from .mc_commands import MCCommand  # noqa: F401
+from .translation import PlayerLanguage  # noqa: F401
+from .ai_config import AIConfigAction  # noqa: F401
 
 __all__ = [
     "Base",
@@ -40,4 +43,7 @@ __all__ = [
     "ReplayEvent",
     "PlayerSnapshot",
     "AITask",
+    "MCCommand",
+    "PlayerLanguage",
+    "AIConfigAction",
 ]

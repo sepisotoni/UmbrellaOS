@@ -183,4 +183,26 @@ public class CoreApiClient {
         body.addProperty("tps", tps);
         return asyncPost("/api/v1/plugin/heartbeat", body).thenApply(response -> null);
     }
+
+    public CompletableFuture<List<Map<String, Object>>> getPendingCommands() {
+        return asyncGet("/api/v1/mc/commands/pending").thenApply(response -> parseJson(response, List.class));
+    }
+
+    public CompletableFuture<Void> completeCommand(int id, String output, boolean success) {
+        JsonObject body = new JsonObject();
+        body.addProperty("output", output);
+        body.addProperty("success", success);
+        return asyncPost("/api/v1/mc/commands/" + id + "/complete", body).thenApply(response -> null);
+    }
+
+    public CompletableFuture<Void> setPlayerLanguage(String playerUuid, String languageCode, String languageName, Boolean autoTranslateIncoming) {
+        JsonObject body = new JsonObject();
+        body.addProperty("player_uuid", playerUuid);
+        body.addProperty("language_code", languageCode);
+        body.addProperty("language_name", languageName);
+        if (autoTranslateIncoming != null) {
+            body.addProperty("auto_translate_incoming", autoTranslateIncoming);
+        }
+        return asyncPost("/api/v1/translation/language", body).thenApply(response -> null);
+    }
 }

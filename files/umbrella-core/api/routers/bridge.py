@@ -13,9 +13,10 @@ from pydantic import BaseModel
 from datetime import datetime
 
 from database import get_db
-from models import ChatMessage, Setting
+from models import ChatMessage, Setting, PlayerLanguage
 from api.middleware.auth import require_admin_key
 from api.dependencies.permissions import require_permission
+from services.translation_service import translate_message, get_player_language
 
 router = APIRouter(prefix="/api/v1/bridge", tags=["bridge"])
 
@@ -32,6 +33,7 @@ class BridgeMessageResponse(BaseModel):
     forwarded: bool
     targets: list[str] = []
     message_id: int
+    translated_message: str | None = None
 
 
 class ChatMessageSchema(BaseModel):
@@ -106,6 +108,7 @@ async def receive_bridge_message(
     # Determine if message should be forwarded
     forwarded = False
     targets = []
+    translated_message = None
 
     if bridge_mode == "off":
         forwarded = False
@@ -126,6 +129,17 @@ async def receive_bridge_message(
             if mc_to_discord and mc_to_discord.value == "true":
                 forwarded = True
                 targets = ["discord"]
+                # Translate if player has translation enabled
+                if body.player_uuid:
+                    player_lang = await get_player_language(body.player_uuid, db)
+                    if player_lang.auto_translate_outgoing and player_lang.language_code != "en":
+                        translated_message, _ = await translate_message(
+                            text=body.message,
+                            target_language=player_lang.language_code,
+                            db=db,
+                        )
+                        if translated_message and translated_message != body.message:
+                            chat_message.translated_message = translated_message
         elif body.source == "discord":
             discord_to_mc_result = await db.execute(
                 select(Setting).where(Setting.key == "bridge.discord_to_mc")
@@ -135,10 +149,14 @@ async def receive_bridge_message(
                 forwarded = True
                 targets = ["minecraft"]
 
+    await db.commit()
+    await db.refresh(chat_message)
+
     return BridgeMessageResponse(
         forwarded=forwarded,
         targets=targets,
         message_id=chat_message.id,
+        translated_message=chat_message.translated_message,
     )
 
 

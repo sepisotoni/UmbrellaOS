@@ -28,12 +28,21 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  const isDemoMode = !process.env.NEXT_PUBLIC_UMBRELLA_API_URL
+  
   return (
     <html
       lang="en"
       className={`dark ${geistSans.variable} ${geistMono.variable} bg-background`}
     >
       <body className="font-sans antialiased">
+        {isDemoMode && (
+          <div className="bg-yellow-500/10 border-b border-yellow-500/20 py-2 px-4 text-center">
+            <p className="text-sm text-yellow-600 dark:text-yellow-500">
+              Running in demo mode — set NEXT_PUBLIC_UMBRELLA_API_URL in .env.local to connect to your backend
+            </p>
+          </div>
+        )}
         <Providers>{children}</Providers>
         <Toaster />
         {process.env.NODE_ENV === 'production' && <Analytics />}

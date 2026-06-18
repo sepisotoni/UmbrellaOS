@@ -5,7 +5,7 @@ import { api } from './api'
 import type { BridgeSettings, VerificationCode, SuspicionEvent } from './types'
 
 export function useDashboard() {
-  return useQuery({ queryKey: ['dashboard'], queryFn: api.getDashboard })
+  return useQuery({ queryKey: ['dashboard'], queryFn: api.getDashboard, refetchInterval: 30000 })
 }
 export function usePlayers() {
   return useQuery({ queryKey: ['players'], queryFn: api.getPlayers })
@@ -161,6 +161,14 @@ export function useServerSummary() {
     queryFn: api.getServerSummary,
   })
 }
+export function useConnectionTest() {
+  return useQuery({
+    queryKey: ['connection-test'],
+    queryFn: api.getServerSummary,
+    refetchInterval: 10000,
+    retry: false,
+  })
+}
 export function useReplaySessions(params?: { minecraft_uuid?: string, trigger?: string, limit?: number, offset?: number }) {
   return useQuery({
     queryKey: ['replay-sessions', params],
@@ -213,5 +221,56 @@ export function useAITask(taskId: number) {
   return useQuery({
     queryKey: ['ai-task', taskId],
     queryFn: () => api.getAITask(taskId),
+  })
+}
+export function usePlayerLanguages() {
+  return useQuery({
+    queryKey: ['player-languages'],
+    queryFn: api.getPlayerLanguages,
+  })
+}
+export function useSetPlayerLanguage() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ player_uuid, language_code, language_name }: { player_uuid: string; language_code: string; language_name: string }) =>
+      api.setPlayerLanguage(player_uuid, language_code, language_name),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['player-languages'] })
+    },
+  })
+}
+export function usePendingAIConfigs() {
+  return useQuery({
+    queryKey: ['pending-ai-configs'],
+    queryFn: api.getPendingAIConfigs,
+    refetchInterval: 10000,
+  })
+}
+export function useRequestAIConfig() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ action_type, natural_language }: { action_type: string; natural_language: string }) =>
+      api.requestAIConfig(action_type, natural_language),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pending-ai-configs'] })
+    },
+  })
+}
+export function useApproveAIConfig() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => api.approveAIConfig(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pending-ai-configs'] })
+    },
+  })
+}
+export function useRejectAIConfig() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => api.rejectAIConfig(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pending-ai-configs'] })
+    },
   })
 }
