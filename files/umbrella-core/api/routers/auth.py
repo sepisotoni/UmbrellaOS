@@ -28,6 +28,7 @@ from models.permissions import Role
 from api.middleware.auth import require_admin_key
 from services import discord_service
 from services.discord_service import DiscordOAuthError
+from services.settings_service import SettingsService
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -210,9 +211,10 @@ async def discord_authorize(
     Start Discord OAuth2 flow.
     Returns authorization URL for frontend redirect.
     """
-    settings = get_settings()
-    if not settings.discord_client_id:
-        raise HTTPException(status_code=503, detail="Discord OAuth is not configured")
+    client_id = await SettingsService.get_value(db, "discord.client_id")
+    client_secret = await SettingsService.get_value(db, "discord.client_secret")
+    if not client_id:
+        raise HTTPException(status_code=503, detail="Discord client_id not set — configure it in Settings")
 
     state = secrets.token_urlsafe(32)
     code_verifier = secrets.token_urlsafe(128)[:128]
@@ -226,7 +228,7 @@ async def discord_authorize(
 
     discord_authorize_url = (
         f"https://discord.com/api/oauth2/authorize?"
-        f"client_id={settings.discord_client_id}&"
+        f"client_id={client_id}&"
         f"response_type=code&"
         f"scope=identify%20email&"
         f"redirect_uri={body.redirect_uri}&"

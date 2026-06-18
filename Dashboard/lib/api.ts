@@ -83,8 +83,11 @@ async function request<T>(path: string, mock: () => T, options?: RequestInit): P
   
   // Redirect to login on 401
   if (res.status === 401 && typeof window !== 'undefined') {
-    window.location.href = '/login'
-    throw new Error('Unauthorized - redirecting to login')
+    if (window.location.pathname !== '/login' && !(window as any).__umbrellaRedirecting) {
+      ;(window as any).__umbrellaRedirecting = true
+      window.location.href = '/login'
+    }
+    throw new Error('Unauthorized')
   }
   
   if (!res.ok) {

@@ -89,7 +89,7 @@ register_error_handlers(app)
 # CORS — restrict to your dashboard domain in production
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if settings.debug else ["https://your-dashboard.com"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

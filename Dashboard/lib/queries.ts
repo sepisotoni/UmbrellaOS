@@ -5,7 +5,7 @@ import { api } from './api'
 import type { BridgeSettings, VerificationCode, SuspicionEvent } from './types'
 
 export function useDashboard() {
-  return useQuery({ queryKey: ['dashboard'], queryFn: api.getDashboard, refetchInterval: 30000 })
+  return useQuery({ queryKey: ['dashboard'], queryFn: api.getDashboard, refetchInterval: 300000 })
 }
 export function usePlayers() {
   return useQuery({ queryKey: ['players'], queryFn: api.getPlayers })
@@ -93,7 +93,7 @@ export function usePendingVerifications() {
   return useQuery({
     queryKey: ['pending-verifications'],
     queryFn: api.getPendingVerifications,
-    refetchInterval: 30000,
+    refetchInterval: 300000,
   })
 }
 export function useRevokeVerification() {
@@ -165,7 +165,7 @@ export function useConnectionTest() {
   return useQuery({
     queryKey: ['connection-test'],
     queryFn: api.getServerSummary,
-    refetchInterval: 10000,
+    refetchInterval: 300000,
     retry: false,
   })
 }
@@ -243,7 +243,7 @@ export function usePendingAIConfigs() {
   return useQuery({
     queryKey: ['pending-ai-configs'],
     queryFn: api.getPendingAIConfigs,
-    refetchInterval: 10000,
+    refetchInterval: 300000,
   })
 }
 export function useRequestAIConfig() {
