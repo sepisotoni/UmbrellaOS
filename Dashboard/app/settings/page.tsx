@@ -71,7 +71,7 @@ function CategoryPanel({ category }: { category: SettingsCategory }) {
   return (
     <Card>
       <CardContent className="flex flex-col gap-1 p-0">
-        {category.items.map((item, i) => (
+        {(category.items || []).map((item, i) => (
           <div key={item.key}>
             {i > 0 ? <div className="h-px bg-border" /> : null}
             <SettingRow item={item} />

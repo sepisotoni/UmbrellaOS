@@ -57,7 +57,7 @@ async function delay<T>(data: T, ms = 350): Promise<T> {
 async function request<T>(path: string, mock: () => T, options?: RequestInit): Promise<T> {
   if (!BASE_URL) {
     console.warn('UMBRELLA: No API URL set, using mock data')
-    return delay(mock())
+    return mock()
   }
   
   const headers: Record<string, string> = {

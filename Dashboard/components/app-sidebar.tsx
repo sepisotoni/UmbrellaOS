@@ -10,7 +10,7 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
+  SidebarLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -45,7 +45,7 @@ export function AppSidebar() {
       <SidebarContent>
         {navGroups.map((group) => (
           <SidebarGroup key={group}>
-            <SidebarGroupLabel>{group}</SidebarGroupLabel>
+            <SidebarLabel>{group}</SidebarLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {navItems

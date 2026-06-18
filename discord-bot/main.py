@@ -32,7 +32,7 @@ async def on_ready():
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"{config.UMBRELLA_API_URL}/api/v1/plugin/health",
-                headers={"X-Admin-Key": config.UMBRELLA_ADMIN_KEY},
+                headers={"X-Plugin-Key": config.UMBRELLA_ADMIN_KEY},
                 timeout=5.0
             )
             if response.status_code == 200:
@@ -46,10 +46,10 @@ async def on_ready():
 # Load cogs
 bot.load_extension("cogs.chat_bridge")
 bot.load_extension("cogs.events")
-bot.load_extension("cogs.verification")
-bot.load_extension("cogs.alt_alerts")
-bot.load_extension("cogs.ai_alerts")
-bot.load_extension("cogs.mc_commands")
+#bot.load_extension("cogs.verification")  # temporarily disabled
+#bot.load_extension("cogs.alt_alerts")  # disabled
+#bot.load_extension("cogs.ai_alerts")  # disabled
+#bot.load_extension("cogs.mc_commands")  # disabled
 
 if __name__ == "__main__":
     print("[Discord Bot] Starting...")

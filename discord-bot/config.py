@@ -17,7 +17,7 @@ class Config:
     DISCORD_BOT_TOKEN: str = os.getenv("DISCORD_BOT_TOKEN", "")
     UMBRELLA_API_URL: str = os.getenv("UMBRELLA_API_URL", "")
     UMBRELLA_ADMIN_KEY: str = os.getenv("UMBRELLA_ADMIN_KEY", "")
-    BRIDGE_CHANNEL_ID: int = int(os.getenv("BRIDGE_CHANNEL_ID", "0"))
+    BRIDGE_CHANNEL_ID: int = int(os.getenv("BRIDGE_CHANNEL_ID") or "0")
     STAFF_ALERTS_CHANNEL_ID: int = int(os.getenv("STAFF_ALERTS_CHANNEL_ID", "0"))
     
     # Optional
@@ -32,7 +32,7 @@ class Config:
         if not self.UMBRELLA_ADMIN_KEY:
             raise ValueError("UMBRELLA_ADMIN_KEY is required")
         if not self.BRIDGE_CHANNEL_ID or self.BRIDGE_CHANNEL_ID == 0:
-            raise ValueError("BRIDGE_CHANNEL_ID is required")
+            pass  # optional, bot will skip bridging
 
 
 config = Config()

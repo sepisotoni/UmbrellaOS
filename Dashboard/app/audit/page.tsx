@@ -53,7 +53,7 @@ export default function AuditPage() {
 
   const filtered = useMemo(() => {
     if (!data) return []
-    return data.filter((e) => {
+    return (Array.isArray(data) ? data : (data?.data || data?.logs || [])).filter((e) => {
       if (category !== 'all' && e.category !== category) return false
       if (search) {
         const q = search.toLowerCase()

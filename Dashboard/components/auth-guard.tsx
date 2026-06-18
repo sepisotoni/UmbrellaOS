@@ -1,80 +1,48 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter, usePathname } from 'next/navigation'
-import { Loader2 } from 'lucide-react'
+import { usePathname, useRouter } from 'next/navigation'
 
-const BASE_URL = process.env.NEXT_PUBLIC_UMBRELLA_API_URL || ''
+let authCache: { valid: boolean; checked: boolean } = { valid: false, checked: false }
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
-  const router = useRouter()
   const pathname = usePathname()
-  const [isLoading, setIsLoading] = useState(true)
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const router = useRouter()
+  const [ready, setReady] = useState(authCache.checked)
 
   useEffect(() => {
-    const checkAuth = async () => {
-      // Skip auth check for login page
-      if (pathname === '/login') {
-        setIsLoading(false)
-        setIsAuthenticated(true)
-        return
-      }
+    if (pathname === '/login') { setReady(true); return }
+    if (authCache.checked && authCache.valid) { setReady(true); return }
 
-      // Check for token in localStorage
-      const token = localStorage.getItem('umbrella_token')
-      if (!token) {
-        console.log('[AuthGuard] No token found, redirecting to /login')
-        router.push('/login')
-        return
-      }
+    const token = localStorage.getItem('umbrella_token')
+    if (!token) { router.replace('/login'); return }
 
-      try {
-        // Verify token with /api/v1/auth/me
-        const response = await fetch(`${BASE_URL}/api/v1/auth/me`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        })
+    if (authCache.checked && !authCache.valid) { router.replace('/login'); return }
 
-        if (response.status === 401) {
-          console.log('[AuthGuard] Token invalid (401), clearing and redirecting to /login')
+    fetch(process.env.NEXT_PUBLIC_UMBRELLA_API_URL + '/auth/me', {
+      headers: { Authorization: 'Bearer ' + token }
+    })
+      .then(res => {
+        if (res.status === 401) {
           localStorage.removeItem('umbrella_token')
-          router.push('/login')
-          return
+          authCache = { valid: false, checked: true }
+          router.replace('/login')
+        } else {
+          authCache = { valid: true, checked: true }
+          setReady(true)
         }
+      })
+      .catch(() => {
+        authCache = { valid: true, checked: true }
+        setReady(true)
+      })
+  }, [pathname])
 
-        if (!response.ok) {
-          console.log('[AuthGuard] Auth check failed with status:', response.status)
-          router.push('/login')
-          return
-        }
-
-        console.log('[AuthGuard] Auth check successful')
-        setIsAuthenticated(true)
-      } catch (error) {
-        console.log('[AuthGuard] Auth check error:', error)
-        router.push('/login')
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    checkAuth()
-  }, [pathname, router])
-
-  if (isLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="size-8 animate-spin text-muted-foreground" />
-        <span className="ml-3 text-muted-foreground">Checking authentication...</span>
-      </div>
-    )
-  }
-
-  if (!isAuthenticated) {
-    return null // Will redirect in useEffect
-  }
-
+  if (pathname === '/login') return <>{children}</>
+  if (!ready) return (
+    <div className="flex min-h-screen items-center justify-center">
+      <div className="text-muted-foreground text-sm">Loading...</div>
+    </div>
+  )
   return <>{children}</>
 }

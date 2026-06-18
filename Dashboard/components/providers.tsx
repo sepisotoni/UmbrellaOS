@@ -4,9 +4,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useState } from 'react'
 import { AppShell } from '@/components/app-shell'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import { AuthGuard } from '@/components/auth-guard'
 import { AuthProvider } from '@/components/auth-context'
+import { AuthGuard } from '@/components/auth-guard'
 import { usePathname } from 'next/navigation'
+
+function ConditionalShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname()
+  if (pathname === '/login') return <>{children}</>
+  return <AppShell>{children}</AppShell>
+}
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [client] = useState(
@@ -14,27 +20,23 @@ export function Providers({ children }: { children: React.ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            staleTime: 30_000,
+            staleTime: 300_000,
             refetchOnWindowFocus: false,
             retry: 1,
           },
         },
-      ),
+      }),
   )
-  const pathname = usePathname()
-
-  // Don't wrap login page with AuthGuard
-  const shouldUseAuthGuard = pathname !== '/login'
 
   return (
     <QueryClientProvider client={client}>
-      <AuthProvider>
-        <TooltipProvider delay={200}>
-          <AppShell>
-            {shouldUseAuthGuard ? <AuthGuard>{children}</AuthGuard> : children}
-          </AppShell>
-        </TooltipProvider>
-      </AuthProvider>
+      <TooltipProvider delay={200}>
+        <AuthProvider>
+          <AuthGuard>
+            <ConditionalShell>{children}</ConditionalShell>
+          </AuthGuard>
+        </AuthProvider>
+      </TooltipProvider>
     </QueryClientProvider>
   )
 }

@@ -390,7 +390,7 @@ function SidebarGroup({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
-function SidebarGroupLabel({
+function SidebarLabel({
   className,
   render,
   ...props
@@ -702,7 +702,7 @@ export {
   SidebarGroup,
   SidebarGroupAction,
   SidebarGroupContent,
-  SidebarGroupLabel,
+  SidebarLabel,
   SidebarHeader,
   SidebarInput,
   SidebarInset,

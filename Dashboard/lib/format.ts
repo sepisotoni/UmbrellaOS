@@ -24,7 +24,7 @@ export function formatDate(iso: string): string {
 }
 
 export function formatNumber(n: number): string {
-  return n.toLocaleString()
+  return (n ?? 0).toLocaleString()
 }
 
 export function formatPlaytime(hours: number): string {

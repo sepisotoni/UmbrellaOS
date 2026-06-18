@@ -38,7 +38,7 @@ export default function StaffPage() {
           ? Array.from({ length: 4 }).map((_, i) => (
               <Skeleton key={i} className="h-48 rounded-xl" />
             ))
-          : roles.map((r) => <RoleCard key={r.role} role={r} />)}
+          : roles.map((r) => <RoleCard key={r.role + '-card'} role={r} />)}
       </section>
 
       <section aria-label="Members" className="flex flex-col gap-3">
