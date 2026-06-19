@@ -1,5 +1,5 @@
 export const API_ROOT = (process.env.NEXT_PUBLIC_UMBRELLA_API_URL || '').replace(/\/$/, '')
-export const API_V1 = API_ROOT ? `${API_ROOT}/api/v1` : ''
+export const API_V1 = API_ROOT
 export const ADMIN_KEY = process.env.NEXT_PUBLIC_UMBRELLA_ADMIN_KEY || ''
 
 export function getToken(): string | null {
