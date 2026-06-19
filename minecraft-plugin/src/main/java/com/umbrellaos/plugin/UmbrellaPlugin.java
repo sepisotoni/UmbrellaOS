@@ -108,6 +108,21 @@ public class UmbrellaPlugin extends JavaPlugin {
         getLogger().info("UmbrellaOS Plugin enabled");
     }
 
+    public void reloadPlugin(String pluginName) {
+        getLogger().info("Attempting to reload plugin: " + pluginName);
+        // This is a placeholder. Real plugin reloading is complex and depends on the plugin manager.
+        // For a simple case, you might disable and then enable it.
+        // Bukkit.getServer().getPluginManager().disablePlugin(pluginName);
+        // Bukkit.getServer().getPluginManager().enablePlugin(pluginName);
+        getLogger().warning("Plugin reloading is not fully implemented yet.");
+    }
+
+    public void togglePlugin(String pluginName) {
+        getLogger().info("Attempting to toggle plugin: " + pluginName);
+        // This is a placeholder. Real plugin toggling is complex.
+        getLogger().warning("Plugin toggling is not fully implemented yet.");
+    }
+
     @Override
     public void onDisable() {
         // Post server stop event

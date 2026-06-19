@@ -56,14 +56,23 @@ export function useRoles() {
   return useQuery({ queryKey: ['roles'], queryFn: api.getRoles })
 }
 export function usePlugins() {
-  return useQuery({ queryKey: ['plugins'], queryFn: api.getPlugins })
+  return useQuery({ queryKey: ["plugins"], queryFn: api.getPlugins, refetchInterval: 5000 })
 }
+
+export function usePluginControl() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { plugin_name: string; action: "reload" | "toggle" }) => api.pluginControl(body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["plugins"] }),
+  })
+}
+
 export function useServerControl() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (body: { server_id: string; action: 'power' | 'restart' | 'maintenance'; enabled?: boolean }) =>
+    mutationFn: (body: { server_id: string; action: "power" | "restart" | "maintenance"; enabled?: boolean }) =>
       api.serverControl(body),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['servers'] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["servers"] }),
   })
 }
 export function useManageStaff() {

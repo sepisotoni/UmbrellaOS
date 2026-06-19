@@ -22,7 +22,9 @@ from datetime import datetime, timezone
 from database import get_db
 from models.setting import Setting
 from models.plugin_heartbeat import PluginHeartbeat
+from models.plugin_command import PluginCommand
 from api.middleware.auth import require_plugin_key
+from api.schemas.plugin_control import PluginControlRequest
 
 router = APIRouter(prefix="/api/v1/plugin", tags=["plugin"])
 
@@ -147,3 +149,22 @@ async def plugin_config(
         "settings": flat,
         "by_category": by_category,
     }
+
+
+@router.post("/control")
+async def plugin_control(
+    body: PluginControlRequest,
+    db: AsyncSession = Depends(get_db),
+    _auth: str = Depends(require_plugin_key),
+) -> dict:
+    """
+    Send a control command to a specific Minecraft plugin instance.
+    """
+    command = PluginCommand(
+        plugin_name=body.plugin_name,
+        action=body.action,
+        status="pending",
+    )
+    db.add(command)
+    await db.flush()
+    return {"ok": True, "command_id": command.id}

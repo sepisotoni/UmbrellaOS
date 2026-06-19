@@ -77,6 +77,11 @@ export const api = {
   getPlugins: () => request<Record<string, unknown>[]>('/dashboard/plugins').then((d) => d.map(mapPlugin)),
   getServers: () => request<Record<string, unknown>[]>('/dashboard/servers').then((d) => d.map(mapServer)),
 
+  pluginControl: (body: { plugin_name: string; action: 'reload' | 'toggle' }) =>
+    request<{ ok: boolean; command_id: number }>('/plugin/control', {
+      method: 'POST', body: JSON.stringify(body),
+    }),
+
   serverControl: (body: { server_id: string; action: 'power' | 'restart' | 'maintenance'; enabled?: boolean }) =>
     request<{ success: boolean; action: string; maintenance?: boolean }>('/server/control', {
       method: 'POST', body: JSON.stringify(body),

@@ -1,7 +1,7 @@
 'use client'
 
 import { Power, RefreshCw, Search as SearchIcon, Activity } from 'lucide-react'
-import { usePlugins } from '@/lib/queries'
+import { usePlugins, usePluginControl } from '@/lib/queries'
 import { PageHeader } from '@/components/page-header'
 import { GenericStatusBadge } from '@/components/status-badge'
 import { timeAgo } from '@/lib/format'
@@ -9,6 +9,7 @@ import type { Plugin } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { toast } from 'sonner'
 import {
   Table,
   TableBody,
@@ -19,7 +20,7 @@ import {
 } from '@/components/ui/table'
 
 export default function PluginsPage() {
-  const { data, isLoading } = usePlugins()
+  const { data, isLoading, refetch } = usePlugins() // Added refetch
 
   return (
     <>
@@ -50,7 +51,7 @@ export default function PluginsPage() {
                       </TableCell>
                     </TableRow>
                   ))
-                : data.map((p) => <PluginRow key={p.id} p={p} />)}
+                : data.map((p) => <PluginRow key={p.id} p={p} refetchPlugins={refetch} />)} {/* Pass refetch as prop */}
             </TableBody>
           </Table>
         </div>
@@ -65,7 +66,19 @@ function heartbeatTone(ms: number, status: string) {
   return 'text-success'
 }
 
-function PluginRow({ p }: { p: Plugin }) {
+function PluginRow({ p, refetchPlugins }: { p: Plugin; refetchPlugins: () => Promise<unknown> }) { // Receive refetch prop
+  const pluginControl = usePluginControl()
+
+  async function handlePluginControl(action: 'reload' | 'toggle') {
+    try {
+      await pluginControl.mutateAsync({ plugin_name: p.id, action })
+      toast.success(`${p.name} ${action} command sent.`)
+      refetchPlugins() // Refresh plugin data after successful action
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : `Failed to ${action} ${p.name}`)
+    }
+  }
+
   return (
     <TableRow>
       <TableCell>
@@ -97,10 +110,22 @@ function PluginRow({ p }: { p: Plugin }) {
           <Button size="sm" variant="ghost" aria-label="Inspect plugin">
             <SearchIcon className="size-4" aria-hidden />
           </Button>
-          <Button size="sm" variant="ghost" aria-label="Reload plugin">
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-label="Reload plugin"
+            onClick={() => handlePluginControl('reload')}
+            disabled={pluginControl.isPending}
+          >
             <RefreshCw className="size-4" aria-hidden />
           </Button>
-          <Button size="sm" variant="ghost" aria-label="Toggle plugin">
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-label="Toggle plugin"
+            onClick={() => handlePluginControl('toggle')}
+            disabled={pluginControl.isPending}
+          >
             <Power className="size-4" aria-hidden />
           </Button>
         </div>
