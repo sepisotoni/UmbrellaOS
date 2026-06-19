@@ -134,7 +134,7 @@ export function TopBar() {
             <Button variant="ghost" className="gap-2 px-1.5">
               <Avatar className="size-7">
                 <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-                  {user?.discord_id?.slice(0, 2).toUpperCase() || user?.username?.slice(0, 2).toUpperCase() || 'AU'}
+                  {user?.username?.slice(0, 2).toUpperCase() || 'AU'}
                 </AvatarFallback>
               </Avatar>
               <span className="hidden text-sm font-medium md:inline">
