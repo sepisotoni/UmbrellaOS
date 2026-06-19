@@ -104,7 +104,7 @@ public class CoreApiClient {
     public CompletableFuture<Void> postEvent(String type, String playerUuid, String message, Map<String, Object> metadata) {
         JsonObject body = new JsonObject();
         body.addProperty("source", "minecraft");
-        body.addProperty("player_uuid", playerUuid);
+        body.addProperty("player_uuid", playerUuid != null ? playerUuid : "server");
         body.addProperty("message", message != null ? message : type);
         return asyncPost("/api/v1/bridge/message", body).thenApply(response -> null);
     }
