@@ -13,6 +13,8 @@ public class HeartbeatTask extends BukkitRunnable {
 
     @Override
     public void run() {
+        // Heartbeat disabled: backend has no matching endpoint (verified against api/routers/plugin.py)
+        if (true) return;
         int onlineCount = Bukkit.getOnlinePlayers().size();
         double tps = Bukkit.getServer().getTPS()[0];
         

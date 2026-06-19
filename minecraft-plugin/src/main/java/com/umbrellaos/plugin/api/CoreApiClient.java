@@ -103,14 +103,10 @@ public class CoreApiClient {
 
     public CompletableFuture<Void> postEvent(String type, String playerUuid, String message, Map<String, Object> metadata) {
         JsonObject body = new JsonObject();
-        body.addProperty("type", type);
+        body.addProperty("source", "minecraft");
         body.addProperty("player_uuid", playerUuid);
-        body.addProperty("message", message);
-        if (metadata != null) {
-            JsonObject metaJson = gson.toJsonTree(metadata).getAsJsonObject();
-            body.add("metadata", metaJson);
-        }
-        return asyncPost("/api/v1/bridge/event", body).thenApply(response -> null);
+        body.addProperty("message", message != null ? message : type);
+        return asyncPost("/api/v1/bridge/message", body).thenApply(response -> null);
     }
 
     public CompletableFuture<String> requestVerification(String playerUuid, String username, String ipAddress) {
@@ -129,11 +125,14 @@ public class CoreApiClient {
     }
 
     public CompletableFuture<Boolean> checkVerificationStatus(String playerUuid) {
-        return asyncGet("/api/v1/verification/status/" + playerUuid).thenApply(response -> parseJson(response, Boolean.class));
+        JsonObject body = new JsonObject();
+        body.addProperty("player_uuid", playerUuid);
+        return asyncPost("/api/v1/verification/status", body)
+            .thenApply(response -> parseJson(response, Map.class).get("verified").toString().equals("true"));
     }
 
     public CompletableFuture<List<Map<String, Object>>> getPunishments(String playerUuid) {
-        return asyncGet("/api/v1/punishments/player/" + playerUuid).thenApply(response -> parseJson(response, List.class));
+        return asyncGet("/api/v1/punishments?player_uuid=" + playerUuid).thenApply(response -> parseJson(response, List.class));
     }
 
     public CompletableFuture<Void> postBridgeMessage(String source, String playerUuid, String message) {
@@ -171,7 +170,7 @@ public class CoreApiClient {
 
     public CompletableFuture<Map<String, Object>> checkAltDetection(String playerUuid, String ipAddress, String username) {
         JsonObject body = new JsonObject();
-        body.addProperty("minecraft_uuid", playerUuid);
+        body.addProperty("player_uuid", playerUuid);
         body.addProperty("ip_address", ipAddress);
         body.addProperty("username", username);
         return asyncPost("/api/v1/alts/check", body).thenApply(response -> parseJson(response, Map.class));
