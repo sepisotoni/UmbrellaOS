@@ -1,8 +1,7 @@
 'use client'
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
-
-const BASE_URL = process.env.NEXT_PUBLIC_UMBRELLA_API_URL || ''
+import { API_V1, authHeaders } from '@/lib/api-config'
 
 interface User {
   id: string
@@ -24,30 +23,28 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
 
   const refreshUser = async () => {
+    if (!API_V1) {
+      setUser(null)
+      setIsLoading(false)
+      return
+    }
+
     const token = localStorage.getItem('umbrella_token')
     if (!token) {
       setUser(null)
+      setIsLoading(false)
       return
     }
 
     setIsLoading(true)
     try {
-      const response = await fetch(`${BASE_URL}/auth/me?session_token=${token}`, {
-        headers: {
-        },
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        setUser(data)
-      } else {
-        setUser(null)
-      }
-    } catch (error) {
-      console.log('[AuthProvider] Error fetching user:', error)
+      const response = await fetch(`${API_V1}/auth/me`, { headers: authHeaders() })
+      setUser(response.ok ? await response.json() : null)
+      if (!response.ok) localStorage.removeItem('umbrella_token')
+    } catch {
       setUser(null)
     } finally {
       setIsLoading(false)

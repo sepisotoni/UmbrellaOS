@@ -36,6 +36,11 @@ DEFAULT_SETTINGS: list[tuple] = [
     ("ai.anthropic_api_key",   "",     "ai",     "Anthropic API key",          True,  False),
     ("server.name",            "UmbrellaMC", "server", "Server display name",  False, False),
     ("server.max_players",     "50",   "server", "Max player slots",            False, False),
+    ("server.maintenance_mode", "false", "server", "Maintenance mode active",  False, False),
+    ("server.control.stop_cmd", "", "server", "Shell command to stop MC server (no shell)", False, True),
+    ("server.control.start_cmd", "", "server", "Shell command to start MC server", False, True),
+    ("server.control.restart_cmd", "", "server", "Shell command to restart MC server", False, True),
+    ("server.control.workdir", "", "server", "Working directory for control commands", False, False),
     ("moderation.require_discord_link", "true", "moderation",
      "Require Discord link to join", False, False),
     ("moderation.ban_expiry_check_minutes", "5", "moderation",
@@ -44,6 +49,23 @@ DEFAULT_SETTINGS: list[tuple] = [
      "How often the plugin syncs mutes from Core (seconds)", False, False),
     ("sync.plugin_heartbeat_timeout", "120", "sync",
      "Seconds before plugin is marked offline", False, False),
+    ("anticheat.enabled", "true", "anticheat",
+     "Enable Grim anticheat integration", False, False),
+    ("anticheat.auto_tempban", "true", "anticheat",
+     "Auto temp-ban on Grim detection", False, False),
+    ("anticheat.tempban_hours", "24", "anticheat",
+     "Temp-ban duration in hours", False, False),
+    ("anticheat.review_threshold", "1", "anticheat",
+     "VL threshold before review task", False, False),
+    ("bridge.mode", "off", "bridge", "Chat bridge mode", False, False),
+    ("bridge.mc_to_discord", "true", "bridge", "Forward MC chat to Discord", False, False),
+    ("bridge.discord_to_mc", "true", "bridge", "Forward Discord chat to MC", False, False),
+    ("bridge.show_avatars", "true", "bridge", "Show avatars in bridge", False, False),
+    ("bridge.discord_channel_id", "", "bridge", "Bridge Discord channel ID", False, False),
+    ("discord.announcements_channel", "", "discord",
+     "Announcements Discord channel ID", False, False),
+    ("discord.staff_alerts_channel", "", "discord",
+     "Staff alerts channel ID", False, False),
 ]
 
 
@@ -124,6 +146,30 @@ class SettingsService:
         await db.commit()
         await db.refresh(setting)
         return SettingsService._to_dict(setting, unmasked=False)
+
+    @staticmethod
+    async def set_value(
+        db: AsyncSession,
+        key: str,
+        value: str,
+        category: str = "general",
+        actor: str = "system",
+    ) -> None:
+        """Upsert a setting value (used by AI config apply)."""
+        setting = await db.scalar(select(Setting).where(Setting.key == key))
+        if setting is None:
+            setting = Setting(
+                key=key,
+                value=value,
+                category=category,
+                description=f"Auto-created: {key}",
+                sensitive=False,
+                requires_restart=False,
+            )
+            db.add(setting)
+        else:
+            setting.value = value
+        await db.flush()
 
     @staticmethod
     def _to_dict(setting: Setting, unmasked: bool = False) -> dict:

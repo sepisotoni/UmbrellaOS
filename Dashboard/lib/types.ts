@@ -74,6 +74,7 @@ export interface StaffMember {
   id: string
   username: string
   role: StaffRole
+  roleId?: string
   joinedAt: string
   lastActive: string
   actionsThisWeek: number

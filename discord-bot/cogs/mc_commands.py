@@ -153,25 +153,21 @@ class MCCommands(commands.Cog):
         return False
     
     async def _get_openrouter_api_key(self) -> str | None:
-        """Get OpenRouter API key from Umbrella Core settings."""
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(
-                    f"{config.UMBRELLA_API_URL}/api/v1/bridge/settings",
+                    f"{config.UMBRELLA_API_URL}/api/v1/settings",
                     headers={"X-Admin-Key": config.UMBRELLA_ADMIN_KEY},
-                    timeout=5.0
+                    timeout=5.0,
                 )
-                
-                if response.status_code == 200:
-                    settings = response.json()
-                    # Check if ai.openrouter_api_key is set (would need to be implemented)
-                    # For now, return None - this would need to be added to bridge settings
+                if response.status_code != 200:
                     return None
-                return None
-                
+                for s in response.json():
+                    if s.get("key") == "ai.openrouter_key" and s.get("value") not in (None, "", "***"):
+                        return s["value"]
         except Exception as e:
             print(f"[MC Commands] Error getting API key: {e}")
-            return None
+        return None
     
     async def _translate_to_mc_command(self, natural_language: str, api_key: str) -> str | None:
         """Translate natural language to Minecraft command using OpenRouter API."""

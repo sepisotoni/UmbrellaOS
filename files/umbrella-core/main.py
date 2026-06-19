@@ -40,6 +40,10 @@ from api.routers.ai_tasks import router as ai_tasks_router
 from api.routers.mc_commands import router as mc_commands_router
 from api.routers.translation import router as translation_router
 from api.routers.ai_config import router as ai_config_router
+from api.routers.anticheat import router as anticheat_router
+from api.routers.dashboard import router as dashboard_router
+from api.routers.server_control import router as server_control_router
+from api.routers.staff import router as staff_router
 
 settings = get_settings()
 
@@ -116,6 +120,10 @@ app.include_router(ai_tasks_router)
 app.include_router(mc_commands_router)
 app.include_router(translation_router)
 app.include_router(ai_config_router)
+app.include_router(anticheat_router)
+app.include_router(dashboard_router)
+app.include_router(server_control_router)
+app.include_router(staff_router)
 
 
 @app.get("/")

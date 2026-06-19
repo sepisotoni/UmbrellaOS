@@ -1,4 +1,4 @@
-import {
+import { Megaphone,
   Activity,
   AlertTriangle,
   BarChart2,
@@ -43,6 +43,7 @@ export const navItems: NavItem[] = [
   { title: 'Alts', href: '/alts', icon: AlertTriangle, group: 'Moderation' },
   { title: 'Servers', href: '/servers', icon: Server, group: 'Network' },
   { title: 'Plugins', href: '/plugins', icon: Boxes, group: 'Network' },
+  { title: 'Announcements', href: '/announcements', icon: Megaphone, group: 'Network' },
   { title: 'Translation', href: '/translation', icon: Languages, group: 'Network' },
   { title: 'System Health', href: '/system', icon: HeartPulse, group: 'System' },
   { title: 'Audit Log', href: '/audit', icon: FileClock, group: 'System' },

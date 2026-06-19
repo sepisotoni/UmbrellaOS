@@ -27,13 +27,9 @@ Return ONLY valid JSON, no explanation.""",
 - create_role: { action, name, color?, permissions?: [] }
 Return ONLY valid JSON array of actions, no explanation.""",
     
-    "plugin_config": """You are configuring a Minecraft server plugin. Convert natural language to config changes. Available settings:
-- bridge_mode: off/partial/full
-- verify_on_join: true/false
-- welcome_message: string
-- death_message_format: string
-- verification_timeout_seconds: number
-Return ONLY valid JSON of setting key/value pairs.""",
+    "plugin_config": """You are configuring UmbrellaOS. Convert natural language to setting key/value pairs.
+Use exact keys: anticheat.enabled, anticheat.auto_tempban, anticheat.tempban_hours, bridge.mode, moderation.require_discord_link, server.name, server.max_players.
+Values must be strings. Booleans: "true"/"false". Return ONLY valid JSON object.""",
 }
 
 
@@ -66,7 +62,7 @@ async def process_ai_config_request(
         AIConfigServiceError: If API key is not configured or API call fails
     """
     # Get OpenRouter API key from settings
-    api_key = await SettingsService.get_value(db, "ai.openrouter_api_key")
+    api_key = await SettingsService.get_value(db, "ai.openrouter_key")
     if not api_key:
         raise AIConfigServiceError("OpenRouter API key required. Configure in Settings → AI")
     
@@ -185,17 +181,15 @@ async def apply_config_action(
         return action
     
     # Apply changes based on action type
-    from api.middleware.audit import create_audit_log, AuditAction
-    import models
-    
     try:
         if action.action_type == "plugin_config":
-            # Apply plugin settings via settings_service
-            for key, value in changes.items():
+            items = changes.items() if isinstance(changes, dict) else []
+            for key, value in items:
+                cat = key.split(".")[0] if "." in key else "general"
                 if isinstance(value, bool):
-                    await SettingsService.set_value(db, key, "true" if value else "false", "plugin")
+                    await SettingsService.set_value(db, str(key), "true" if value else "false", cat)
                 elif isinstance(value, (str, int, float)):
-                    await SettingsService.set_value(db, key, str(value), "plugin")
+                    await SettingsService.set_value(db, str(key), str(value), cat)
         
         elif action.action_type == "dashboard_layout":
             # Save dashboard layout settings (new keys)
@@ -213,19 +207,6 @@ async def apply_config_action(
         action.status = "applied"
         action.applied_at = datetime.utcnow()
         action.reviewed_at = datetime.utcnow()
-        
-        # Create audit log
-        await create_audit_log(
-            db=db,
-            action=AuditAction("ai_config.applied"),
-            actor="system",
-            target_uuid=str(action.id),
-            details={
-                "action_type": action.action_type,
-                "natural_language": action.natural_language_input,
-            },
-        )
-        
         await db.commit()
         await db.refresh(action)
         

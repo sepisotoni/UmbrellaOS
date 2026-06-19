@@ -3,8 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-
-const BASE_URL = process.env.NEXT_PUBLIC_UMBRELLA_API_URL || ''
+import { API_V1 } from '@/lib/api-config'
 
 export default function LoginPage() {
   const searchParams = useSearchParams()
@@ -20,21 +19,21 @@ export default function LoginPage() {
   const handleLogin = async () => {
     setIsLoading(true)
     setError(null)
-    if (!BASE_URL) {
+    if (!API_V1) {
       setError('NEXT_PUBLIC_UMBRELLA_API_URL is not set in .env.local')
       setIsLoading(false)
       return
     }
     try {
       const redirectUri = window.location.origin + '/login'
-      const response = await fetch(BASE_URL + '/auth/discord/authorize', {
+      const response = await fetch(`${API_V1}/auth/discord/authorize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ redirect_uri: redirectUri }),
       })
       if (!response.ok) {
         const text = await response.text().catch(() => '')
-        throw new Error('Failed to initiate OAuth (' + response.status + '): ' + text)
+        throw new Error(`Failed to initiate OAuth (${response.status}): ${text}`)
       }
       const data = await response.json()
       window.location.href = data.authorize_url
@@ -45,33 +44,23 @@ export default function LoginPage() {
   }
 
   const handleCallback = async (code: string, state: string) => {
-    console.log('[OAuth Callback] Code received:', code)
-    console.log('[OAuth Callback] State received:', state)
     setIsLoading(true)
     setError(null)
     try {
       const redirectUri = window.location.origin + '/login'
-      console.log('[OAuth Callback] Redirect URI:', redirectUri)
-      console.log('[OAuth Callback] Fetching callback endpoint...')
-      const response = await fetch(BASE_URL + '/auth/discord/callback', {
+      const response = await fetch(`${API_V1}/auth/discord/callback`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code, state, redirect_uri: redirectUri }),
       })
-      console.log('[OAuth Callback] Response status:', response.status)
       if (!response.ok) {
         const text = await response.text().catch(() => '')
-        console.log('[OAuth Callback] Error response:', text)
-        throw new Error('OAuth callback failed (' + response.status + '): ' + text)
+        throw new Error(`OAuth callback failed (${response.status}): ${text}`)
       }
       const data = await response.json()
-      console.log('[OAuth Callback] Response data:', data)
-      console.log('[OAuth Callback] Token received, saving to localStorage...')
       localStorage.setItem('umbrella_token', data.token)
-      console.log('[OAuth Callback] Token saved successfully, redirecting to /')
       window.location.href = '/'
     } catch (err) {
-      console.log('[OAuth Callback] Error:', err)
       setError(err instanceof Error ? err.message : 'Login failed')
       setIsLoading(false)
     }

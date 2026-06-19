@@ -15,13 +15,26 @@ Phase 8 will expand with:
     POST /api/v1/events/batch        — bulk event ingestion for replay buffer
 """
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text, select
+from datetime import datetime, timezone
 from database import get_db
 from models.setting import Setting
+from models.plugin_heartbeat import PluginHeartbeat
 from api.middleware.auth import require_plugin_key
 
 router = APIRouter(prefix="/api/v1/plugin", tags=["plugin"])
+
+
+class HeartbeatRequest(BaseModel):
+    server_id: str | None = None
+    server_name: str = "Minecraft Server"
+    online_count: int = 0
+    tps: float = 20.0
+    version: str = "unknown"
+    plugin_version: str = "1.0.0"
+    grim_connected: bool = False
 
 
 @router.get("/health")
@@ -53,6 +66,40 @@ async def plugin_health(
         "service": "umbrella-core",
         "client": "plugin",
     }
+
+
+@router.post("/heartbeat")
+async def plugin_heartbeat_post(
+    body: HeartbeatRequest,
+    db: AsyncSession = Depends(get_db),
+    _auth: str = Depends(require_plugin_key),
+) -> dict:
+    """Record plugin heartbeat for dashboard server/plugin views."""
+    server_id = body.server_id or "default"
+    hb = await db.scalar(select(PluginHeartbeat).where(PluginHeartbeat.server_id == server_id))
+    now = datetime.now(timezone.utc)
+    if hb is None:
+        hb = PluginHeartbeat(
+            server_id=server_id,
+            server_name=body.server_name,
+            online_count=body.online_count,
+            tps=body.tps,
+            version=body.version,
+            plugin_version=body.plugin_version,
+            grim_connected=body.grim_connected,
+            last_seen=now,
+        )
+        db.add(hb)
+    else:
+        hb.server_name = body.server_name
+        hb.online_count = body.online_count
+        hb.tps = body.tps
+        hb.version = body.version
+        hb.plugin_version = body.plugin_version
+        hb.grim_connected = body.grim_connected
+        hb.last_seen = now
+    await db.flush()
+    return {"ok": True, "server_id": server_id}
 
 
 @router.get("/config")

@@ -1,29 +1,26 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
+import { useAuth } from '@/components/auth-context'
+import { API_V1 } from '@/lib/api-config'
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
-  const [ready, setReady] = useState(false)
+  const { user, isLoading } = useAuth()
 
   useEffect(() => {
-    if (pathname === '/login') {
-      setReady(true)
-      return
-    }
-
+    if (pathname === '/login' || !API_V1) return
     const token = localStorage.getItem('umbrella_token')
-    if (!token) {
+    if (!token || (!isLoading && !user)) {
       router.replace('/login')
-      return
     }
-
-    setReady(true)
-  }, [pathname])
+  }, [pathname, isLoading, user, router])
 
   if (pathname === '/login') return <>{children}</>
-  if (!ready) return null
+  if (!API_V1) return <>{children}</>
+  if (isLoading) return null
+  if (!user) return null
   return <>{children}</>
 }

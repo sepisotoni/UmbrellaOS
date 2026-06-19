@@ -17,18 +17,25 @@ class DiscordOAuthError(Exception):
         super().__init__(message)
 
 
-async def exchange_code(code: str, redirect_uri: str) -> dict:
+async def exchange_code(
+    code: str,
+    redirect_uri: str,
+    client_id: str | None = None,
+    client_secret: str | None = None,
+) -> dict:
     """Exchange an authorization code for Discord OAuth tokens."""
     settings = get_settings()
-    if not settings.discord_client_id or not settings.discord_client_secret:
+    cid = client_id or settings.discord_client_id
+    csec = client_secret or settings.discord_client_secret
+    if not cid or not csec:
         raise DiscordOAuthError("Discord OAuth is not configured", 503)
 
     async with httpx.AsyncClient() as client:
         response = await client.post(
             f"{DISCORD_API_BASE}/oauth2/token",
             data={
-                "client_id": settings.discord_client_id,
-                "client_secret": settings.discord_client_secret,
+                "client_id": cid,
+                "client_secret": csec,
                 "grant_type": "authorization_code",
                 "code": code,
                 "redirect_uri": redirect_uri,

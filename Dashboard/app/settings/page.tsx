@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSettings, useBridgeSettings, useUpdateBridgeSettings } from '@/lib/queries'
@@ -25,15 +25,24 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 export default function SettingsPage() {
-  const { data, isLoading, refetch } = useSettings()
+  const { data, isLoading, isError, refetch } = useSettings()
   const [isSaving, setIsSaving] = useState(false)
   const [modifiedSettings, setModifiedSettings] = useState<Record<string, string>>({})
 
-  if (isLoading || !data) {
+  if (isLoading) {
     return (
       <>
         <PageHeader title="Settings" description="Configure the Umbrella Core platform." />
         <Skeleton className="h-96 w-full rounded-xl" />
+      </>
+    )
+  }
+
+  if (isError || !data?.length) {
+    return (
+      <>
+        <PageHeader title="Settings" description="Owner access required." />
+        <p className="text-sm text-muted-foreground">Only the network owner can view and edit settings.</p>
       </>
     )
   }
@@ -208,8 +217,7 @@ function ChatBridgeSection() {
   const [showAvatars, setShowAvatars] = useState(true)
   const [discordChannelId, setDiscordChannelId] = useState('')
 
-  // Load current values on mount
-  useState(() => {
+  useEffect(() => {
     if (bridgeSettings) {
       setMode(bridgeSettings.mode)
       setMcToDiscord(bridgeSettings.mc_to_discord)
@@ -217,7 +225,7 @@ function ChatBridgeSection() {
       setShowAvatars(bridgeSettings.show_avatars)
       setDiscordChannelId(bridgeSettings.discord_channel_id)
     }
-  })
+  }, [bridgeSettings])
 
   const handleSave = async () => {
     try {

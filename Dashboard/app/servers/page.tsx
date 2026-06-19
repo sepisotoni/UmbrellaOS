@@ -1,7 +1,8 @@
 'use client'
 
 import { Cpu, MemoryStick, RefreshCw, Wrench, Power, Search as SearchIcon } from 'lucide-react'
-import { useServers } from '@/lib/queries'
+import { toast } from 'sonner'
+import { useServers, useServerControl } from '@/lib/queries'
 import { PageHeader } from '@/components/page-header'
 import { GenericStatusBadge } from '@/components/status-badge'
 import { formatNumber } from '@/lib/format'
@@ -16,16 +17,13 @@ export default function ServersPage() {
 
   return (
     <>
-      <PageHeader
-        title="Servers"
-        description="Live status and control for every node in the network."
-      />
+      <PageHeader title="Servers" description="Live status and control for every node in the network." />
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         {isLoading || !data
-          ? Array.from({ length: 6 }).map((_, i) => (
-              <Skeleton key={i} className="h-64 rounded-xl" />
-            ))
-          : data.map((s) => <ServerCard key={s.id} server={s} />)}
+          ? Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-64 rounded-xl" />)
+          : data.length === 0
+            ? <p className="text-sm text-muted-foreground col-span-full">No servers reporting heartbeats yet.</p>
+            : data.map((s) => <ServerCard key={s.id} server={s} />)}
       </div>
     </>
   )
@@ -38,8 +36,20 @@ function tpsTone(tps: number) {
 }
 
 function ServerCard({ server }: { server: MinecraftServer }) {
-  const ramPct = Math.round((server.ramUsedMb / server.ramTotalMb) * 100)
+  const control = useServerControl()
+  const ramPct = server.ramTotalMb ? Math.round((server.ramUsedMb / server.ramTotalMb) * 100) : 0
   const online = server.status === 'online'
+  const maintenance = server.status === 'maintenance'
+
+  const run = async (action: 'power' | 'restart' | 'maintenance', enabled?: boolean) => {
+    try {
+      const res = await control.mutateAsync({ server_id: server.id, action, enabled })
+      toast.success(res.success ? `${action} completed` : `${action} finished (check logs)`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Server control failed')
+    }
+  }
+
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -54,43 +64,46 @@ function ServerCard({ server }: { server: MinecraftServer }) {
       <CardContent className="flex flex-col gap-4">
         <div className="grid grid-cols-2 gap-3">
           <Metric label="TPS" value={online ? server.tps.toFixed(1) : '—'} valueClass={online ? tpsTone(server.tps) : ''} />
-          <Metric
-            label="Players"
-            value={online ? `${formatNumber(server.players)} / ${formatNumber(server.maxPlayers)}` : '—'}
-          />
+          <Metric label="Players" value={online ? `${formatNumber(server.players)} / ${formatNumber(server.maxPlayers)}` : '—'} />
         </div>
-
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span className="inline-flex items-center gap-1.5">
-              <Cpu className="size-3.5" aria-hidden /> CPU
-            </span>
+            <span className="inline-flex items-center gap-1.5"><Cpu className="size-3.5" /> CPU</span>
             <span className="tabular-nums">{online ? `${server.cpu}%` : '—'}</span>
           </div>
           <Progress value={online ? server.cpu : 0} />
           <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
-            <span className="inline-flex items-center gap-1.5">
-              <MemoryStick className="size-3.5" aria-hidden /> RAM
-            </span>
+            <span className="inline-flex items-center gap-1.5"><MemoryStick className="size-3.5" /> RAM</span>
             <span className="tabular-nums">
               {(server.ramUsedMb / 1024).toFixed(1)} / {(server.ramTotalMb / 1024).toFixed(0)} GB
             </span>
           </div>
           <Progress value={ramPct} />
         </div>
-
         <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" variant="outline">
-            <SearchIcon className="size-4" aria-hidden /> Inspect
+          <Button size="sm" variant="outline" disabled title="Coming soon">
+            <SearchIcon className="size-4" /> Inspect
           </Button>
-          <Button size="sm" variant="outline">
-            <RefreshCw className="size-4" aria-hidden /> Restart
+          <Button size="sm" variant="outline" disabled={control.isPending} onClick={() => run('restart')}>
+            <RefreshCw className="size-4" /> Restart
           </Button>
-          <Button size="sm" variant="ghost" aria-label="Maintenance mode">
-            <Wrench className="size-4" aria-hidden />
+          <Button
+            size="sm"
+            variant={maintenance ? 'default' : 'ghost'}
+            disabled={control.isPending}
+            onClick={() => run('maintenance', !maintenance)}
+            aria-label="Maintenance mode"
+          >
+            <Wrench className="size-4" />
           </Button>
-          <Button size="sm" variant="ghost" aria-label="Power">
-            <Power className="size-4" aria-hidden />
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={control.isPending}
+            onClick={() => run('power', !online)}
+            aria-label="Power"
+          >
+            <Power className="size-4" />
           </Button>
         </div>
       </CardContent>
@@ -98,15 +111,7 @@ function ServerCard({ server }: { server: MinecraftServer }) {
   )
 }
 
-function Metric({
-  label,
-  value,
-  valueClass,
-}: {
-  label: string
-  value: string
-  valueClass?: string
-}) {
+function Metric({ label, value, valueClass }: { label: string; value: string; valueClass?: string }) {
   return (
     <div className="flex flex-col gap-0.5 rounded-lg border border-border bg-muted/30 p-2.5">
       <span className="text-xs text-muted-foreground">{label}</span>

@@ -16,7 +16,8 @@ All responses require admin key authentication (except OAuth flow).
 """
 import secrets
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Depends, HTTPException, Query
+from urllib.parse import quote
+from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
@@ -232,7 +233,7 @@ async def discord_authorize(
         f"client_id={client_id}&"
         f"response_type=code&"
         f"scope=identify%20email&"
-        f"redirect_uri={body.redirect_uri}&"
+        f"redirect_uri={quote(body.redirect_uri, safe='')}&"
         f"state={state}"
     )
 
@@ -262,8 +263,13 @@ async def discord_callback(
     if pending is None:
         raise HTTPException(status_code=400, detail="Invalid or expired OAuth state")
 
+    client_id = await SettingsService.get_value(db, "discord.client_id") or get_settings().discord_client_id
+    client_secret = await SettingsService.get_value(db, "discord.client_secret") or get_settings().discord_client_secret
+
     try:
-        token_data = await discord_service.exchange_code(body.code, body.redirect_uri)
+        token_data = await discord_service.exchange_code(
+            body.code, body.redirect_uri, client_id, client_secret
+        )
         discord_user = await discord_service.fetch_user(token_data["access_token"])
     except DiscordOAuthError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
@@ -353,16 +359,20 @@ async def logout(
 
 
 @router.get("/me", response_model=UserSchema)
-async def get_current_user(
-    session_token: str = Query(..., description="Session token"),
+async def get_current_user_endpoint(
+    session_token: str | None = Query(None, description="Session token"),
+    authorization: str | None = Header(None),
     db: AsyncSession = Depends(get_db),
 ) -> UserSchema:
-    """
-    Get current authenticated user.
-    Phase 5: Extract user from valid session token.
-    """
+    """Get current authenticated user via Bearer header or session_token query."""
+    token = session_token
+    if not token and authorization and authorization.startswith("Bearer "):
+        token = authorization.removeprefix("Bearer ").strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing session token")
+
     result = await db.execute(
-        select(Session).options(selectinload(Session.user)).where(Session.token == session_token)
+        select(Session).options(selectinload(Session.user)).where(Session.token == token)
     )
     session = result.scalar_one_or_none()
 

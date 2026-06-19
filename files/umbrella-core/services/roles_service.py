@@ -4,9 +4,10 @@ services/roles_service.py — Role and permission management.
 Seeds default roles and permissions on first boot.
 """
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 from models.permissions import Role, Permission
+from models import User
 
 # Seed data: (permission_key, description)
 DEFAULT_PERMISSIONS = [
@@ -25,6 +26,7 @@ DEFAULT_PERMISSIONS = [
     ("settings.manage",      "Edit server settings"),
     ("audit.view",           "View the audit log"),
     ("roles.manage",         "Manage roles and permissions"),
+    ("server.control",       "Start, stop, restart servers and maintenance mode"),
 ]
 
 ALL_PERMISSION_KEYS = [p[0] for p in DEFAULT_PERMISSIONS]
@@ -74,10 +76,18 @@ class RolesService:
 
     @staticmethod
     async def get_all(db: AsyncSession) -> list[dict]:
+        counts = dict(
+            (await db.execute(
+                select(Role.name, func.count(User.id)).join(User, User.role_id == Role.id).group_by(Role.name)
+            )).all()
+        )
         result = await db.execute(
             select(Role).options(selectinload(Role.permissions)).order_by(Role.name)
         )
-        return [RolesService._to_dict(r) for r in result.scalars().all()]
+        return [
+            {**RolesService._to_dict(r), "member_count": counts.get(r.name, 0)}
+            for r in result.scalars().all()
+        ]
 
     @staticmethod
     async def get_all_permissions(db: AsyncSession) -> list[dict]:

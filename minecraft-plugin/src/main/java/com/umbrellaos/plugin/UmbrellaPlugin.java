@@ -8,6 +8,7 @@ import com.umbrellaos.plugin.commands.VerifyCommand;
 import com.umbrellaos.plugin.commands.LangCommand;
 import com.umbrellaos.plugin.config.PluginConfig;
 import com.umbrellaos.plugin.listeners.*;
+import com.umbrellaos.plugin.managers.AnticheatManager;
 import com.umbrellaos.plugin.managers.BridgeManager;
 import com.umbrellaos.plugin.managers.PunishmentManager;
 import com.umbrellaos.plugin.managers.VerificationManager;
@@ -24,10 +25,11 @@ public class UmbrellaPlugin extends JavaPlugin {
     private PluginConfig config;
     private VerificationManager verificationManager;
     private PunishmentManager punishmentManager;
-    private BridgeManager bridgeManager;
+    private AnticheatManager anticheatManager;
     private HeartbeatTask heartbeatTask;
     private SnapshotTask snapshotTask;
     private ReplayBufferTask replayBufferTask;
+    private BridgeManager bridgeManager;
     private CommandPollingTask commandPollingTask;
 
     @Override
@@ -43,6 +45,7 @@ public class UmbrellaPlugin extends JavaPlugin {
         // Initialize managers
         verificationManager = new VerificationManager();
         punishmentManager = new PunishmentManager(apiClient);
+        anticheatManager = new AnticheatManager(apiClient);
         bridgeManager = new BridgeManager(apiClient, config.getBridgeModeCacheSeconds());
         bridgeManager.start();
 
@@ -59,6 +62,20 @@ public class UmbrellaPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new PlayerMoveListener(replayBufferTask), this);
         getServer().getPluginManager().registerEvents(new PlayerChatListener(apiClient, verificationManager, bridgeManager), this);
         getServer().getPluginManager().registerEvents(new PlayerAchievementListener(apiClient), this);
+        GrimFlagListener.register(this, anticheatManager, punishmentManager);
+
+        // Load plugin config for anticheat toggle
+        apiClient.asyncGet("/api/v1/plugin/config").thenAccept(json -> {
+            try {
+                var map = new com.google.gson.Gson().fromJson(json, java.util.Map.class);
+                @SuppressWarnings("unchecked")
+                var settings = (java.util.Map<String, String>) map.get("settings");
+                if (settings != null) {
+                    String enabled = settings.get("anticheat.enabled");
+                    anticheatManager.setEnabled(!"false".equalsIgnoreCase(enabled));
+                }
+            } catch (Exception ignored) { }
+        });
 
         // Register ProtocolLib packet listener
         if (getServer().getPluginManager().getPlugin("ProtocolLib") != null) {

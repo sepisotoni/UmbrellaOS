@@ -58,14 +58,40 @@ export function useRoles() {
 export function usePlugins() {
   return useQuery({ queryKey: ['plugins'], queryFn: api.getPlugins })
 }
+export function useServerControl() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { server_id: string; action: 'power' | 'restart' | 'maintenance'; enabled?: boolean }) =>
+      api.serverControl(body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['servers'] }),
+  })
+}
+export function useManageStaff() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { user_id: string; action: 'promote' | 'demote' }) => api.manageStaff(body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['staff'] })
+      queryClient.invalidateQueries({ queryKey: ['roles'] })
+    },
+  })
+}
 export function useServers() {
   return useQuery({ queryKey: ['servers'], queryFn: api.getServers })
 }
 export function useAnalytics() {
-  return useQuery({ queryKey: ['analytics'], queryFn: api.getAnalytics })
+  return useQuery({ queryKey: ['analytics'], queryFn: api.getServerSummary })
+}
+export function useCreatePunishment() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { player_uuid: string; type: string; reason: string; expires_at?: string }) =>
+      api.createPunishment(body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['punishments'] }),
+  })
 }
 export function useSettings() {
-  return useQuery({ queryKey: ['settings'], queryFn: api.getSettings })
+  return useQuery({ queryKey: ['settings'], queryFn: api.getSettings, retry: false })
 }
 export function useAudit() {
   return useQuery({ queryKey: ['audit'], queryFn: api.getAudit })
@@ -164,7 +190,7 @@ export function useServerSummary() {
 export function useConnectionTest() {
   return useQuery({
     queryKey: ['connection-test'],
-    queryFn: api.getServerSummary,
+    queryFn: api.checkConnection,
     refetchInterval: 300000,
     retry: false,
   })

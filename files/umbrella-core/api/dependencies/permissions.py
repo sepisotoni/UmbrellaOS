@@ -100,3 +100,18 @@ class RoleChecker:
             )
 
         return auth
+
+
+async def require_owner(
+    auth: User | str = Depends(require_admin_key_or_session),
+    db: AsyncSession = Depends(get_db),
+) -> User | str:
+    """Only the owner role (or admin key) may access settings."""
+    if isinstance(auth, str):
+        return auth
+    if not auth.role_id:
+        raise HTTPException(status_code=403, detail="Owner access required")
+    role = await db.scalar(select(Role).where(Role.id == auth.role_id))
+    if not role or role.name != "owner":
+        raise HTTPException(status_code=403, detail="Owner access required")
+    return auth

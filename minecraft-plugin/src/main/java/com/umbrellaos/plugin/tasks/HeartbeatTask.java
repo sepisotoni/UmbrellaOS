@@ -13,12 +13,13 @@ public class HeartbeatTask extends BukkitRunnable {
 
     @Override
     public void run() {
-        // Heartbeat disabled: backend has no matching endpoint (verified against api/routers/plugin.py)
-        if (true) return;
         int onlineCount = Bukkit.getOnlinePlayers().size();
         double tps = Bukkit.getServer().getTPS()[0];
-        
-        apiClient.postHeartbeat(onlineCount, tps).exceptionally(e -> {
+        String serverName = Bukkit.getServer().getName();
+        String version = Bukkit.getVersion();
+        boolean grim = Bukkit.getPluginManager().getPlugin("GrimAC") != null;
+
+        apiClient.postHeartbeat(onlineCount, tps, serverName, version, grim).exceptionally(e -> {
             e.printStackTrace();
             return null;
         });

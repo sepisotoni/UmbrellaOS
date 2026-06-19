@@ -30,7 +30,7 @@ public class PunishmentManager {
         for (Map<String, Object> punishment : punishments) {
             String type = (String) punishment.get("type");
             Boolean active = (Boolean) punishment.get("active");
-            if ("ban".equalsIgnoreCase(type) && Boolean.TRUE.equals(active)) {
+            if (("ban".equalsIgnoreCase(type) || "tempban".equalsIgnoreCase(type)) && Boolean.TRUE.equals(active)) {
                 return true;
             }
         }
@@ -60,7 +60,7 @@ public class PunishmentManager {
         for (Map<String, Object> punishment : punishments) {
             String type = (String) punishment.get("type");
             Boolean active = (Boolean) punishment.get("active");
-            if ("ban".equalsIgnoreCase(type) && Boolean.TRUE.equals(active)) {
+            if (("ban".equalsIgnoreCase(type) || "tempban".equalsIgnoreCase(type)) && Boolean.TRUE.equals(active)) {
                 return (String) punishment.get("reason");
             }
         }

@@ -176,11 +176,29 @@ public class CoreApiClient {
         return asyncPost("/api/v1/alts/check", body).thenApply(response -> parseJson(response, Map.class));
     }
 
-    public CompletableFuture<Void> postHeartbeat(int onlineCount, double tps) {
+    public CompletableFuture<Void> postHeartbeat(int onlineCount, double tps, String serverName,
+                                                  String version, boolean grimConnected) {
         JsonObject body = new JsonObject();
+        body.addProperty("server_id", serverName.replaceAll("\\s+", "-").toLowerCase());
+        body.addProperty("server_name", serverName);
         body.addProperty("online_count", onlineCount);
         body.addProperty("tps", tps);
+        body.addProperty("version", version);
+        body.addProperty("plugin_version", "1.0.0");
+        body.addProperty("grim_connected", grimConnected);
         return asyncPost("/api/v1/plugin/heartbeat", body).thenApply(response -> null);
+    }
+
+    public CompletableFuture<Map<String, Object>> postAnticheatFlag(
+            String playerUuid, String username, String checkName, String verbose, int vl) {
+        JsonObject body = new JsonObject();
+        body.addProperty("player_uuid", playerUuid);
+        body.addProperty("username", username);
+        body.addProperty("check_name", checkName);
+        body.addProperty("verbose", verbose);
+        body.addProperty("vl", vl);
+        return asyncPost("/api/v1/anticheat/flag", body)
+                .thenApply(response -> parseJson(response, Map.class));
     }
 
     public CompletableFuture<List<Map<String, Object>>> getPendingCommands() {

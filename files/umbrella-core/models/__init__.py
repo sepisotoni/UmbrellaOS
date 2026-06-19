@@ -16,6 +16,7 @@ from .ai_tasks import AITask  # noqa: F401
 from .mc_commands import MCCommand  # noqa: F401
 from .translation import PlayerLanguage  # noqa: F401
 from .ai_config import AIConfigAction  # noqa: F401
+from .plugin_heartbeat import PluginHeartbeat  # noqa: F401
 
 __all__ = [
     "Base",
@@ -46,4 +47,5 @@ __all__ = [
     "MCCommand",
     "PlayerLanguage",
     "AIConfigAction",
+    "PluginHeartbeat",
 ]

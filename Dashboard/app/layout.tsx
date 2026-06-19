@@ -37,9 +37,9 @@ export default function RootLayout({
     >
       <body className="font-sans antialiased">
         {isDemoMode && (
-          <div className="bg-yellow-500/10 border-b border-yellow-500/20 py-2 px-4 text-center">
-            <p className="text-sm text-yellow-600 dark:text-yellow-500">
-              Running in demo mode — set NEXT_PUBLIC_UMBRELLA_API_URL in .env.local to connect to your backend
+          <div className="bg-destructive/10 border-b border-destructive/20 py-2 px-4 text-center">
+            <p className="text-sm text-destructive">
+              Set NEXT_PUBLIC_UMBRELLA_API_URL in .env.local — mock data has been removed
             </p>
           </div>
         )}
