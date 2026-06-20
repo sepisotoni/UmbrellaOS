@@ -11,6 +11,5 @@ export function authHeaders(extra?: Record<string, string>): Record<string, stri
   const headers: Record<string, string> = { 'Content-Type': 'application/json', ...extra }
   const token = getToken()
   if (token) headers.Authorization = `Bearer ${token}`
-  if (ADMIN_KEY) headers['X-Admin-Key'] = ADMIN_KEY
   return headers
 }
