@@ -90,6 +90,21 @@ class SettingsService:
                 ))
         await db.commit()
 
+        # Sync .env values into DB on every startup
+        from config.settings import get_settings
+        env = get_settings()
+        env_overrides = {
+            'discord.client_id': env.discord_client_id,
+            'discord.client_secret': env.discord_client_secret,
+            'discord.bot_token': env.discord_bot_token,
+        }
+        for key, val in env_overrides.items():
+            if val:
+                setting = await db.scalar(select(Setting).where(Setting.key == key))
+                if setting is not None:
+                    setting.value = val
+        await db.commit()
+
     @staticmethod
     async def get_all(db: AsyncSession, unmasked: bool = False) -> list[dict]:
         """Return all settings. Masks sensitive values unless unmasked=True."""

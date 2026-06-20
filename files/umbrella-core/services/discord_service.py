@@ -43,6 +43,7 @@ async def exchange_code(
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
         if response.status_code != 200:
+            print(f"[Discord OAuth DEBUG] status={response.status_code} body={response.text}")
             raise DiscordOAuthError(
                 "Failed to exchange authorization code with Discord",
                 response.status_code,
