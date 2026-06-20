@@ -10,7 +10,7 @@ import { usePathname } from 'next/navigation'
 
 function ConditionalShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
-  if (pathname === '/login') return <>{children}</>
+  if (pathname === '/login' || pathname === '/no-access') return <>{children}</>
   return <AppShell>{children}</AppShell>
 }
 
