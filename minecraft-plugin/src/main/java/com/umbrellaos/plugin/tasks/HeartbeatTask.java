@@ -13,6 +13,7 @@ public class HeartbeatTask extends BukkitRunnable {
 
     @Override
     public void run() {
+        if (true) return; // No backend endpoint exists
         int onlineCount = Bukkit.getOnlinePlayers().size();
         double tps = Bukkit.getServer().getTPS()[0];
         String serverName = Bukkit.getServer().getName();

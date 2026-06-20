@@ -111,7 +111,7 @@ public class CoreApiClient {
 
     public CompletableFuture<String> requestVerification(String playerUuid, String username, String ipAddress) {
         JsonObject body = new JsonObject();
-        body.addProperty("minecraft_uuid", playerUuid);
+        body.addProperty("player_uuid", playerUuid);
         body.addProperty("username", username);
         body.addProperty("ip_address", ipAddress);
         return asyncPost("/api/v1/verification/request", body).thenApply(response -> response);
@@ -145,7 +145,7 @@ public class CoreApiClient {
 
     public CompletableFuture<Void> postSnapshot(String playerUuid, Map<String, Object> snapshotData) {
         JsonObject body = gson.toJsonTree(snapshotData).getAsJsonObject();
-        body.addProperty("minecraft_uuid", playerUuid);
+        body.addProperty("player_uuid", playerUuid);
         return asyncPost("/api/v1/snapshots", body).thenApply(response -> null);
     }
 
