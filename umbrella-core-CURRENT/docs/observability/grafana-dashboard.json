@@ -1,0 +1,109 @@
+{
+  "title": "Umbrella Core — Overview",
+  "description": "Starting point, not a finished dashboard — see docs/observability/README.md. Panels map 1:1 to the metrics services/metrics_service.py actually exposes at GET /metrics (Phase 9, item 1); nothing here references a metric that doesn't exist yet.",
+  "schemaVersion": 39,
+  "editable": true,
+  "time": { "from": "now-6h", "to": "now" },
+  "refresh": "30s",
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Request rate by status",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "sum by (status) (rate(umbrella_http_requests_total[5m]))",
+          "legendFormat": "{{status}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "p95 request latency by route",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, path) (rate(umbrella_http_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{path}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Event dispatch success vs failure",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "sum(rate(umbrella_events_dispatched_total[5m]))",
+          "legendFormat": "dispatched"
+        },
+        {
+          "expr": "sum(rate(umbrella_events_dispatch_failed_total[5m]))",
+          "legendFormat": "failed"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Installed plugins",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [{ "expr": "umbrella_installed_plugins" }]
+    },
+    {
+      "id": 5,
+      "title": "Process uptime",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [{ "expr": "umbrella_process_uptime_seconds" }]
+    },
+    {
+      "id": 6,
+      "title": "Sandbox violations by kind",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "sum by (kind) (rate(umbrella_sandbox_violations_total[1h]))",
+          "legendFormat": "{{kind}}"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Security events and threat alerts",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "sum by (event_type) (rate(umbrella_security_events_total[1h]))",
+          "legendFormat": "events: {{event_type}}"
+        },
+        {
+          "expr": "sum by (event_type) (rate(umbrella_threat_alerts_total[1h]))",
+          "legendFormat": "alerts: {{event_type}}"
+        }
+      ]
+    }
+  ]
+}

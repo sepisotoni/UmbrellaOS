@@ -1,0 +1,6 @@
+# requirements-dev.txt — tooling only, never shipped in the running
+# application. Kept separate from requirements.txt (Phase 9, item 6) so
+# scripts/generate_sbom.py's SBOM reflects umbrella-core's actual runtime
+# dependency surface, not its own CI tooling.
+pip-audit==2.10.1
+cyclonedx-python-lib==11.11.0

@@ -1,0 +1,33 @@
+# Build artifacts / dependency caches — reproducible from source, not
+# tracked so diffs stay meaningful (source changes, not artifact noise).
+__pycache__/
+*.pyc
+.pytest_cache/
+node_modules/
+.next/
+tsconfig.tsbuildinfo
+
+# Python wheels — large binary artifacts pinned to requirements.txt.
+# Shipped in every handoff zip per project discipline (offline-installable
+# backend), but not git-tracked: they're regenerable from requirements.txt
+# and binary diffs add no provenance value.
+wheels/
+
+# Reference-only material, never meant to be tracked in the working
+# repo — these are single-chat reference bundles (old project attempts,
+# narrative history, unrelated services), not part of the current
+# project's source. Mistakenly committed once (2026-08-16, caught when a
+# sub-chat's handback clone came back at 348MB of .git instead of a few
+# MB) — explicit now so `git add -A` can't repeat that mistake.
+UNVERIFIED-leak-investigation/
+historical-reference/
+minecraft-plugin/
+other-services/
+
+# Real secrets never get committed, ever, no exceptions — see
+# PROJECT-PRINCIPLES-AND-WORKING-RULES.md rule 2.3 and section 6.
+# .env.example files ARE tracked (no secrets in them, that's their
+# whole purpose) — only the real .env is excluded.
+.env
+*/.env
+**/.env

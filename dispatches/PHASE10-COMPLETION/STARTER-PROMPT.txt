@@ -1,0 +1,25 @@
+Continuing UmbrellaOS. Attached zip is a scoped handoff package. Read
+SUBCHAT-HANDOFF-PHASE10-COMPLETION.md completely first — it's the entry
+point. Read MASTER-PROJECT-STATUS-AND-HANDOFF.md and
+PROJECT-PRINCIPLES-AND-WORKING-RULES.md next — the second one is this
+project's actual working-rules doc as of 2026-08-15, read it before
+starting anything.
+
+You have exactly two scoped tasks (A: marketplace listing/install UI, B:
+first real manual/browser testing pass, including solving the
+auth-for-testing gap the handoff doc describes). Don't expand scope
+beyond them.
+
+Before writing any code: independently verify the backend and frontend
+states this package claims are true (fresh venv + pytest for the
+backend, fresh npm install + build/audit/lint/tsc for the frontend) —
+don't skip this because the handoff doc says it's already verified.
+
+This project now uses real git (see PROJECT-PRINCIPLES-AND-WORKING-RULES.md
+section 6). Set your git identity to `subchat-phase10-completion` before
+committing. Leak-check before every commit, not just before zipping.
+
+When done, package a handback doc plus your changes, following this
+project's standard diff/handback discipline, and leak-check one more
+time before zipping anything (find . -iname ".env" -o -iname "*.db" -o
+-iname "*.sqlite*" — must return nothing).

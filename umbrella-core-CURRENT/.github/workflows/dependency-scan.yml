@@ -1,0 +1,49 @@
+name: Dependency scan (Phase 9)
+
+# Runs somewhere WITH network access, unlike the sandbox this workflow was
+# authored in — see scripts/scan_dependencies.py's docstring for what was
+# and wasn't verifiable locally, and why --no-deps + the empty-stdout
+# check in that script matter here specifically.
+on:
+  pull_request:
+    paths:
+      - "requirements.txt"
+  push:
+    branches: [main]
+    paths:
+      - "requirements.txt"
+  schedule:
+    # Weekly, independent of any code change — new CVEs get published
+    # against dependencies whose pinned version in this repo never
+    # changes, so a schedule (not just a diff trigger) is what actually
+    # catches that.
+    - cron: "0 6 * * 1"
+  workflow_dispatch: {}
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pip-audit and cyclonedx-python-lib
+        run: pip install pip-audit cyclonedx-python-lib
+
+      - name: Scan for known vulnerabilities
+        run: python scripts/scan_dependencies.py --requirements requirements.txt --fail-on high
+
+      - name: Generate SBOM
+        if: always()
+        run: python scripts/generate_sbom.py --requirements requirements.txt --output sbom.json
+
+      - name: Upload SBOM
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: umbrella-core-sbom
+          path: sbom.json
+          retention-days: 90
