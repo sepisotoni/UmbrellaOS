@@ -28,7 +28,7 @@ claim:
 | 7 | Public API, SDKs, webhooks, Terraform | Partial | 🔶 |
 | 8 | Plugin SDK, sandboxing, marketplace | Partial | 🔶 |
 | 9 | Observability & security hardening | **Done** — table below is stale | ✅ |
-| 10 | Unified Experience Layer (dashboard rewrite) | Substantially done | ✅ |
+| 10 | Unified Experience Layer (dashboard rewrite) | Done | ✅ |
 | 11 | Multi-node clustering & HA | Not started | ✅ |
 | 12 | Platform maturity | Not started | ✅ |
 
@@ -91,25 +91,37 @@ OpenTelemetry tracing, threat detection, CVE scanner) and directly
 contradicts the roadmap doc's summary table. **The roadmap table is
 stale — correct it to ✅ done next time someone edits that file.**
 
-## Phase 10 — ✅ substantially done
+## Phase 10 — ✅ done (updated 2026-08-16)
 
-This is the phase I've done the most direct, hands-on verification on
-this session — not just file-existence checks. Fresh `npm install`,
-`npm audit` (0 vulnerabilities), `npm run build` (clean, 13 routes),
-`npx tsc --noEmit` (clean), `npm run lint` (clean), all run for real
-against the current `umbrella-dashboard-CURRENT/`, which now includes a
-verified Tier 2 Settings page (steps 0–8 of the roadmap's sequencing are
-complete). Backend side: 838/838 tests, `pip check` clean, `pip-audit`
-clean.
+Originally marked "substantially done" — closed out fully as of commit
+`3d14e1e`. Timeline (from oldest to newest, all independently
+re-verified before being trusted, not accepted from any handback's
+self-report): backend fixes + settings page merged and verified
+(838/838 → 844/844 after a new capability was added later);
+marketplace listing/install UI + a real dev-session-mint capability +
+the first genuine browser click-through pass this phase ever had
+(`dispatches/PHASE10-COMPLETION/`); and finally, checking Phase 10's
+*own original locked scope* line-by-line against what had actually been
+built turned up two named items — activity timeline, fleet overview —
+that nobody had flagged as missing across 9 build steps. Closed via
+`dispatches/PHASE10-CLOSEOUT/`.
 
-**What's still actually open, not stale info:**
-1. `app/marketplace/page.tsx` — browse/publish/install/uninstall from
-   the dashboard itself — is still the step-2 placeholder. Install/
-   uninstall currently only works via CLI/API.
-2. **Zero manual/browser runtime testing has happened anywhere in this
-   phase.** Every check across every step, including this session's, has
-   been static (tests, build, lint, audit, tsc). Nobody has clicked
-   through the actual running dashboard in a browser yet.
+Current state, checked directly: `npm audit` 0 vulnerabilities, `npx tsc
+--noEmit` clean, `npm run lint` clean, `npm run build` clean — 17 routes
+including `/activity` and `/fleet`. Backend: 844/844, `pip check` clean.
+
+**What's still open, correctly out of scope rather than forgotten:**
+1. `marketplace.listing.publish` (a plugin author uploading a new plugin
+   zip via the dashboard) — confirmed explicitly out of scope twice now
+   (`dispatches/PHASE10-COMPLETION`'s handoff doc, reconfirmed by that
+   dispatch's own handback) — a real, separate UI (file upload + zip
+   validation feedback), not a small addition.
+2. Fleet overview has no per-server drill-down (console/logs/backups) —
+   flagged explicitly in `dispatches/PHASE10-CLOSEOUT`'s handback as a
+   real, separate future surface, not assumed done here.
+3. SQLite viability for the migration chain is still an open question
+   from `dispatches/PHASE10-COMPLETION`'s handback — a real decision
+   (rule 2.2), not resolved by this closeout.
 
 ## Phase 11 — ✅ not started
 
