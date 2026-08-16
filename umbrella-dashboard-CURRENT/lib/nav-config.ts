@@ -33,6 +33,24 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Settings",
     permissions: ["marketplace.install.view"],
   },
+  {
+    // Phase 10 closeout — matches the page's own gate (`audit.view`, the
+    // capability's own `required_permission` in capabilities/system.py).
+    href: "/activity",
+    label: "Activity",
+    permissions: ["audit.view"],
+  },
+  {
+    // Phase 10 closeout — matches the page's own gate
+    // (`hosting.server.view`). Deliberately not the same permission list
+    // as Topology's ["hosting.node.view", "marketplace.install.view"]
+    // (any-of) — Fleet always needs server visibility specifically, it
+    // isn't satisfiable via the dependency-layer's plugin permission the
+    // way Topology's infra layer is.
+    href: "/fleet",
+    label: "Fleet",
+    permissions: ["hosting.server.view"],
+  },
 ];
 
 export function visibleNavItems(userPermissions: string[]): NavItem[] {

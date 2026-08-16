@@ -135,3 +135,59 @@ export type PluginVersion = {
   sha256_hash: string;
   published_at: string;
 };
+
+// Phase 10 closeout — mirrors capabilities/system.py's AuditEntryResult /
+// AuditSearchResult exactly (activity timeline). `details` is the raw
+// details_json string from the audit row — not rendered as-is in the
+// timeline (kept human-readable per the dispatch), but the type carries
+// it in case a future "expand" affordance wants it.
+export type AuditEntry = {
+  id: string;
+  actor: string;
+  actor_type: string;
+  action: string;
+  target: string | null;
+  details: string;
+  created_at: string | null;
+};
+
+export type AuditSearchResult = {
+  entries: AuditEntry[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+// Phase 10 closeout — mirrors capabilities/hosting.py's NodeResult /
+// ServerResult / StatsResult exactly (fleet overview). `signing_secret`
+// deliberately omitted from HostingNode: it's only ever non-null on the
+// register_node response, never on hosting.node.list, and there's no
+// reason for a client-side type to carry a field that could tempt someone
+// into rendering it later.
+export type HostingNode = {
+  id: string;
+  name: string;
+  daemon_url: string;
+  status: string;
+  labels: Record<string, string>;
+};
+
+export type HostingServer = {
+  id: string;
+  name: string;
+  node_id: string;
+  template_id: string;
+  template_version: number;
+  status: string;
+  memory_bytes: number;
+  cpu_cores: number;
+};
+
+export type ServerStats = {
+  timestamp: string;
+  cpu_percent: number;
+  memory_used_bytes: number;
+  memory_limit_bytes: number;
+  network_rx_bytes: number;
+  network_tx_bytes: number;
+};
