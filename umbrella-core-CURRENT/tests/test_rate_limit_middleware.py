@@ -21,7 +21,7 @@ def _build_app(
 ) -> FastAPI:
     app = FastAPI()
 
-    @app.get("/healthz")
+    @app.get("/health")
     async def healthz():
         return {"status": "ok"}
 
@@ -68,7 +68,7 @@ async def test_exempt_path_is_never_rate_limited():
     app = _build_app(requests_per_window=1)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         for _ in range(5):
-            response = await client.get("/healthz")
+            response = await client.get("/health")
             assert response.status_code == 200
 
 

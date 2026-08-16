@@ -45,7 +45,7 @@ import services.threat_detection_service as threat_detection_service
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_EXEMPT_PATHS = {"/healthz"}
+DEFAULT_EXEMPT_PATHS = {"/health"}
 
 
 def _api_key_identifier(plaintext: str) -> str:
