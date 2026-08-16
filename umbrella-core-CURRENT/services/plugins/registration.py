@@ -64,7 +64,18 @@ class SandboxExecutor(Protocol):
         returning an error payload — CapabilityRegistry.call() already
         knows how to turn a handler exception into a failed, audited call;
         a second in-band error convention would just be a second thing to
-        keep in sync with it."""
+        keep in sync with it.
+
+        Phase 8 completion, Task A: implementations now also persist a
+        PluginExecutionRecord (timing/resource-usage telemetry) after
+        execution — see services/plugins/sandbox.py::ProcessSandbox.run's
+        docstring for why that happens via its own independent DB session
+        rather than a `db` parameter on this Protocol method. This method's
+        signature is unchanged specifically so that stays true: nothing
+        crosses into a SandboxExecutor beyond plugin_id/entrypoint/params/
+        actor_id — see "What crosses the sandbox boundary, and what
+        deliberately doesn't" in docs/design/plugin-sdk-manifest-and-
+        registration.md."""
         ...
 
 

@@ -51,6 +51,15 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Fleet",
     permissions: ["hosting.server.view"],
   },
+  {
+    // Phase 8 completion — matches app/(dashboard)/plugin-sandbox/page.tsx's
+    // own gate (`plugin.sandbox.view`, capabilities/plugin_sandbox.py's
+    // shared required_permission across execution_history/detail/
+    // profile/limits).
+    href: "/plugin-sandbox",
+    label: "Plugin Sandbox",
+    permissions: ["plugin.sandbox.view"],
+  },
 ];
 
 export function visibleNavItems(userPermissions: string[]): NavItem[] {

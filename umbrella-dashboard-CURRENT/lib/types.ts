@@ -191,3 +191,48 @@ export type ServerStats = {
   network_rx_bytes: number;
   network_tx_bytes: number;
 };
+
+// Phase 8 completion — mirrors capabilities/plugin_sandbox.py's result
+// models exactly. `error_detail` deliberately absent from
+// PluginExecutionEntry (the list view, execution_history) — only
+// PluginExecutionDetail (the single-record view, execution_detail) has
+// it, matching the backend's own list/detail split (see that module's
+// docstring on why the list view omits it).
+export type PluginExecutionEntry = {
+  id: string;
+  plugin_id: string;
+  entrypoint: string;
+  actor_id: string;
+  outcome: string;
+  wall_time_ms: number;
+  cpu_time_ms: number | null;
+  peak_memory_bytes: number | null;
+  created_at: string | null;
+};
+
+export type PluginExecutionDetail = PluginExecutionEntry & {
+  error_detail: string | null;
+};
+
+export type PluginExecutionHistoryResult = {
+  entries: PluginExecutionEntry[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export type PluginExecutionProfile = {
+  plugin_id: string;
+  execution_count: number;
+  avg_wall_time_ms: number;
+  p95_wall_time_ms: number;
+  avg_peak_memory_bytes: number | null;
+  error_rate: number;
+  window_hours: number;
+};
+
+export type PluginSandboxLimits = {
+  cpu_seconds: number;
+  memory_bytes: number;
+  wall_timeout_seconds: number;
+};

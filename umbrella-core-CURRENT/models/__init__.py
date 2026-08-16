@@ -48,6 +48,7 @@ from .log_entry import LogEntry  # noqa: F401
 from .security_event import SecurityEvent  # noqa: F401
 from .dashboard_layout import DashboardLayout  # noqa: F401
 from .plugin_kv import PluginKvEntry  # noqa: F401
+from .plugin_execution import PluginExecutionRecord  # noqa: F401
 
 __all__ = [
     "Base",
@@ -115,4 +116,5 @@ __all__ = [
     "SecurityEvent",
     "DashboardLayout",
     "PluginKvEntry",
+    "PluginExecutionRecord",
 ]

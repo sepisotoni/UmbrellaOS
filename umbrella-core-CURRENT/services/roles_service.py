@@ -105,6 +105,21 @@ DEFAULT_PERMISSIONS = [
     # role might need without also getting audit-log access, or vice versa.
     ("observability.logs.view", "Search aggregated core log records"),
     ("security.events.view", "View recorded security events and threat-detection alerts"),
+    # Phase 8 completion — plugin debugger/profiler/sandbox visualizer.
+    # Deliberately its own namespace rather than reusing
+    # "marketplace.install.view": that permission gates *discovery* of
+    # what's installed (install list, discord commands, dashboard slots),
+    # while this gates visibility into a plugin's actual sandboxed
+    # execution history/telemetry — a materially more sensitive read (an
+    # execution's error detail can include a plugin's own uncaught
+    # exception text, which may reflect its internal logic/data in a way
+    # "what's installed" doesn't). One permission for the whole read
+    # surface (execution_history/execution_detail/profile/limits) since
+    # all four are views over the same telemetry, same "view vs manage"
+    # granularity every other domain here uses when there's no write side
+    # yet — there is no write side to this domain at all, a plugin's
+    # execution records are platform-authored, not admin-editable.
+    ("plugin.sandbox.view", "View plugin sandbox execution history, telemetry, and resource limits"),
 ]
 
 ALL_PERMISSION_KEYS = [p[0] for p in DEFAULT_PERMISSIONS]

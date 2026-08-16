@@ -26,10 +26,11 @@ from . import marketplace  # noqa: F401
 from . import observability  # noqa: F401
 from . import dashboard_layout  # noqa: F401
 from . import dev_auth  # noqa: F401
+from . import plugin_sandbox  # noqa: F401
 
 __all__ = [
     "system", "hosting", "identity", "automation", "moderation_intelligence",
     "investigation", "knowledge", "archive_search", "memory", "operational_intelligence",
     "player_risk", "verification", "webhooks", "marketplace", "observability",
-    "dashboard_layout", "dev_auth",
+    "dashboard_layout", "dev_auth", "plugin_sandbox",
 ]

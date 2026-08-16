@@ -44,14 +44,20 @@ what plugin authors themselves write.
 from __future__ import annotations
 
 import json
+import logging
 import multiprocessing as mp
 import resource
 import sqlite3
+import time
 from dataclasses import dataclass
 from typing import Any
 
 from services.plugins.sandbox_guard import check_source_safety, SandboxViolation
 from services.metrics_service import sandbox_violations_total
+from database import AsyncSessionLocal
+from models.plugin_execution import PluginExecutionRecord
+
+logger = logging.getLogger(__name__)
 
 # Modules made available as pre-bound globals inside sandboxed code,
 # instead of via `import` (which sandbox_guard forbids outright). Every
@@ -70,7 +76,17 @@ class SandboxExecutionError(RuntimeError):
     plugin exception, a resource-limit kill, or a timeout. Deliberately
     one exception type — services/plugins/registration.py's handler
     wrapper lets this propagate to CapabilityRegistry.call() exactly like
-    any other handler exception (see that module's docstring)."""
+    any other handler exception (see that module's docstring).
+
+    Phase 8 completion, Task A: carries whatever CPU-time/peak-memory
+    telemetry the child process managed to self-report before failing
+    (`None` for a genuine signal-kill — see this module's own docstring
+    on `PluginExecutionRecord` telemetry nullability). `ProcessSandbox.run()`
+    reads this attribute off the exception to build the execution record;
+    it is not part of this exception's public str() representation and
+    callers other than `run()` should not need to touch it."""
+
+    telemetry: dict[str, float | int] | None = None
 
 
 class SqliteQuotaExceeded(SandboxExecutionError):
@@ -110,6 +126,49 @@ def _build_safe_globals() -> dict[str, Any]:
     }
 
 
+def _classify_outcome(exc: SandboxExecutionError) -> str:
+    """Phase 8 completion, Task A: maps a SandboxExecutionError's message
+    text onto PluginExecutionRecord's outcome vocabulary. Heuristic, not a
+    structured error code — `_run_blocking` builds these messages by
+    string-formatting (see its own comments on the wall-timeout vs
+    signal-kill branches), and a wall-clock timeout that's then also
+    signal-killed (`process.kill()` after the timeout branch already set
+    the message) can legitimately contain both "timeout" and "signal"
+    text; "timeout" is checked first so that case reports as "timeout"
+    (the more specific, actionable cause — the process was hung, the
+    signal was just cleanup) rather than the more generic
+    "resource_limit_kill". Kept in this module (not
+    models/plugin_execution.py) since it's entirely about interpreting
+    this module's own error strings, not the record shape itself."""
+    message = str(exc).lower()
+    if "timeout" in message:
+        return "timeout"
+    if "signal" in message or "resource limit" in message:
+        return "resource_limit_kill"
+    return "error"
+
+
+def _self_rusage_telemetry() -> dict[str, float | int]:
+    """Captures this (child) process's own resource.getrusage(RUSAGE_SELF)
+    right before reporting back to the parent. Phase 8 completion, Task A:
+    this must run *inside* the sandboxed child, not the parent — RUSAGE_SELF
+    is per-process, so this is the only vantage point that gives a genuine
+    per-execution reading rather than a value contaminated by whatever else
+    the parent process (or other concurrently-running sandboxed children)
+    is doing. Only reachable when the child gets far enough to still be
+    running Python — a signal-killed child (SIGXCPU/SIGKILL) never calls
+    this, which is exactly why ProcessSandbox.run()/PluginExecutionRecord
+    treat telemetry as nullable for those outcomes rather than assuming
+    it's always available."""
+    usage = resource.getrusage(resource.RUSAGE_SELF)
+    return {
+        "cpu_time_ms": (usage.ru_utime + usage.ru_stime) * 1000,
+        # ru_maxrss is kilobytes on Linux (the only platform this sandbox
+        # targets — multiprocessing's "fork" context is POSIX-only).
+        "peak_memory_bytes": usage.ru_maxrss * 1024,
+    }
+
+
 def _child_main(
     source: str,
     function_name: str,
@@ -121,7 +180,14 @@ def _child_main(
     """Runs inside the forked child process. Sets resource limits FIRST,
     before compiling or executing a single line of plugin-authored code —
     the ordering matters: if limits were set after exec(), the plugin code
-    itself would have a window to consume resources unconstrained."""
+    itself would have a window to consume resources unconstrained.
+
+    Phase 8 completion, Task A: every branch that reaches `conn.send()`
+    now sends a 3-tuple `(outcome, payload, telemetry)` instead of a
+    2-tuple — `telemetry` is this child's own self-reported
+    cpu-time/peak-memory (see `_self_rusage_telemetry` above), captured as
+    late as possible in each branch so it reflects everything the child
+    actually did, including the failure itself where relevant."""
     try:
         resource.setrlimit(resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds))
         resource.setrlimit(resource.RLIMIT_AS, (memory_bytes, memory_bytes))
@@ -134,7 +200,7 @@ def _child_main(
         resource.setrlimit(resource.RLIMIT_NOFILE, (8, 8))
         resource.setrlimit(resource.RLIMIT_NPROC, (0, 0) if hasattr(resource, "RLIMIT_NPROC") else (1, 1))
     except (ValueError, OSError) as exc:
-        conn.send(("error", f"failed to apply resource limits: {exc}"))
+        conn.send(("error", f"failed to apply resource limits: {exc}", _self_rusage_telemetry()))
         conn.close()
         return
 
@@ -151,9 +217,9 @@ def _child_main(
             raise SandboxExecutionError(
                 f"entrypoint {function_name!r} must return a dict, got {type(result).__name__}"
             )
-        conn.send(("ok", result))
+        conn.send(("ok", result, _self_rusage_telemetry()))
     except BaseException as exc:  # noqa: BLE001 — a plugin's own code, must not crash the parent
-        conn.send(("error", f"{type(exc).__name__}: {exc}"))
+        conn.send(("error", f"{type(exc).__name__}: {exc}", _self_rusage_telemetry()))
     finally:
         conn.close()
 
@@ -184,6 +250,16 @@ class ProcessSandbox:
     ) -> None:
         self._sources = sources
         self._limits = limits or ResourceLimits()
+
+    @property
+    def limits(self) -> ResourceLimits:
+        """Phase 8 completion, Task D (sandbox visualizer): the real
+        configured limits this instance enforces, not just the dataclass
+        defaults — reads whatever was actually passed to __init__ (or the
+        default it fell back to). `capabilities/plugin_sandbox.py`'s
+        `plugin.sandbox.limits` surfaces this directly rather than
+        reaching into `self._limits` from outside the class."""
+        return self._limits
 
     def set_plugin_sources(self, plugin_id: str, sources: dict[str, str]) -> None:
         """Adds or replaces one plugin's `{module_name: source_text}` map
@@ -217,6 +293,17 @@ class ProcessSandbox:
         params: dict[str, Any],
         actor_id: str,
     ) -> dict[str, Any]:
+        """SandboxExecutor Protocol signature deliberately unchanged by
+        Phase 8 completion's Task A — see docs/design/plugin-sdk-manifest-
+        and-registration.md's "What crosses the sandbox boundary, and what
+        deliberately doesn't", and tests/registry/test_plugin_registration.py
+        ::test_sandbox_never_receives_db_or_permissions. `run()` never
+        receives the caller's `ctx.db`; a `PluginExecutionRecord` still
+        gets written after every execution, but via `_record_execution`'s
+        own independent session (see that method), the same pattern
+        `services/threat_detection_service.py::record()` already uses and
+        this method is already calling, two blocks below, for
+        sandbox_violation rows."""
         import asyncio
 
         module_name, _, function_name = entrypoint.partition(":")
@@ -237,6 +324,13 @@ class ProcessSandbox:
         # different code than what was reviewed, or an install bypassed
         # the registration path. Either way it's worth a security-event
         # record and metric, not just a raised exception the caller sees.
+        #
+        # Deliberately NOT a PluginExecutionRecord (Task A) — the static
+        # guard runs before any process spawns, so there's no execution to
+        # report telemetry for, and threat_detection_service.record above
+        # already gives this rejection its own observability trail. A
+        # PluginExecutionRecord with every telemetry field null would be
+        # noise in Task B/C's debugger/profiler, not signal.
         try:
             check_source_safety(source, entrypoint=entrypoint)
         except SandboxViolation:
@@ -251,9 +345,23 @@ class ProcessSandbox:
             raise
 
         loop = asyncio.get_running_loop()
+        start = time.monotonic()
         try:
-            return await loop.run_in_executor(None, self._run_blocking, source, function_name, params)
+            result, telemetry = await loop.run_in_executor(
+                None, self._run_blocking, source, function_name, params
+            )
         except SandboxExecutionError as exc:
+            wall_time_ms = (time.monotonic() - start) * 1000
+            outcome = _classify_outcome(exc)
+            await self._record_execution(
+                plugin_id=plugin_id,
+                entrypoint=entrypoint,
+                actor_id=actor_id,
+                outcome=outcome,
+                wall_time_ms=wall_time_ms,
+                telemetry=exc.telemetry,
+                error_detail=str(exc),
+            )
             # A resource-limit kill (signal-terminated child, see
             # _run_blocking's own comments) is the runtime-enforcement
             # layer actually doing its job against misbehaving plugin
@@ -261,7 +369,7 @@ class ProcessSandbox:
             # rejection, since a plugin that's hitting its CPU/memory
             # ceiling or attempting a forbidden syscall is exactly the
             # "real Phase 8 usage" signal this hardening pass is for.
-            if "signal" in str(exc) or "resource limit" in str(exc):
+            if outcome == "resource_limit_kill":
                 sandbox_violations_total.inc(kind="resource_limit_kill")
                 import services.threat_detection_service as threat_detection_service
 
@@ -271,8 +379,74 @@ class ProcessSandbox:
                     detail={"entrypoint": entrypoint, "kind": "resource_limit_kill"},
                 )
             raise
+        else:
+            wall_time_ms = (time.monotonic() - start) * 1000
+            await self._record_execution(
+                plugin_id=plugin_id,
+                entrypoint=entrypoint,
+                actor_id=actor_id,
+                outcome="success",
+                wall_time_ms=wall_time_ms,
+                telemetry=telemetry,
+                error_detail=None,
+            )
+            return result
 
-    def _run_blocking(self, source: str, function_name: str, params: dict[str, Any]) -> dict[str, Any]:
+    @staticmethod
+    async def _record_execution(
+        *,
+        plugin_id: str,
+        entrypoint: str,
+        actor_id: str,
+        outcome: str,
+        wall_time_ms: float,
+        telemetry: dict[str, float | int] | None,
+        error_detail: str | None,
+    ) -> None:
+        """Writes one PluginExecutionRecord using its own independent
+        `AsyncSessionLocal()` session — deliberately NOT the caller's
+        `ctx.db` (see `run()`'s own docstring on why that's never passed
+        in at all, and services/threat_detection_service.py's module
+        docstring for the identical reasoning applied there first: a
+        failed plugin call may leave the caller's request-scoped session
+        mid-rollback, and this record must persist independent of that,
+        the same "fail-open-on-the-observability-path" principle already
+        used by rate_limit.py and log_aggregation_service).
+
+        Never raises — mirrors threat_detection_service.record()'s own
+        "must not break the path calling it" contract: a bug in telemetry
+        persistence must not turn into a broken plugin capability call.
+
+        `AsyncSessionLocal` and `PluginExecutionRecord` are imported at
+        module level (not locally here) specifically so tests can
+        monkeypatch `services.plugins.sandbox.AsyncSessionLocal` the same
+        way tests/test_threat_detection.py's `_patched_session` fixture
+        already does for that module — same convention, so the same
+        fixture shape works here too."""
+        try:
+            async with AsyncSessionLocal() as db:
+                record = PluginExecutionRecord(
+                    plugin_id=plugin_id,
+                    entrypoint=entrypoint,
+                    actor_id=actor_id,
+                    outcome=outcome,
+                    wall_time_ms=wall_time_ms,
+                    cpu_time_ms=(telemetry or {}).get("cpu_time_ms"),
+                    peak_memory_bytes=(telemetry or {}).get("peak_memory_bytes"),
+                    error_detail=error_detail,
+                )
+                db.add(record)
+                await db.commit()
+        except Exception:  # noqa: BLE001 — observability path, must fail open
+            logger.exception(
+                "failed to persist PluginExecutionRecord for plugin_id=%s entrypoint=%s",
+                plugin_id,
+                entrypoint,
+            )
+
+    def _run_blocking(
+        self, source: str, function_name: str, params: dict[str, Any]
+    ) -> tuple[dict[str, Any], dict[str, float | int] | None]:
         # KNOWN CAVEAT, stated plainly rather than left for someone to
         # discover in production: `fork()` from a process that already has
         # multiple threads (which any live asyncio app with a thread-pool
@@ -307,6 +481,7 @@ class ProcessSandbox:
         process.start()
         child_conn.close()  # parent doesn't write to it
 
+        telemetry: dict[str, float | int] | None = None
         if parent_conn.poll(self._limits.wall_timeout_seconds):
             # poll() returning True means "something to read OR the write
             # end closed" — a resource-limit kill (e.g. SIGXCPU from
@@ -316,7 +491,7 @@ class ProcessSandbox:
             # process — the exitcode check below turns it into a specific
             # "terminated by signal" message instead of a generic one.
             try:
-                outcome, payload = parent_conn.recv()
+                outcome, payload, telemetry = parent_conn.recv()
             except EOFError:
                 outcome, payload = "error", "sandboxed process closed its pipe without responding"
         else:
@@ -333,13 +508,22 @@ class ProcessSandbox:
         # parent_conn.poll() above will have timed out or returned nothing
         # useful. Surface that distinctly rather than a bare timeout
         # message so an admin looking at plugin logs can tell "hit its
-        # memory/cpu limit" apart from "genuinely hung."
+        # memory/cpu limit" apart from "genuinely hung." No telemetry is
+        # available in this branch either way — a signal-killed child
+        # never reached _self_rusage_telemetry() (see that function's
+        # docstring), so `telemetry` stays whatever it already was (None,
+        # unless recv() itself somehow returned a value before the kill —
+        # not possible given the branches above, but left as `or None`
+        # defensively rather than assumed).
         if outcome == "error" and process.exitcode is not None and process.exitcode < 0:
             payload = f"sandboxed process terminated by signal {-process.exitcode} (resource limit or crash): {payload}"
+            telemetry = None
 
         if outcome == "error":
-            raise SandboxExecutionError(str(payload))
-        return payload
+            exc = SandboxExecutionError(str(payload))
+            exc.telemetry = telemetry
+            raise exc
+        return payload, telemetry
 
 
 class SqliteSandboxConnection:
