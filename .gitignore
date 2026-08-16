@@ -6,6 +6,18 @@ __pycache__/
 node_modules/
 .next/
 tsconfig.tsbuildinfo
+dist/
+
+# Terraform (Phase 7 completion, Task B) — local provider plugin cache
+# and any state a real `terraform apply` would produce. Deliberately NOT
+# ignoring .terraform.lock.hcl — that file is meant to be committed
+# (provider version pinning, same role as package-lock.json) — but it
+# doesn't exist yet since `terraform init` was never run in this
+# dispatch's sandbox (see terraform/README.md's "What's NOT verified
+# here").
+.terraform/
+*.tfstate
+*.tfstate.*
 
 # Python wheels — large binary artifacts pinned to requirements.txt.
 # Shipped in every handoff zip per project discipline (offline-installable
