@@ -25,8 +25,8 @@ claim:
 | Phase | Theme | Status | Confidence |
 |---|---|---|---|
 | 0–6 | Platform contract → notification fabric | Done | 🔶 |
-| 7 | Public API, SDKs, webhooks, Terraform | Partial | 🔶 |
-| 8 | Plugin SDK, sandboxing, marketplace | Partial | 🔶 |
+| 7 | Public API, SDKs, webhooks, Terraform | Done (Terraform deliberately REST-backed, not custom Go) | ✅ |
+| 8 | Plugin SDK, sandboxing, marketplace, debugger/profiler/visualizer | Done | ✅ |
 | 9 | Observability & security hardening | **Done** — table below is stale | ✅ |
 | 10 | Unified Experience Layer (dashboard rewrite) | Done | ✅ |
 | 11 | Multi-node clustering & HA | Not started | ✅ |
