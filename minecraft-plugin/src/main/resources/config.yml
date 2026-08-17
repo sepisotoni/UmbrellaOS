@@ -1,0 +1,27 @@
+# UmbrellaOS plugin — local config.
+#
+# This is the plugin's OWN config file, generated on first run. It is not
+# the same thing as umbrella-core's GET /api/v1/plugin/config response
+# (that's a separate, server-side settings bundle the plugin pulls down
+# and applies at runtime — see ConfigManager).
+
+core:
+  # Root URL of umbrella-core, no trailing slash and no path suffix.
+  # Example: http://localhost:8000  or  https://core.example.com
+  base-url: "http://localhost:8000"
+
+  # Shared secret sent as the X-Plugin-Key header on every request.
+  # Must match umbrella-core's SECRET_KEY (or an equivalent X-Admin-Key —
+  # both are accepted by require_plugin_key, but the plugin should always
+  # use its own plugin key here).
+  plugin-key: "CHANGE-ME"
+
+heartbeat:
+  # How often to POST /api/v1/plugin/heartbeat, in seconds.
+  interval-seconds: 30
+
+server:
+  # Sent as heartbeat's server_id. Leave blank to let core default it to
+  # "default" (matches the server-side default in HeartbeatRequest).
+  id: ""
+  name: "Minecraft Server"
