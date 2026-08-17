@@ -80,6 +80,13 @@ Checked directly this session:
 Core SDK/sandbox/marketplace is real and working. The debugger/profiler/
 visualizer tooling from the roadmap's Phase 8 scope isn't built.
 
+**⚠️ Disputed as of 2026-08-17:** a separate handoff doc from that date
+claims all of Phase 8, including the debugger/profiler/visualizer, is
+done. That claim has not been independently re-verified against this
+one — before trusting either, re-check the actual code (search for a
+debugger/profiler/visualizer implementation) rather than picking a side
+from prose alone.
+
 ## Phase 9 — ✅ done, the roadmap table is wrong
 
 Checked directly this session — `api/middleware/` contains real files

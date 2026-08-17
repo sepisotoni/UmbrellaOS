@@ -236,19 +236,20 @@ frontend (a Settings page) has NOT been built yet — see below.**
 
 ---
 
-## 6. Git history — there isn't any, be aware of this
+## 6. Git history — real as of 2026-08-15, none before that
 
-**This project has never had a git repository carried between chats.**
-Every handoff, in every phase, has been zip-based snapshots — no `.git`
-folder exists anywhere in this package or in any prior handoff this
-project has produced. If you need commit-by-commit history, it doesn't
-exist; the closest equivalent is the chain of handback/handoff docs in
-`historical-reference/` and `phase10/handback/`, which narrate what
-changed and why at each step, just not as git commits. If starting a
-real git repo for this project is something Sepiso Toni wants, that's worth
-raising explicitly — it isn't something a build session should just
-decide to do unprompted, per the "resolve real decisions explicitly"
-rule in section 2.
+**Before 2026-08-15, this project had no git repository carried between
+chats** — every handoff, in every phase, was a zip-based snapshot, no
+`.git` folder anywhere. **That changed with D4 in
+`PROJECT-PRINCIPLES-AND-WORKING-RULES.md`**: the repo now lives at
+`github.com/sepisotoni/UmbrellaOS` with real, hosted, commit-by-commit
+history from that date forward. For anything before the seam commit, the
+closest equivalent is still the chain of handback/handoff docs in
+`historical-reference/` and `phase10/handback/` — that pre-git narrative
+isn't being reconstructed retroactively into git log. For anything from
+2026-08-15 onward, use `git log` — see `PROJECT-PRINCIPLES-AND-WORKING-RULES.md`
+sections 3 and 6 for the actual rules (session-labeled commits, D5's
+two-tier PAT access).
 
 ## 7. Full project narrative history — every complication, not just a summary
 
@@ -334,5 +335,5 @@ anything else in this package gets touched).
   completion docs, old dashboard/daemon source (byte-identical to the
   abandoned `UmbrellaMC` prototype — reference only, never build forward
   from it), and the original moon-assistant monolithic-bot source
-  UmbrellaOS was migrated from. **No git history exists anywhere in this
-  project** — see section 6 above.
+  UmbrellaOS was migrated from. **No git history exists for anything
+  before 2026-08-15** — see section 6 above for what changed since.

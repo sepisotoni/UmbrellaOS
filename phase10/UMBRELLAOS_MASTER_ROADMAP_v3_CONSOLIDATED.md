@@ -272,10 +272,10 @@ SDK docs without asking anyone.
 | 4 | Files, backups, DR, scheduler, self-healing, secrets | ✅ done |
 | 5 | AI operating-system layer | ✅ done |
 | 6 | Discord + unified notification fabric | ✅ done |
-| 7 | Developer Platform I — public API, SDKs, webhooks, Terraform | 🔶 in progress |
-| 8 | Developer Platform II — plugin SDK, sandboxing, marketplace | 🔶 in progress |
+| 7 | Developer Platform I — public API, SDKs, webhooks, Terraform | 🔶 genuinely partial (webhooks + public REST API real; SDK-generation and Terraform provider not built — deliberately scoped as REST-backed rather than a custom Go provider, see `PHASE-STATUS-CORRECTED.md`) |
+| 8 | Developer Platform II — plugin SDK, sandboxing, marketplace | ⚠️ status disputed as of 2026-08-17 — `PHASE-STATUS-CORRECTED.md` (2026-08-15) independently checked the code and found the SDK/sandbox/marketplace core real but found *no* debugger, profiler, or sandbox visualizer anywhere; a separate 2026-08-17 handoff doc claims all of Phase 8 including those three is done. Neither claim has re-verified the other. Don't treat either as settled — re-check the actual code before relying on this row. |
 | 9 | Observability & security hardening | ✅ done (corrected 2026-08-15 — independently confirmed twice, by two separate sub-chat sessions checking the actual code, not each other's word: WAF/metrics/rate-limit/tracing middleware, log aggregation with tests, a committed Grafana dashboard config, and a CVE scanner all real and present. See `PHASE-STATUS-CORRECTED.md` and `subchat-handback/task_c_phase_status_verdict.md`.) |
-| 10 | Unified Experience Layer — **full dashboard rewrite, scope locked** | 🔶 substantially done (corrected 2026-08-15, same double-confirmation as above — steps 0–8 complete including the Settings page; marketplace listing/install UI still a placeholder, no manual browser testing done yet) |
+| 10 | Unified Experience Layer — **full dashboard rewrite, scope locked** | ✅ done (closed out 2026-08-16 via `dispatches/PHASE10-CLOSEOUT/` — see `PHASE-STATUS-CORRECTED.md` for current state and the small list of explicitly-deferred items, e.g. marketplace listing/publish UI) |
 | 11 | Multi-node clustering & HA — **highest remaining complexity** | ⬜ not started |
 | 12 | Platform maturity | ⬜ not started |
 
