@@ -31,6 +31,7 @@ claim:
 | 10 | Unified Experience Layer (dashboard rewrite) | Done | ✅ |
 | 11 | Multi-node clustering & HA | Not started | ✅ |
 | 12 | Platform maturity | Not started | ✅ |
+| 13 | Minecraft plugin (Paper/Java, from scratch) | Not started — assigned Phase 13 on 2026-08-17 per Sepiso Toni | ✅ |
 
 ## Phases 0–6 — 🔶
 
