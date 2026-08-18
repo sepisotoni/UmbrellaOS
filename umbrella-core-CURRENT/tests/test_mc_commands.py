@@ -6,6 +6,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from models import MCCommand, AuditLog
 from datetime import datetime
+from tests.conftest import PLUGIN_HEADERS
 
 
 @pytest.mark.asyncio
@@ -94,7 +95,7 @@ async def test_get_mc_commands_pending_returns_list(client: AsyncClient, db_sess
     
     response = await client.get(
         "/api/v1/mc/commands/pending",
-        headers={"X-Admin-Key": "test-secret-key"},
+        headers=PLUGIN_HEADERS,
     )
     assert response.status_code == 200
     data = response.json()
@@ -132,7 +133,7 @@ async def test_post_mc_commands_id_complete_marks_completed(client: AsyncClient,
             "output": "Command executed successfully",
             "success": True,
         },
-        headers={"X-Admin-Key": "test-secret-key"},
+        headers=PLUGIN_HEADERS,
     )
     assert response.status_code == 200
     data = response.json()
@@ -169,7 +170,7 @@ async def test_post_mc_commands_id_complete_marks_failed(client: AsyncClient, db
             "output": "Unknown command",
             "success": False,
         },
-        headers={"X-Admin-Key": "test-secret-key"},
+        headers=PLUGIN_HEADERS,
     )
     assert response.status_code == 200
     
@@ -189,7 +190,7 @@ async def test_post_mc_commands_id_complete_not_found_returns_404(client: AsyncC
             "output": "test",
             "success": True,
         },
-        headers={"X-Admin-Key": "test-secret-key"},
+        headers=PLUGIN_HEADERS,
     )
     assert response.status_code == 404
     assert "not found" in response.json()["detail"].lower()
@@ -218,7 +219,7 @@ async def test_post_mc_commands_id_complete_already_completed_returns_400(client
             "output": "test",
             "success": True,
         },
-        headers={"X-Admin-Key": "test-secret-key"},
+        headers=PLUGIN_HEADERS,
     )
     assert response.status_code == 400
     assert "already" in response.json()["detail"].lower()
@@ -285,7 +286,7 @@ async def test_post_mc_commands_id_complete_creates_audit_log(client: AsyncClien
             "output": "Executed",
             "success": True,
         },
-        headers={"X-Admin-Key": "test-secret-key"},
+        headers=PLUGIN_HEADERS,
     )
     assert response.status_code == 200
     

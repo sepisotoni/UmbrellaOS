@@ -13,8 +13,8 @@
     <description>
         Paper plugin bridging a Minecraft server to umbrella-core.
         Phase 13, Step 1: scaffold, CoreApiClient, HeartbeatManager, ConfigManager.
-        Command polling, ban enforcement, and the GrimAC bridge are Step 2/3 —
-        not built here.
+        Phase 13, Step 2: CommandPoller (command-queue round trip), BanEnforcer
+        (join-time ban enforcement). The GrimAC bridge is Step 3 — not built here.
     </description>
 
     <properties>

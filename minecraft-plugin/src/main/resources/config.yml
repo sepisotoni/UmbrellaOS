@@ -20,6 +20,11 @@ heartbeat:
   # How often to POST /api/v1/plugin/heartbeat, in seconds.
   interval-seconds: 30
 
+commands:
+  # How often to GET /api/v1/mc/commands/pending, in seconds. Matches
+  # core's own doc comment ("plugin calls this every 5 seconds").
+  poll-interval-seconds: 5
+
 server:
   # Sent as heartbeat's server_id. Leave blank to let core default it to
   # "default" (matches the server-side default in HeartbeatRequest).

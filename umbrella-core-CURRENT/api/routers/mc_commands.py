@@ -1,9 +1,19 @@
 """
 api/routers/mc_commands.py — Minecraft command execution endpoints.
 
-POST /api/v1/mc/command           — Queue a command for execution
-GET  /api/v1/mc/commands/pending  — Get pending commands
+POST /api/v1/mc/command                — Queue a command for execution
+                                          (admin/Discord-bot initiated,
+                                          X-Admin-Key)
+GET  /api/v1/mc/commands/pending       — Get pending commands
+                                          (plugin-initiated, X-Plugin-Key)
 POST /api/v1/mc/commands/{id}/complete — Mark command as completed
+                                          (plugin-initiated, X-Plugin-Key)
+
+The enqueue side and the poll/complete side are different actors with
+different auth: staff/bot enqueue via the admin key, the plugin itself
+polls and acks via the plugin key. (Phase 13 Step 2 — the poll/complete
+pair used to require_admin_key too, which the plugin was never given a
+credential for; fixed to match every other plugin-facing router.)
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,7 +23,7 @@ from datetime import datetime
 
 from database import get_db
 from models import MCCommand, AuditLog
-from api.middleware.auth import require_admin_key
+from api.middleware.auth import require_admin_key, require_plugin_key
 from api.middleware.audit import create_audit_log, AuditAction
 from uuid import uuid4
 
@@ -91,12 +101,21 @@ async def create_mc_command(
 @router.get("/commands/pending", response_model=list[MCCommandResponse])
 async def get_pending_mc_commands(
     db: AsyncSession = Depends(get_db),
-    _auth: str = Depends(require_admin_key),
+    _auth: str = Depends(require_plugin_key),
 ) -> list[MCCommandResponse]:
     """
     Get all pending Minecraft commands.
-    
+
     The plugin calls this every 5 seconds to poll for new commands.
+
+    Auth: X-Plugin-Key (Phase 13 Step 2 — was require_admin_key, which
+    checks a different secret (settings.admin_key) than every other
+    plugin-facing endpoint in this codebase (plugin.py, anticheat.py,
+    both on require_plugin_key / settings.secret_key). The plugin's
+    config.yml only ever holds a plugin key, so the old dependency made
+    this endpoint permanently unreachable by the actual plugin — caught
+    by reading this file directly rather than trusting the scoping doc's
+    endpoint list, which didn't mention auth per-endpoint at all.
     """
     result = await db.execute(
         select(MCCommand).where(MCCommand.status == "pending")
@@ -111,12 +130,15 @@ async def complete_mc_command(
     command_id: int,
     body: MCCommandCompleteRequest,
     db: AsyncSession = Depends(get_db),
-    _auth: str = Depends(require_admin_key),
+    _auth: str = Depends(require_plugin_key),
 ):
     """
     Mark a Minecraft command as completed.
-    
+
     The plugin calls this after executing a command to report the result.
+
+    Auth: X-Plugin-Key — see get_pending_mc_commands docstring above for
+    why this changed from require_admin_key (Phase 13 Step 2).
     """
     result = await db.execute(
         select(MCCommand).where(MCCommand.id == command_id)

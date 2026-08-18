@@ -5,6 +5,7 @@ api-version: '1.20'
 author: Sepiso Toni
 description: >
   UmbrellaOS core integration for Minecraft servers. Step 1: heartbeat and
-  config sync with umbrella-core. Command polling, ban enforcement, and the
-  GrimAC bridge land in Step 2/3 and are not part of this build.
+  config sync with umbrella-core. Step 2: command-queue polling and
+  join-time ban enforcement. The GrimAC bridge lands in Step 3 and is not
+  part of this build.
 website: https://github.com/sepisotoni/UmbrellaOS

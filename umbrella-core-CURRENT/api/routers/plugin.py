@@ -23,10 +23,33 @@ from database import get_db
 from models.setting import Setting
 from models.plugin_heartbeat import PluginHeartbeat
 from models.plugin_command import PluginCommand
+from models.player import Punishment
 from api.middleware.auth import require_plugin_key
 from api.schemas.plugin_control import PluginControlRequest
 
 router = APIRouter(prefix="/api/v1/plugin", tags=["plugin"])
+
+# Punishment types that block a player from joining. Mirrors the check
+# constraint in ck_punishments_type (warn/mute/tempban/ban) — only the
+# two ban variants are join-blocking; warn/mute are not.
+_BAN_TYPES = ("ban", "tempban")
+
+
+class ActivePunishmentSchema(BaseModel):
+    id: str
+    type: str
+    reason: str
+    staff_id: str | None
+    created_at: datetime
+    expires_at: datetime | None
+
+    class Config:
+        from_attributes = True
+
+
+class ActiveBanCheckResponse(BaseModel):
+    banned: bool
+    punishment: ActivePunishmentSchema | None = None
 
 
 class HeartbeatRequest(BaseModel):
@@ -149,6 +172,52 @@ async def plugin_config(
         "settings": flat,
         "by_category": by_category,
     }
+
+
+@router.get("/punishments/{player_uuid}/active", response_model=ActiveBanCheckResponse)
+async def plugin_active_punishment_check(
+    player_uuid: str,
+    db: AsyncSession = Depends(get_db),
+    _auth: str = Depends(require_plugin_key),
+) -> ActiveBanCheckResponse:
+    """
+    Ban-check for the Minecraft plugin — read-only, plugin-key authorized.
+
+    Phase 13 Step 2. Added because the only existing "is this player
+    banned" endpoint (GET /api/v1/punishments) requires real RBAC
+    (punishments.view via require_permission), not the plugin-key auth
+    every other plugin-facing endpoint uses — the plugin has no user/role
+    identity to present. This mirrors that same auth pattern instead of
+    inventing a service-account concept (the scoping doc's rejected
+    option 2).
+
+    Returns the single most relevant active ban/tempban for the player,
+    if any — permanent bans (expires_at is null) take priority over a
+    tempban, since that's the one that actually determines whether the
+    player can ever rejoin. Mutes and warns are intentionally excluded;
+    they don't block a join.
+    """
+    now = datetime.now(timezone.utc)
+    result = await db.execute(
+        select(Punishment)
+        .where(Punishment.player_uuid == player_uuid)
+        .where(Punishment.active == True)  # noqa: E712
+        .where(Punishment.type.in_(_BAN_TYPES))
+        .where(
+            (Punishment.expires_at == None)  # noqa: E711
+            | (Punishment.expires_at > now)
+        )
+        .order_by(Punishment.expires_at.is_(None).desc(), Punishment.created_at.desc())
+    )
+    punishment = result.scalars().first()
+
+    if punishment is None:
+        return ActiveBanCheckResponse(banned=False, punishment=None)
+
+    return ActiveBanCheckResponse(
+        banned=True,
+        punishment=ActivePunishmentSchema.model_validate(punishment),
+    )
 
 
 @router.post("/control")

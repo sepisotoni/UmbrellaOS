@@ -116,3 +116,4 @@ async def client(db_session, monkeypatch):
 # Shorthand headers for convenience
 ADMIN_HEADERS = {"X-Admin-Key": TEST_SECRET_KEY}
 WRONG_HEADERS = {"X-Admin-Key": "wrong-key"}
+PLUGIN_HEADERS = {"X-Plugin-Key": TEST_SECRET_KEY}
