@@ -33,7 +33,7 @@ wheels/
 # MB) — explicit now so `git add -A` can't repeat that mistake.
 UNVERIFIED-leak-investigation/
 historical-reference/
-minecraft-plugin/
+minecraft-plugin/target/
 other-services/
 
 # Real secrets never get committed, ever, no exceptions — see
