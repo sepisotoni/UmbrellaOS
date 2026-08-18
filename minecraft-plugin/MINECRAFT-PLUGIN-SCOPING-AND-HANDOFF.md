@@ -1,5 +1,17 @@
 # UmbrellaOS — Minecraft Plugin (Java/Paper): Scoping & Build Handoff
 
+> **Correction, 2026-08-17 (post Step 1 handback):** every endpoint path
+> below was originally written without the real `/api/v1` prefix
+> (`/plugin/heartbeat` instead of `/api/v1/plugin/heartbeat`, etc.) —
+> caught during Step 1 by reading the actual routers in
+> `umbrella-core-CURRENT/api/routers/` instead of trusting this doc's
+> prose. All paths below are now fixed to match the real, live routers
+> (`plugin.py`, `mc_commands.py`, `anticheat.py`). If you're reading this
+> for Step 2 or Step 3, the paths here are now correct — but the working
+> rules' core lesson still applies: verify against the actual router
+> code, don't take any doc's word for an endpoint path, including this
+> one.
+
 There is currently no live Java plugin project — Sepiso Toni does not have the
 actual server-side source, only an old, abandoned first attempt (from the
 pre-rebuild `UmbrellaMC` codebase) that must **not** be reused as a basis
@@ -24,10 +36,10 @@ see the flagged future item on this below).
 
 | Direction | Endpoint | Purpose |
 |---|---|---|
-| Plugin → core (push) | `POST /plugin/heartbeat` | online status, player count, TPS, version, `grim_connected` |
-| Plugin → core (push) | `POST /anticheat/flag` | GrimAC violation reports |
-| Core → plugin (pull) | `GET /plugin/config` | non-sensitive settings sync, startup/reconnect |
-| Core → plugin → core | `POST /plugin/control` (enqueue, admin/core side) → plugin polls `GET /mc/commands/pending` → `POST /mc/commands/{id}/complete` | core-initiated actions the plugin executes and acknowledges |
+| Plugin → core (push) | `POST /api/v1/plugin/heartbeat` | online status, player count, TPS, version, `grim_connected` |
+| Plugin → core (push) | `POST /api/v1/anticheat/flag` | GrimAC violation reports |
+| Core → plugin (pull) | `GET /api/v1/plugin/config` | non-sensitive settings sync, startup/reconnect |
+| Core → plugin → core | `POST /api/v1/plugin/control` (enqueue, admin/core side) → plugin polls `GET /api/v1/mc/commands/pending` → `POST /api/v1/mc/commands/{command_id}/complete` | core-initiated actions the plugin executes and acknowledges |
 
 **Confirmed gap, needs a decision before building the punishment-enforcement
 piece:** the plugin needs to check "is this player currently banned" to
@@ -107,12 +119,12 @@ to load just because GrimAC isn't installed yet.
 ## Full plugin scope for this build
 
 **In scope now** (everything core already supports, listed above):
-1. Heartbeat loop — periodic `POST /plugin/heartbeat` with online status,
+1. Heartbeat loop — periodic `POST /api/v1/plugin/heartbeat` with online status,
    player count, TPS (real server tick rate, not estimated), version.
-2. Config pull — `GET /plugin/config` on startup and reconnect, applied to
+2. Config pull — `GET /api/v1/plugin/config` on startup and reconnect, applied to
    local plugin state.
-3. Command-queue poller — periodic `GET /mc/commands/pending`, execute,
-   `POST /mc/commands/{id}/complete`.
+3. Command-queue poller — periodic `GET /api/v1/mc/commands/pending`, execute,
+   `POST /api/v1/mc/commands/{command_id}/complete`.
 4. GrimAC bridge — per above, soft-dependency, real EventBus API.
 5. Ban enforcement — depends on the punishment-check auth decision above
    being made first; don't build this part until that's answered.
