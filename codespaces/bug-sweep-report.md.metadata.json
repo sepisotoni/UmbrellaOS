@@ -1,0 +1,5 @@
+{
+  "summary":  "Final consolidated bug sweep report for UmbrellaOS codebase. 7 chunks scanned across umbrella-core-CURRENT, umbrella-dashboard-CURRENT, and umbrella-sdk-ts. 12 raw findings, 11 verified by Gemini. Includes 4 HIGH severity issues (syntax errors, security, data loss), 5 MEDIUM, 1 LOW. API Routes chunk (chunk 1) hit a Gemini 503 and needs a re-scan.",
+  "updatedAt":  "2026-08-18T14:34:30.381339673Z",
+  "userFacing":  true
+}
