@@ -75,6 +75,25 @@ dispatch. If something on the core side looks broken in a way
 unrelated to what you're building, don't investigate or fix it — note
 it briefly in your handback and move on.
 
+## Handoff mechanics — how you pass this to Step 3
+
+Same protocol Step 1 used to hand off to you — continue it. Package
+into one zip:
+
+1. Your diff/manifest.
+2. Your handback doc (what you built, the new endpoint's exact shape,
+   live-verification results, deviations, anything noticed but not
+   acted on).
+3. A copy of `dispatches/PHASE13-MINECRAFT-PLUGIN/STEP3-GRIMAC-BRIDGE.md`
+   verbatim.
+4. **An explicit declaration that Step 2 is complete**, at the top of
+   your handback doc — e.g. "Step 2 (command queue + ban enforcement)
+   is complete and independently live-verified as described below."
+
+The head chat still independently verifies before applying anything to
+`main` — this doesn't skip that step, it just means the same zip that
+goes to the head chat also starts Step 3's sub-chat directly.
+
 ## Deliverable for handback
 
 - Command queue round-trip working end-to-end against a real core

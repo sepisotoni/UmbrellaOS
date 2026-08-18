@@ -78,6 +78,23 @@ dispatch. If something looks broken in a way unrelated to what you're
 building, don't investigate or fix it — note it briefly in your
 handback and move on.
 
+## Handoff mechanics — this is the final step, hands back to the head chat
+
+There's no Step 4 — your handback goes straight back to the head chat
+as the close-out for all of Phase 13. Package into one zip:
+
+1. Your diff/manifest.
+2. Your handback doc, covering the full three-step build per the
+   "Deliverable for handback" section below — not just your own slice.
+3. **An explicit declaration that Step 3 is complete**, at the top of
+   your handback doc — e.g. "Step 3 (GrimAC bridge) is complete and
+   independently live-verified as described below; Phase 13 is ready
+   for head-chat review."
+
+The head chat independently verifies everything (all three steps'
+combined result, not just yours) before marking Phase 13 done in
+`PHASE-STATUS-CORRECTED.md` and applying/pushing to `main`.
+
 ## Deliverable for handback
 
 - A real GrimAC flag on a real test server reaches core via

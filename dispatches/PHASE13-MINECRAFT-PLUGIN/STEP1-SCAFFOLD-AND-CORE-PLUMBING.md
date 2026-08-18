@@ -69,6 +69,30 @@ in a way that seems unrelated to what you're building, don't go
 digging into it or trying to fix it — note it briefly in your handback
 and move on. Your scope is the four items above only.
 
+## Handoff mechanics — how you pass this to Step 2
+
+Your handback isn't just a diff for the head chat — it's also what
+starts Step 2's sub-chat directly, without the head chat needing to
+manually relay anything. Package these together in one zip:
+
+1. Your diff/manifest (the actual code changes).
+2. Your handback doc (what you built, live-verification results, any
+   deviation from scope, anything noticed but not acted on).
+3. A copy of `dispatches/PHASE13-MINECRAFT-PLUGIN/STEP2-COMMANDS-AND-BAN-ENFORCEMENT.md`
+   verbatim — Step 2's own dispatch scope, unchanged by you.
+4. **A short, explicit declaration that Step 1 is complete** — plainly
+   stated, at the top of the zip's handback doc, e.g. "Step 1
+   (scaffold + core plumbing) is complete and independently
+   live-verified as described below." Step 2's sub-chat should be able
+   to read this and know, without any ambiguity, that it's safe to
+   build on top of what's in this zip.
+
+The head chat still independently verifies everything before applying
+it to `main` — this packaging doesn't skip that. It just means the
+same zip that goes to the head chat is also what gets handed to
+whoever runs Step 2's sub-chat next, so nothing has to be manually
+re-typed or re-explained between steps.
+
 ## Deliverable for handback
 
 - Plugin loads cleanly on a real Paper server.
