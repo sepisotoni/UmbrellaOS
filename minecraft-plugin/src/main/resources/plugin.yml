@@ -4,8 +4,13 @@ main: com.umbrellaos.plugin.UmbrellaPlugin
 api-version: '1.20'
 author: Sepiso Toni
 description: >
-  UmbrellaOS core integration for Minecraft servers. Step 1: heartbeat and
-  config sync with umbrella-core. Step 2: command-queue polling and
-  join-time ban enforcement. The GrimAC bridge lands in Step 3 and is not
-  part of this build.
+  UmbrellaOS core integration for Minecraft servers. Heartbeat, config sync,
+  command-queue polling, join-time ban enforcement, and GrimAC anticheat
+  flag forwarding.
 website: https://github.com/sepisotoni/UmbrellaOS
+# softdepend (not depend) — the plugin loads and functions without GrimAC;
+# the GrimBridge simply stays inactive. Paper uses this to ensure GrimAC's
+# API classes are classloaded before ours when both plugins are present,
+# which is required for our compile-time import of GrimAC's EventBus API.
+softdepend:
+  - GrimAC

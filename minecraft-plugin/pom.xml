@@ -14,7 +14,9 @@
         Paper plugin bridging a Minecraft server to umbrella-core.
         Phase 13, Step 1: scaffold, CoreApiClient, HeartbeatManager, ConfigManager.
         Phase 13, Step 2: CommandPoller (command-queue round trip), BanEnforcer
-        (join-time ban enforcement). The GrimAC bridge is Step 3 — not built here.
+        (join-time ban enforcement).
+        Phase 13, Step 3: GrimBridge — real compile-time GrimAC EventBus integration,
+        softdepend so server loads without GrimAC, flags reported to POST /api/v1/anticheat/flag.
     </description>
 
     <properties>
@@ -31,6 +33,13 @@
         <repository>
             <id>papermc</id>
             <url>https://repo.papermc.io/repository/maven-public/</url>
+        </repository>
+        <!-- GrimAC API jar published to their own Jitpack-like release channel.
+             The API module (grimac-api) is a separate, stable artifact — we
+             depend on that, not the full server jar. -->
+        <repository>
+            <id>grim-repo</id>
+            <url>https://repo.grim.ac/releases/</url>
         </repository>
     </repositories>
 
@@ -50,6 +59,18 @@
             <groupId>org.json</groupId>
             <artifactId>json</artifactId>
             <version>${json.version}</version>
+        </dependency>
+
+        <!-- GrimAC API — provided at runtime by GrimAC itself on the server.
+             Using a real compile-time dep (not reflection) so a wrong class or
+             method name fails the build immediately rather than silently
+             no-op-ing in production.  Version pinned to the 2.3.73 source that
+             was verified when writing this integration; bump intentionally. -->
+        <dependency>
+            <groupId>ac.grim.grimac</groupId>
+            <artifactId>grimac</artifactId>
+            <version>2.3.73</version>
+            <scope>provided</scope>
         </dependency>
 
         <!-- Test only -->

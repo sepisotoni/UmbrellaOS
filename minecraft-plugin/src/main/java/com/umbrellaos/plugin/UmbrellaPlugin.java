@@ -7,11 +7,8 @@ import org.bukkit.plugin.java.JavaPlugin;
  * Entry point. Step 1: scaffold + core plumbing ({@link CoreApiClient},
  * {@link HeartbeatManager}, {@link ConfigManager}). Step 2 adds {@link
  * CommandPoller} (command-queue round trip) and {@link BanEnforcer} (join-time
- * ban enforcement) — both extend {@link CoreApiClient}'s existing usage
- * rather than restructuring it, per the Step 1 handback.
- *
- * <p>Deliberately NOT built here (Step 3, per the dispatch doc): GrimAC
- * bridge.
+ * ban enforcement). Step 3 adds {@link GrimBridge} — soft-dependency GrimAC
+ * EventBus integration that forwards flag events to umbrella-core.
  */
 public final class UmbrellaPlugin extends JavaPlugin {
 
@@ -20,6 +17,7 @@ public final class UmbrellaPlugin extends JavaPlugin {
     private HeartbeatManager heartbeatManager;
     private CommandPoller commandPoller;
     private BanEnforcer banEnforcer;
+    private GrimBridge grimBridge;
 
     @Override
     public void onEnable() {
@@ -53,12 +51,19 @@ public final class UmbrellaPlugin extends JavaPlugin {
 
         getServer().getPluginManager().registerEvents(banEnforcer, this);
 
+        // GrimBridge: soft-dependency — register() checks isPluginEnabled("GrimAC")
+        // internally and logs the outcome either way. No extra config needed; if
+        // GrimAC is absent the bridge stays inactive and everything else runs normally.
+        grimBridge = new GrimBridge(this, apiClient);
+        grimBridge.register();
+
         heartbeatManager.start(heartbeatIntervalSeconds);
         commandPoller.start(commandPollIntervalSeconds);
 
         getLogger().info("UmbrellaOS plugin enabled — core: " + baseUrl
                 + ", heartbeat every " + heartbeatIntervalSeconds + "s"
-                + ", command poll every " + commandPollIntervalSeconds + "s");
+                + ", command poll every " + commandPollIntervalSeconds + "s"
+                + (grimBridge.isRegistered() ? ", GrimAC bridge: ACTIVE" : ", GrimAC bridge: inactive"));
     }
 
     @Override
@@ -72,8 +77,7 @@ public final class UmbrellaPlugin extends JavaPlugin {
         getLogger().info("UmbrellaOS plugin disabled");
     }
 
-    // Package-private accessors for tests / future managers (Step 3 will
-    // extend CoreApiClient's usage, not replace it — see handback doc).
+    // Package-private accessors for tests and diagnostics.
     CoreApiClient getApiClient() {
         return apiClient;
     }
@@ -88,5 +92,9 @@ public final class UmbrellaPlugin extends JavaPlugin {
 
     BanEnforcer getBanEnforcer() {
         return banEnforcer;
+    }
+
+    GrimBridge getGrimBridge() {
+        return grimBridge;
     }
 }
