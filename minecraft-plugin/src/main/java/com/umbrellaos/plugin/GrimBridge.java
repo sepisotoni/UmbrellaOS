@@ -1,6 +1,6 @@
 package com.umbrellaos.plugin;
 
-import ac.grim.grimac.api.GrimAPI;
+import ac.grim.grimac.api.GrimAPIProvider;
 import ac.grim.grimac.api.event.events.FlagEvent;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.Plugin;
@@ -64,7 +64,7 @@ public final class GrimBridge {
             return;
         }
 
-        GrimAPI.INSTANCE.getEventBus().get(FlagEvent.class).onFlag(
+        GrimAPIProvider.get().getEventBus().get(FlagEvent.class).onFlag(
                 owningPlugin,
                 (grimPlayer, check, verbose, cancelled) -> {
                     UUID uuid = grimPlayer.getUniqueId();

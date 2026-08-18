@@ -20,10 +20,11 @@
     </description>
 
     <properties>
-        <maven.compiler.source>17</maven.compiler.source>
-        <maven.compiler.target>17</maven.compiler.target>
+        <maven.compiler.source>25</maven.compiler.source>
+        <maven.compiler.target>25</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <paper.api.version>1.20.4-R0.1-SNAPSHOT</paper.api.version>
+        <paper.api.version>[26.2.build,)</paper.api.version>
+        <grimapi.version>1.1.0.0</grimapi.version>
         <json.version>20240303</json.version>
         <junit.version>5.10.2</junit.version>
         <mockito.version>5.11.0</mockito.version>
@@ -34,12 +35,10 @@
             <id>papermc</id>
             <url>https://repo.papermc.io/repository/maven-public/</url>
         </repository>
-        <!-- GrimAC API jar published to their own Jitpack-like release channel.
-             The API module (grimac-api) is a separate, stable artifact — we
-             depend on that, not the full server jar. -->
+        <!-- GrimAC API — separate stable artifact published to their snapshots repo. -->
         <repository>
-            <id>grim-repo</id>
-            <url>https://repo.grim.ac/releases/</url>
+            <id>grim-snapshots</id>
+            <url>https://repo.grim.ac/snapshots</url>
         </repository>
     </repositories>
 
@@ -64,12 +63,13 @@
         <!-- GrimAC API — provided at runtime by GrimAC itself on the server.
              Using a real compile-time dep (not reflection) so a wrong class or
              method name fails the build immediately rather than silently
-             no-op-ing in production.  Version pinned to the 2.3.73 source that
-             was verified when writing this integration; bump intentionally. -->
+             no-op-ing in production.
+             GrimAPI is the separate stable API artifact (not the full grimac jar).
+             Upgraded from grimac:2.3.73 to GrimAPI:1.1.0.0 targeting 26.2 support. -->
         <dependency>
             <groupId>ac.grim.grimac</groupId>
-            <artifactId>grimac</artifactId>
-            <version>2.3.73</version>
+            <artifactId>GrimAPI</artifactId>
+            <version>${grimapi.version}</version>
             <scope>provided</scope>
         </dependency>
 

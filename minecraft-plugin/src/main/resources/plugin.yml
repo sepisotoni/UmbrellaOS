@@ -1,7 +1,7 @@
 name: UmbrellaOSPlugin
 version: '${project.version}'
 main: com.umbrellaos.plugin.UmbrellaPlugin
-api-version: '1.20'
+api-version: '26.2'
 author: Sepiso Toni
 description: >
   UmbrellaOS core integration for Minecraft servers. Heartbeat, config sync,
