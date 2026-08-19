@@ -1,0 +1,31 @@
+name: Plugin CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # NOTE: pom.xml currently targets Java 25 (maven.compiler.source/target),
+      # which is not an LTS release and may not be available via setup-java.
+      # Using 21 (LTS) here — if the pom's bytecode target genuinely requires
+      # 25 language features, this step will fail with a compiler mismatch.
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Run tests
+        working-directory: minecraft-plugin
+        run: mvn test -B
+        # NOTE: will fail if GrimAPI:1.1.0.0 isn't resolvable from
+        # repo.grim.ac/snapshots — a known blocker, not worked around here.

@@ -68,6 +68,7 @@ from api.routers.staff import router as staff_router
 from api.routers.metrics import router as metrics_router
 from api.routers.logs import router as logs_router
 from api.routers.security import router as security_router
+from api.routers.feature_flags import router as feature_flags_router
 
 settings = get_settings()
 
@@ -238,6 +239,7 @@ app.include_router(dashboard_router)
 app.include_router(server_control_router)
 app.include_router(staff_router)
 app.include_router(capabilities_router)
+app.include_router(feature_flags_router)
 app.include_router(hosting_console_ws_router)
 
 

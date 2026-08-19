@@ -1,0 +1,54 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: umbrella_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://postgres:test@localhost/umbrella_test
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: ci-test-secret
+      ADMIN_KEY: ci-test-admin
+      PLUGIN_KEY: ci-test-plugin
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r umbrella-core-CURRENT/requirements.txt
+
+      - name: Start Redis
+        run: |
+          sudo apt-get install -y redis-server
+          sudo redis-server --daemonize yes
+
+      - name: Run tests
+        run: |
+          cd umbrella-core-CURRENT
+          python -m pytest tests/ -x --tb=short
