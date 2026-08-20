@@ -13,22 +13,29 @@ from config.settings import get_settings
 settings = get_settings()
 
 # Async engine — used by the application
+#
+# Supabase routes through PgBouncer in transaction-pooling mode (port 6543).
+# PgBouncer transaction mode is incompatible with server-side prepared statements:
+# a statement prepared on one pooled connection can be reused against a different
+# underlying Postgres session, causing DuplicatePreparedStatementError /
+# ProtocolViolationError under concurrent load (seen 2026-08-20).
+#
+# Two separate caches need to be disabled:
+#   1. asyncpg's own driver-level cache  → statement_cache_size=0 in connect_args
+#   2. SQLAlchemy's asyncpg dialect cache → prepared_statement_cache_size=0
+#      (SQLAlchemy generates its own __asyncpg_stmt_N__ names independently of
+#       the driver, so disabling only the driver cache is not sufficient)
+#
+# pool_pre_ping=True detects stale connections before issuing queries,
+# avoiding errors on recycled connections after Supabase idle timeouts.
 engine = create_async_engine(
     settings.database_url,
     echo=settings.debug,
-    # Supabase's connection string routes through PgBouncer in
-    # transaction-pooling mode by default. asyncpg's server-side
-    # prepared-statement cache is incompatible with that: statements
-    # prepared on one pooled connection can get reused against a
-    # different underlying Postgres session, producing
-    # DuplicatePreparedStatementError / ProtocolViolationError under
-    # concurrent load (seen 2026-08-20 — every settings-table read
-    # started failing under real traffic). Disabling asyncpg's
-    # statement cache is the standard fix for this exact PgBouncer
-    # transaction-mode + asyncpg combination; it costs a small amount
-    # of per-query overhead (no server-side plan reuse) in exchange
-    # for correctness. See https://sqlalche.me/e/20/f405.
-    connect_args={"statement_cache_size": 0},
+    connect_args={
+        "statement_cache_size": 0,
+        "prepared_statement_cache_size": 0,
+    },
+    pool_pre_ping=True,
 )
 
 # Session factory — produces async sessions
