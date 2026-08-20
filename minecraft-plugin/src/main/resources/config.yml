@@ -8,7 +8,7 @@
 core:
   # Root URL of umbrella-core, no trailing slash and no path suffix.
   # Example: http://localhost:8000  or  https://core.example.com
-  base-url: "http://localhost:8000"
+  base-url: "https://umbrellaos-core.onrender.com"
 
   # Shared secret sent as the X-Plugin-Key header on every request.
   # Must match umbrella-core's SECRET_KEY (or an equivalent X-Admin-Key —

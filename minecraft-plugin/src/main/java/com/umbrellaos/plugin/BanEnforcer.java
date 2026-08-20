@@ -23,9 +23,9 @@ import java.util.logging.Level;
  * for why it exists (the plugin has no RBAC identity to use the real
  * {@code punishments.view}-gated {@code GET /api/v1/punishments}).
  *
- * <p><b>Fails open on a core-side/network error</b> — see {@link
- * #onAsyncPreLogin}. This is a real, explicit design choice, not a silent
- * gap; flagged again in the handback doc for Sepiso Toni to confirm.
+ * <p><b>Fails closed on a core-side/network error</b> — see {@link
+ * #onAsyncPreLogin}. Decided explicitly: if core is unreachable, banned
+ * players are kicked rather than allowed in.
  */
 public class BanEnforcer implements Listener {
 
@@ -48,15 +48,14 @@ public class BanEnforcer implements Listener {
         try {
             result = checkActiveBan(playerUuid);
         } catch (Exception e) {
-            // Fail open: an unreachable core (or a bad response) should not
-            // lock every player out of the server. HeartbeatManager's
-            // watchdog path is what's meant to surface core being down, not
-            // a login-time hard-fail here. This is the safer default for a
-            // community server, but it IS a real choice with a real
-            // consequence (a ban silently doesn't apply while core is down)
-            // — not defaulted silently, called out in the handback.
+            // Fail closed: if core is unreachable we cannot verify ban status,
+            // so we kick the player rather than risk letting a banned player in.
+            // Decided explicitly by Sepiso Toni (2026-08-19).
             apiClient.logger().log(Level.WARNING,
-                    "Ban check failed for " + playerUuid + " — failing open (allowing join)", e);
+                    "Ban check failed for " + playerUuid + " — failing closed (kicking player)", e);
+            event.disallow(
+                    AsyncPlayerPreLoginEvent.Result.KICK_OTHER,
+                    Component.text("Unable to verify ban status — please try again shortly."));
             return;
         }
 
