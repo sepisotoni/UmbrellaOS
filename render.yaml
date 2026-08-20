@@ -1,0 +1,24 @@
+# render.yaml — UmbrellaOS Render deployment config
+# Primary: umbrella-core on Render free tier (Frankfurt, co-located with Supabase)
+# Redis: Render free Key-Value (volatile_lru, no persistence — rate limiter only)
+
+services:
+  - type: web
+    name: umbrellaos-core
+    runtime: docker
+    region: frankfurt
+    plan: free
+    branch: main
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: APP_HOST
+        value: "0.0.0.0"
+      - key: APP_PORT
+        value: "8765"
+      - key: DEBUG
+        value: "false"
+      # Secrets set via Render dashboard or MCP — not committed to repo:
+      # DATABASE_URL, DATABASE_URL_SYNC, SECRET_KEY, ADMIN_KEY,
+      # SECRETS_ENCRYPTION_KEY, REDIS_URL
