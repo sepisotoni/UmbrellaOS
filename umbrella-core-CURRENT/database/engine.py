@@ -16,9 +16,19 @@ settings = get_settings()
 engine = create_async_engine(
     settings.database_url,
     echo=settings.debug,
-    # Reconnect on stale connections
-    
-    
+    # Supabase's connection string routes through PgBouncer in
+    # transaction-pooling mode by default. asyncpg's server-side
+    # prepared-statement cache is incompatible with that: statements
+    # prepared on one pooled connection can get reused against a
+    # different underlying Postgres session, producing
+    # DuplicatePreparedStatementError / ProtocolViolationError under
+    # concurrent load (seen 2026-08-20 — every settings-table read
+    # started failing under real traffic). Disabling asyncpg's
+    # statement cache is the standard fix for this exact PgBouncer
+    # transaction-mode + asyncpg combination; it costs a small amount
+    # of per-query overhead (no server-side plan reuse) in exchange
+    # for correctness. See https://sqlalche.me/e/20/f405.
+    connect_args={"statement_cache_size": 0},
 )
 
 # Session factory — produces async sessions
