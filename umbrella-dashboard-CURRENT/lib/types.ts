@@ -236,3 +236,161 @@ export type PluginSandboxLimits = {
   memory_bytes: number;
   wall_timeout_seconds: number;
 };
+
+// Phase 14 — Players
+export type PlayerSchema = {
+  uuid: string;
+  username: string;
+  last_seen: string | null;
+  status: string | null;
+};
+
+export type PlayerDetailSchema = {
+  uuid: string;
+  username: string;
+  discord_id: string | null;
+  first_joined: string | null;
+  last_seen: string | null;
+  punishment_count: number;
+};
+
+// Phase 14 — Punishments
+export type PunishmentType = "BAN" | "TEMP_BAN" | "KICK" | "WARN" | "MUTE";
+
+export type PunishmentSchema = {
+  id: string;
+  player_uuid: string;
+  player_username?: string | null;
+  type: PunishmentType;
+  reason: string;
+  staff_id: string | null;
+  expires_at: string | null;
+  revoked: boolean;
+  created_at: string;
+};
+
+// Phase 14 — Moderation responses
+export type ModerationResponseSchema = {
+  success: boolean;
+  player_uuid: string;
+  action: string;
+  reason: string;
+  punishment_id?: string | null;
+};
+
+// Phase 14 — Appeals
+export type AppealStatus = "PENDING" | "ACCEPTED" | "REJECTED";
+
+export type AppealSchema = {
+  id: string;
+  player_uuid: string;
+  player_username?: string | null;
+  punishment_id: string | null;
+  reason: string;
+  status: AppealStatus;
+  staff_notes: string | null;
+  submitted_at: string;
+};
+
+// Phase 14 — AI Tasks
+export type AITask = {
+  id: string;
+  type: string;
+  target: string;
+  recommendation: string | null;
+  confidence: number | null;
+  status: string;
+  created_at: string;
+};
+
+export type AIConfigResponse = {
+  id: string;
+  request: string;
+  status: string;
+  result: string | null;
+  created_at: string;
+};
+
+// Phase 14 — Staff
+export type StaffMember = {
+  discord_id: string;
+  username: string;
+  current_role: string | null;
+};
+
+export type RoleSchema = {
+  id: string;
+  name: string;
+};
+
+// Phase 14 — Alt Detection
+export type FlaggedPlayerSchema = {
+  uuid: string;
+  username: string;
+  suspicion_score: number;
+  flags_count: number;
+};
+
+export type AltGroupSchema = {
+  id: string;
+  members: string[];
+  confidence: number;
+};
+
+// Phase 14 — Security
+export type SecurityEvent = {
+  id: string;
+  timestamp: string;
+  event_type: string;
+  actor: string | null;
+  target: string | null;
+  severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+};
+
+// Phase 14 — Feature Flags
+export type FeatureFlagResponse = {
+  name: string;
+  enabled: boolean;
+  created_at: string;
+};
+
+// Phase 14 — Translation
+export type PlayerLanguageResponse = {
+  player_uuid: string;
+  detected_language: string;
+  confidence: number;
+  updated_at: string;
+};
+
+export type TranslateResponse = {
+  original: string;
+  translated: string;
+  source_language: string;
+  target_language: string;
+};
+
+// Phase 14 — Observability logs
+export type LogEntry = {
+  id: string;
+  timestamp: string;
+  level: string;
+  logger_name: string;
+  message: string;
+  trace_id?: string | null;
+};
+
+export type LogSearchResult = {
+  entries: LogEntry[];
+};
+
+// Phase 14 — Knowledge
+export type KnowledgeEntry = {
+  id: string;
+  channel_name: string;
+  content: string;
+  timestamp: string;
+};
+
+export type KnowledgeSearchResult = {
+  entries: KnowledgeEntry[];
+};
