@@ -55,7 +55,7 @@ export default async function ActivityPage({
 
   return (
     <div className="space-y-4">
-      <h1 className="text-lg font-semibold">Activity</h1>
+      <div className="rounded-2xl border border-border bg-card/80 px-5 py-5"><p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-primary">UmbrellaOS / Audit trail</p><h1 className="mt-2 text-3xl font-semibold tracking-[-0.04em]">Activity</h1><p className="mt-2 text-sm leading-6 text-muted-foreground">A chronological view of changes and events across your network.</p></div>
       {!canView || !result ? (
         <p className="text-sm opacity-60">You don&apos;t have permission to view the audit log.</p>
       ) : (

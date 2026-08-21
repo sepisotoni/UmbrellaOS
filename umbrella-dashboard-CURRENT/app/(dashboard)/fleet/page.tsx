@@ -33,7 +33,7 @@ export default async function FleetPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-lg font-semibold">Fleet</h1>
+      <div className="rounded-2xl border border-border bg-card/80 px-5 py-5"><p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-primary">UmbrellaOS / Infrastructure</p><h1 className="mt-2 text-3xl font-semibold tracking-[-0.04em]">Fleet overview</h1><p className="mt-2 text-sm leading-6 text-muted-foreground">Monitor nodes, capacity, and server health from one operational surface.</p></div>
       {!canView ? (
         <p className="text-sm opacity-60">
           You don&apos;t have permission to view hosted server state.

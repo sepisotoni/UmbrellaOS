@@ -36,7 +36,7 @@ export default async function SettingsPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-lg font-semibold">Settings</h1>
+      <div className="rounded-2xl border border-border bg-card/80 px-5 py-5"><p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-primary">UmbrellaOS / Configuration</p><h1 className="mt-2 text-3xl font-semibold tracking-[-0.04em]">Settings</h1><p className="mt-2 text-sm leading-6 text-muted-foreground">Tune installed extensions without leaving the control room.</p></div>
       {withValues.length === 0 ? (
         <p className="text-sm opacity-60">
           No installed plugins have dashboard-configurable settings yet.

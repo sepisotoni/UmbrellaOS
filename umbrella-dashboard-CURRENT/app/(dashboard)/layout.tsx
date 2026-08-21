@@ -22,7 +22,7 @@ export default async function DashboardShellLayout({
       <Sidebar permissions={session.user.permissions} token={session.token} />
       <div className="flex flex-1 flex-col">
         <Topbar user={session.user} />
-        <main className="flex-1 p-6">{children}</main>
+        <main className="min-w-0 flex-1 bg-[radial-gradient(ellipse_at_top_right,color-mix(in_oklab,var(--primary)_7%,transparent),transparent_45%)] p-4 md:p-6">{children}</main>
       </div>
       {/* Mounted once for the whole authenticated shell, not per-page — it
           reads its own query results from same-origin /api/search, so it

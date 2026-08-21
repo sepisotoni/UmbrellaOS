@@ -32,7 +32,7 @@ export default async function MarketplacePage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-lg font-semibold">Marketplace</h1>
+      <div className="rounded-2xl border border-border bg-card/80 px-5 py-5"><p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-primary">UmbrellaOS / Extensions</p><h1 className="mt-2 text-3xl font-semibold tracking-[-0.04em]">Marketplace</h1><p className="mt-2 text-sm leading-6 text-muted-foreground">Extend your control room with trusted operational tools.</p></div>
       {listings.length === 0 ? (
         <p className="text-sm opacity-60">
           No plugins are currently published to the marketplace catalog.
