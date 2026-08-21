@@ -15,7 +15,28 @@ import { NextRequest, NextResponse } from "next/server";
 // runtime coupling.
 const SESSION_COOKIE = "umbrella_session";
 
-const PROTECTED_PREFIXES = ["/dashboard", "/marketplace", "/topology"];
+const PROTECTED_PREFIXES = [
+  "/dashboard",
+  "/marketplace",
+  "/topology",
+  "/activity",
+  "/fleet",
+  "/settings",
+  "/plugin-sandbox",
+  "/players",
+  "/moderation",
+  "/appeals",
+  "/ai-tasks",
+  "/staff",
+  "/analytics",
+  "/alt-detection",
+  "/security",
+  "/feature-flags",
+  "/translation",
+  "/observability",
+  "/knowledge",
+  "/access-denied",
+];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -32,5 +53,26 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/marketplace/:path*", "/topology/:path*"],
+  matcher: [
+    "/dashboard/:path*",
+    "/marketplace/:path*",
+    "/topology/:path*",
+    "/activity/:path*",
+    "/fleet/:path*",
+    "/settings/:path*",
+    "/plugin-sandbox/:path*",
+    "/players/:path*",
+    "/moderation/:path*",
+    "/appeals/:path*",
+    "/ai-tasks/:path*",
+    "/staff/:path*",
+    "/analytics/:path*",
+    "/alt-detection/:path*",
+    "/security/:path*",
+    "/feature-flags/:path*",
+    "/translation/:path*",
+    "/observability/:path*",
+    "/knowledge/:path*",
+    "/access-denied/:path*",
+  ],
 };
