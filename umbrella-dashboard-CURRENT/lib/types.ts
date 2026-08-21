@@ -1,238 +1,384 @@
-// lib/types.ts — types mirroring umbrella-core's real response shapes.
-//
-// `User` / `Session` mirror api/routers/auth.py::UserSchema.
-// `DashboardSlot` mirrors capabilities/marketplace.py::DashboardSlotResult
-// as LIVE-VERIFIED in step 0 (handback/STEP0-MARKETPLACE-SHAPE-VERIFICATION.md),
-// not as DASHBOARD-PLUGIN-UI-SCOPING.md assumed — notably `capability_name`,
-// not `capability`, and `plugin_id` is present.
+// UmbrellaOS domain types — mirror the Umbrella Core REST API contracts.
 
-export type User = {
-  id: string;
-  discord_id: string;
-  username: string;
-  email: string | null;
-  role_id: string | null;
-  role: string | null;
-  permissions: string[];
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-};
+export type PlayerStatus = 'online' | 'offline'
 
-export type Session = {
-  token: string;
-  user: User;
-  expires_in: number;
-};
+export interface PlayerIP {
+  address: string
+  firstSeen: string
+  lastSeen: string
+  usageCount: number
+  flagged: boolean
+  country: string
+}
 
-// Tier 1 widget-shape vocabulary (Phase 10 Decision 1 / Decision 7).
-// "table" is reserved for Tier 3 (step 7) but included now since it's
-// already part of the locked vocabulary in the core schema.
-export type RenderAs = "stat_pair" | "status_badge" | "simple_list" | "table" | null;
+export interface Player {
+  uuid: string
+  username: string
+  status: PlayerStatus
+  riskScore: number
+  discordLinked: boolean
+  discordTag?: string
+  firstSeen: string
+  lastSeen: string
+  playtimeHours: number
+  joins: number
+  deaths: number
+  punishmentCount: number
+  knownIpCount: number
+  ips?: PlayerIP[]
+  currentServer?: string
+}
 
-export type DashboardSlotName = "sidebar.tools" | "sidebar.moderation" | "dashboard.widgets";
+export type PunishmentType = 'warn' | 'mute' | 'tempban' | 'ban'
+export type PunishmentStatus = 'active' | 'expired' | 'revoked' | 'appealed'
 
-export type DashboardSlot = {
-  plugin_id: string;
-  slot: DashboardSlotName;
-  label: string;
-  capability_name: string;
-  render_as: RenderAs;
-};
+export interface Punishment {
+  id: string
+  playerUuid: string
+  playerName: string
+  type: PunishmentType
+  reason: string
+  staff: string
+  createdAt: string
+  expiresAt: string | null
+  status: PunishmentStatus
+}
 
-export type PluginInstall = {
-  plugin_id: string;
-  installed_version: string;
-  registered_capability_names: string[];
-};
+export type AppealStatus = 'open' | 'accepted' | 'denied' | 'escalated'
 
-// Phase 10 step 6 — mirrors capabilities/dashboard_layout.py's
-// LayoutWidgetEntry / DashboardLayoutResult exactly. `widget_key` is the
-// same "{plugin_id}:{capability_name}" composite already used as the React
-// key in components/widgets/widget-grid.tsx (step 3) — no new identity
-// concept invented for matching a saved entry back to a live DashboardSlot.
-export type CustomizablePageId = "dashboard";
+export interface AppealMessage {
+  author: string
+  role: 'player' | 'staff'
+  message: string
+  at: string
+}
 
-export type LayoutWidgetEntry = {
-  widget_key: string;
-  visible: boolean;
-};
+export interface Appeal {
+  id: string
+  playerUuid: string
+  playerName: string
+  punishmentId: string
+  punishmentType: PunishmentType
+  reason: string
+  message: string
+  status: AppealStatus
+  createdAt: string
+  assignedTo?: string
+  staffNotes?: string
+  messages: AppealMessage[]
+}
 
-export type DashboardLayoutResult = {
-  page_id: string;
-  // null = no saved layout — caller falls back to the page's default
-  // arrangement (registration order, all visible). Distinct from an empty
-  // array, which is a saved layout with everything explicitly hidden.
-  widgets: LayoutWidgetEntry[] | null;
-};
+export type StaffRole = 'Owner' | 'Admin' | 'Moderator' | 'Helper'
 
-// Phase 10, Tier 3 — mirrors capabilities/marketplace.py's PageWidgetResult
-// / PageNavResult / PageLayoutResult exactly. A page widget is
-// structurally the same idea as DashboardSlot (label + render_as) minus
-// slot/plugin_id, which is why components/widgets/plugin-widget.tsx's
-// dispatcher accepts either via a shared minimal shape rather than two
-// parallel renderers.
-export type PageWidget = {
-  label: string;
-  capability_name: string;
-  render_as: RenderAs;
-};
+export interface StaffMember {
+  id: string
+  username: string
+  role: StaffRole
+  roleId?: string
+  joinedAt: string
+  lastActive: string
+  actionsThisWeek: number
+  status: PlayerStatus
+}
 
-export type PageNav = {
-  plugin_id: string;
-  nav_label: string;
-  nav_icon: string;
-};
+export interface RoleDefinition {
+  role: StaffRole
+  description: string
+  memberCount: number
+  permissions: string[]
+}
 
-export type PageLayout = {
-  plugin_id: string;
-  nav_label: string;
-  nav_icon: string;
-  widgets: PageWidget[];
-};
+export type PluginStatus = 'connected' | 'degraded' | 'disconnected'
 
-// Phase 10, Tier 2 (Decision 2, Option A) — mirrors
-// capabilities/marketplace.py's ConfigurablePluginResult and
-// services/plugins/registration.py's ConfigFieldValue/ConfigGetResult
-// exactly. Tier 2's starting scope is boolean-only (see registration.py's
-// _make_config_set_handler), so `value`/`type` are narrowed to boolean
-// here rather than the broader `unknown` PageWidget-style shapes use —
-// widen this if a future phase adds non-boolean config field types.
-export type ConfigurablePlugin = {
-  plugin_id: string;
-  plugin_name: string;
-  field_count: number;
-};
+export interface Plugin {
+  id: string
+  name: string
+  version: string
+  server: string
+  status: PluginStatus
+  heartbeatMs: number
+  lastSeen: string
+}
 
-export type ConfigFieldValue = {
-  key: string;
-  label: string;
-  type: "boolean";
-  value: boolean;
-};
+export type ServerStatus = 'online' | 'maintenance' | 'offline'
 
-export type ConfigGetResult = {
-  values: ConfigFieldValue[];
-};
+export interface MinecraftServer {
+  id: string
+  name: string
+  status: ServerStatus
+  tps: number
+  players: number
+  maxPlayers: number
+  ramUsedMb: number
+  ramTotalMb: number
+  cpu: number
+  version: string
+  pluginsConnected: number
+  pluginsTotal: number
+}
 
-// Phase 10 completion, Task A — mirrors capabilities/marketplace.py's
-// PluginListingResult / PluginVersionResult / PluginInstallResult exactly
-// (read the full result-model definitions there, not just field names,
-// before changing this). `PluginInstall` above already covers the
-// install-list shape (registered_capability_names included) — reused
-// here rather than duplicated.
-export type PluginListing = {
-  plugin_id: string;
-  name: string;
-  author: string;
-  description: string;
-  latest_version: string;
-};
+export type AuditCategory =
+  | 'moderation'
+  | 'staff'
+  | 'settings'
+  | 'plugin'
+  | 'server'
+  | 'auth'
+  | 'appeal'
 
-export type PluginVersion = {
-  plugin_id: string;
-  version: string;
-  sha256_hash: string;
-  published_at: string;
-};
+export interface AuditEntry {
+  id: string
+  timestamp: string
+  actor: string
+  actorRole: StaffRole
+  action: string
+  target: string
+  category: AuditCategory
+  ip: string
+}
 
-// Phase 10 closeout — mirrors capabilities/system.py's AuditEntryResult /
-// AuditSearchResult exactly (activity timeline). `details` is the raw
-// details_json string from the audit row — not rendered as-is in the
-// timeline (kept human-readable per the dispatch), but the type carries
-// it in case a future "expand" affordance wants it.
-export type AuditEntry = {
-  id: string;
-  actor: string;
-  actor_type: string;
-  action: string;
-  target: string | null;
-  details: string;
-  created_at: string | null;
-};
+export interface TrendPoint {
+  label: string
+  value: number
+}
 
-export type AuditSearchResult = {
-  entries: AuditEntry[];
-  total: number;
-  limit: number;
-  offset: number;
-};
+export interface StatCard {
+  id: string
+  label: string
+  value: string
+  rawValue: number
+  changePct: number
+  trend: 'up' | 'down' | 'flat'
+  spark: number[]
+  intent?: 'default' | 'success' | 'warning' | 'danger'
+}
 
-// Phase 10 closeout — mirrors capabilities/hosting.py's NodeResult /
-// ServerResult / StatsResult exactly (fleet overview). `signing_secret`
-// deliberately omitted from HostingNode: it's only ever non-null on the
-// register_node response, never on hosting.node.list, and there's no
-// reason for a client-side type to carry a field that could tempt someone
-// into rendering it later.
-export type HostingNode = {
-  id: string;
-  name: string;
-  daemon_url: string;
-  status: string;
-  labels: Record<string, string>;
-};
+export interface ActivityPoint {
+  hour: string
+  joins: number
+  leaves: number
+  peak: number
+}
 
-export type HostingServer = {
-  id: string;
-  name: string;
-  node_id: string;
-  template_id: string;
-  template_version: number;
-  status: string;
-  memory_bytes: number;
-  cpu_cores: number;
-};
+export interface PunishmentPoint {
+  day: string
+  warns: number
+  mutes: number
+  tempbans: number
+  bans: number
+}
 
-export type ServerStats = {
-  timestamp: string;
-  cpu_percent: number;
-  memory_used_bytes: number;
-  memory_limit_bytes: number;
-  network_rx_bytes: number;
-  network_tx_bytes: number;
-};
+export interface AppealPoint {
+  day: string
+  open: number
+  accepted: number
+  denied: number
+}
 
-// Phase 8 completion — mirrors capabilities/plugin_sandbox.py's result
-// models exactly. `error_detail` deliberately absent from
-// PluginExecutionEntry (the list view, execution_history) — only
-// PluginExecutionDetail (the single-record view, execution_detail) has
-// it, matching the backend's own list/detail split (see that module's
-// docstring on why the list view omits it).
-export type PluginExecutionEntry = {
-  id: string;
-  plugin_id: string;
-  entrypoint: string;
-  actor_id: string;
-  outcome: string;
-  wall_time_ms: number;
-  cpu_time_ms: number | null;
-  peak_memory_bytes: number | null;
-  created_at: string | null;
-};
+export type SettingType = 'text' | 'number' | 'boolean' | 'secret' | 'select'
 
-export type PluginExecutionDetail = PluginExecutionEntry & {
-  error_detail: string | null;
-};
+export interface SettingItem {
+  key: string
+  label: string
+  description: string
+  type: SettingType
+  value: string | number | boolean
+  options?: string[]
+  restartRequired?: boolean
+}
 
-export type PluginExecutionHistoryResult = {
-  entries: PluginExecutionEntry[];
-  total: number;
-  limit: number;
-  offset: number;
-};
+export interface SettingsCategory {
+  id: string
+  label: string
+  items: SettingItem[]
+}
 
-export type PluginExecutionProfile = {
-  plugin_id: string;
-  execution_count: number;
-  avg_wall_time_ms: number;
-  p95_wall_time_ms: number;
-  avg_peak_memory_bytes: number | null;
-  error_rate: number;
-  window_hours: number;
-};
+export type HealthStatus = 'healthy' | 'degraded' | 'down'
 
-export type PluginSandboxLimits = {
-  cpu_seconds: number;
-  memory_bytes: number;
-  wall_timeout_seconds: number;
-};
+export interface HealthComponent {
+  id: string
+  label: string
+  status: HealthStatus
+  detail: string
+  latencyMs?: number
+}
+
+export interface SystemMetrics {
+  apiLatencyMs: number
+  memoryUsedPct: number
+  cpuPct: number
+  diskPct: number
+  connections: number
+  components: HealthComponent[]
+  latencyHistory: TrendPoint[]
+}
+
+export interface DashboardData {
+  cards: StatCard[]
+  activity: ActivityPoint[]
+  punishments: PunishmentPoint[]
+  appeals: AppealPoint[]
+}
+
+export interface AnalyticsData {
+  playerGrowth: TrendPoint[]
+  retention: TrendPoint[]
+  punishmentFrequency: PunishmentPoint[]
+  appealSuccess: { name: string; value: number }[]
+  peakHours: TrendPoint[]
+  serverPerformance: { name: string; tps: number; cpu: number }[]
+  riskDistribution: { name: string; value: number }[]
+  topStaff: { name: string; actions: number }[]
+}
+
+export type BridgeMode = 'off' | 'partial' | 'full'
+
+export interface BridgeSettings {
+  mode: BridgeMode
+  mc_to_discord: boolean
+  discord_to_mc: boolean
+  show_avatars: boolean
+  discord_channel_id: string
+}
+
+export interface VerificationCode {
+  id: number
+  player_uuid: string
+  player_username: string
+  code: string
+  created_at: string
+  expires_at: string
+  used: boolean
+  ip_address: string | null
+}
+
+export interface VerificationStatus {
+  verified: boolean
+  discord_id?: string
+  discord_username?: string
+}
+
+export interface SuspicionEvent {
+  id: number
+  player_uuid: string
+  trigger: string
+  points: number
+  metadata_json: string | null
+  created_at: string
+  reviewed: boolean
+  reviewed_by: string | null
+  false_positive: boolean
+}
+
+export interface AltGroup {
+  id: number
+  created_at: string
+  notes: string | null
+  confirmed: boolean
+}
+
+export interface AltGroupMember {
+  id: number
+  group_id: number
+  player_uuid: string
+  added_at: string
+  added_by: string | null
+}
+
+export interface FlaggedPlayer {
+  uuid: string
+  username: string
+  suspicion_score: number
+  first_seen: string
+}
+
+export interface AnalyticsEvent {
+  id: string
+  event_type: string
+  minecraft_uuid: string | null
+  data_json: string | null
+  created_at: string
+}
+
+export interface PlayerStat {
+  metric: string
+  value: number
+  period: string
+  period_start: string
+  updated_at: string
+}
+
+export interface ServerSummary {
+  joins: number
+  leaves: number
+  deaths: number
+  kills: number
+  chat_volume: number
+  playtime_seconds: number
+}
+
+export interface AnalyticsEventsResponse {
+  events: AnalyticsEvent[]
+}
+
+export interface ReplaySession {
+  id: string
+  trigger: string
+  triggered_by: string
+  minecraft_uuid: string
+  started_at: string
+  incident_at: string
+  ended_at: string | null
+  event_count: number
+  created_at: string
+  notes: string | null
+}
+
+export interface ReplayEvent {
+  id: string
+  replay_id: string
+  minecraft_uuid: string
+  event_type: string
+  event_data_json: string
+  timestamp: string
+  world: string | null
+}
+
+export interface PlayerSnapshot {
+  id: string
+  minecraft_uuid: string
+  timestamp: string
+  trigger: string
+  health: number | null
+  food: number | null
+  xp: number | null
+  inventory_json: string | null
+  armor_json: string | null
+  offhand_json: string | null
+  x: number | null
+  y: number | null
+  z: number | null
+  yaw: number | null
+  pitch: number | null
+  world: string | null
+  dimension: string | null
+  replay_id: string | null
+}
+
+export type AITaskStatus = "pending" | "approved" | "denied" | "expired"
+
+export interface AITask {
+  id: number
+  task_type: string
+  status: AITaskStatus
+  player_uuid: string | null
+  created_at: string
+  expires_at: string
+  ai_summary: string
+  ai_recommendation: string
+  ai_confidence: number
+  evidence: string | null
+  reviewed_by: string | null
+  reviewed_at: string | null
+  action_taken: string | null
+}

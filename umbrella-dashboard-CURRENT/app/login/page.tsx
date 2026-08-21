@@ -1,24 +1,97 @@
-import { getSession } from "@/lib/session";
-import { redirect } from "next/navigation";
-import { LoginButton } from "./login-button";
+'use client'
 
-export default async function LoginPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ next?: string }>;
-}) {
-  const session = await getSession();
-  if (session) redirect("/dashboard");
+import { Suspense, useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { Button } from '@/components/ui/button'
+import { API_V1 } from '@/lib/api-config'
 
-  const { next } = await searchParams;
+function LoginContent() {
+  const searchParams = useSearchParams()
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const code = searchParams.get('code')
+    const state = searchParams.get('state')
+    if (code && state) handleCallback(code, state)
+  }, [searchParams])
+
+  const handleLogin = async () => {
+    setIsLoading(true)
+    setError(null)
+    if (!API_V1) {
+      setError('NEXT_PUBLIC_UMBRELLA_API_URL is not set in .env.local')
+      setIsLoading(false)
+      return
+    }
+    try {
+      const redirectUri = window.location.origin + '/login'
+      const response = await fetch(`${API_V1}/auth/discord/authorize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ redirect_uri: redirectUri }),
+      })
+      if (!response.ok) {
+        const text = await response.text().catch(() => '')
+        throw new Error(`Failed to initiate OAuth (${response.status}): ${text}`)
+      }
+      const data = await response.json()
+      window.location.href = data.authorize_url
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Login failed')
+      setIsLoading(false)
+    }
+  }
+
+  const handleCallback = async (code: string, state: string) => {
+    setIsLoading(true)
+    setError(null)
+    try {
+      const redirectUri = window.location.origin + '/login'
+      const response = await fetch(`${API_V1}/auth/discord/callback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, state, redirect_uri: redirectUri }),
+      })
+      if (!response.ok) {
+        const text = await response.text().catch(() => '')
+        throw new Error(`OAuth callback failed (${response.status}): ${text}`)
+      }
+      const data = await response.json()
+      localStorage.setItem('umbrella_token', data.token)
+      window.location.href = '/'
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Login failed')
+      setIsLoading(false)
+    }
+  }
 
   return (
-    <main className="flex min-h-screen items-center justify-center">
-      <div className="flex flex-col items-center gap-4 rounded-lg border border-[var(--border)] p-10">
-        <h1 className="text-xl font-semibold">UmbrellaOS</h1>
-        <p className="text-sm opacity-70">Sign in with Discord to continue.</p>
-        <LoginButton nextPath={next ?? "/dashboard"} />
+    <div className="flex min-h-screen items-center justify-center">
+      <div className="w-full max-w-md space-y-8 p-8">
+        <div className="text-center">
+          <h1 className="text-3xl font-bold">UmbrellaOS</h1>
+          <p className="mt-2 text-muted-foreground">Sign in to access the dashboard</p>
+        </div>
+        <div className="space-y-4">
+          <Button onClick={handleLogin} disabled={isLoading} className="w-full" size="lg">
+            {isLoading ? 'Connecting...' : 'Login with Discord'}
+          </Button>
+          {error && (
+            <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-center text-sm text-destructive">
+              {error}
+            </div>
+          )}
+        </div>
       </div>
-    </main>
-  );
+    </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center text-muted-foreground">Loading…</div>}>
+      <LoginContent />
+    </Suspense>
+  )
 }
