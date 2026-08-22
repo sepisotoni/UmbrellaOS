@@ -190,3 +190,17 @@ Keys to make configurable (at minimum):
 - `verification.nickname_format` — format for the Discord nickname set on verify (e.g. `{minecraft_username}` or `{minecraft_username} | {server}`)
 
 Dashboard Settings page should have a "Verification Messages" section where staff can edit these without touching code or redeploying.
+
+---
+
+## Important Constraint — AI is On-Demand Only
+
+The AI must NEVER run automatically in the background. No scheduled AI scans, no auto-flagging, no autonomous decisions.
+
+AI only activates when a staff member explicitly clicks:
+- "AI Review" on a player profile
+- "AI Review" on an appeal
+- "AI Crash Analysis" on a server
+- The copilot send button
+
+This applies to all phases. The AI is a staff tool, not an autonomous system.
