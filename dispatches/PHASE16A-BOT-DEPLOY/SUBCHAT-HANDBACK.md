@@ -71,3 +71,27 @@ All 11 cogs loaded, slash commands synced globally, umbrella-core calls returnin
 - No further action needed — bot is running and healthy
 - `STAFF_ALERT_CHANNEL_ID` is set so escalation notifications will post to the configured channel
 - Diagnostic note: future sub-chats should clone repo into `/workspaces` or `/tmp` fresh rather than relying on stale codespace working tree
+
+---
+
+## Ideas for Phase 16B (discussed with sub-chat, needs head chat decision)
+
+### 1. PBKDF2 auth (replace plaintext admin key on the wire)
+
+Currently the bot sends the raw admin key as `X-Admin-Key`. Proposed: replace with PBKDF2-HMAC-SHA256 derived key — same KDF as WPA2. Both sides know the shared secret; bot derives `PBKDF2(secret, salt, iterations)` and sends the result, core verifies by deriving the same value. Raw key never travels over the wire. Replay protection via timestamp in the salt or a separate nonce header.
+
+Scope: change in `umbrella_core_client.py` (bot side) and `api/middleware/auth.py` / `api/middleware/api_key_auth.py` (core side).
+
+### 2. Bidirectional core ↔ bot communication (replace polling with push)
+
+Currently the bot polls core every few minutes for staff escalations. Proposed:
+
+**Bot registration:** on startup the bot POSTs its own callback URL to a new core endpoint (e.g. `POST /api/v1/bot/register`). Core stores the URL. If the stored URL already matches, do nothing; if it changed (new HeavenCloud IP/port), overwrite it.
+
+**Core push:** when events fire (staff escalations, punishments, player flags, verifications, etc.) core POSTs to the stored bot callback URL instead of waiting for a poll.
+
+**Bot HTTP server:** bot gets a small aiohttp listener (aiohttp already in deps) on a configurable port (e.g. 8080, set via `BOT_CALLBACK_PORT` env var). HeavenCloud would need that port opened/forwarded.
+
+**What events to push:** TBD — at minimum staff escalations (replacing the current poll), potentially punishments issued, anticheat flags, verification completions.
+
+Both ideas can be scoped independently. Needs head chat decision on priority and scope before implementation.
