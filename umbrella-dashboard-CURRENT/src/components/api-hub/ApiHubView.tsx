@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useDashboard } from '../../context/DashboardContext';
+import api from '../../lib/api';
 import { WebhookSubscription, ApiKeyRecord } from '../../types/dashboard';
 import { api } from '../../lib/api';
 import {
@@ -33,6 +34,21 @@ export const ApiHubView: React.FC<ApiHubViewProps> = ({ onOpenCreateApiKeyModal 
     backendBaseUrl,
     addToast
   } = useDashboard();
+
+  const [deletingWebhookId, setDeletingWebhookId] = useState<string | null>(null);
+
+  const handleDeleteWebhook = async (id: string, name: string) => {
+    setDeletingWebhookId(id);
+    try {
+      await api.deleteWebhook(id);
+      addToast('success', 'Webhook Deleted', `Webhook "${name}" removed.`);
+      // Context will re-fetch on next render cycle; force by triggering a re-fetch if available
+    } catch (err: any) {
+      addToast('error', 'Delete Failed', err?.message || `Could not delete webhook "${name}".`);
+    } finally {
+      setDeletingWebhookId(null);
+    }
+  };
 
   type Tab = 'endpoints' | 'webhooks' | 'apikeys';
   const [activeTab, setActiveTab] = useState<Tab>('endpoints');
@@ -269,13 +285,23 @@ export const ApiHubView: React.FC<ApiHubViewProps> = ({ onOpenCreateApiKeyModal 
 
                 <div className="flex items-center justify-between border-t border-slate-800 pt-3 text-xs">
                   <span className="text-slate-400 font-mono">24h Deliveries: <strong className="text-white">{wh.deliveries24h}</strong></span>
-                  <button
-                    onClick={() => testWebhook(wh.id)}
-                    className="flex items-center gap-1 text-cyan-400 hover:text-cyan-300 font-semibold cursor-pointer"
-                  >
-                    <Send className="h-3 w-3" />
-                    <span>Test Ping</span>
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => testWebhook(wh.id)}
+                      className="flex items-center gap-1 text-cyan-400 hover:text-cyan-300 font-semibold cursor-pointer"
+                    >
+                      <Send className="h-3 w-3" />
+                      <span>Test Ping</span>
+                    </button>
+                    <button
+                      onClick={() => handleDeleteWebhook(wh.id, wh.name)}
+                      disabled={deletingWebhookId === wh.id}
+                      className="flex items-center gap-1 text-slate-500 hover:text-rose-400 transition-colors disabled:opacity-50"
+                      title="Delete webhook"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
