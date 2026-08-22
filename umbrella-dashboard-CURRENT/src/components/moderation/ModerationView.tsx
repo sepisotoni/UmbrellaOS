@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useDashboard } from '../../context/DashboardContext';
 import { PunishmentRecord, GrimACViolation, AppealTicket } from '../../types/dashboard';
+import api from '../../lib/api';
 import {
   ShieldAlert,
   Search,
@@ -31,7 +32,6 @@ export const ModerationView: React.FC<ModerationViewProps> = ({ onOpenBanModal }
   const {
     punishments,
     pardonPunishment,
-    grimViolations,
     altClusters,
     banAltRing,
     appeals,
@@ -39,6 +39,29 @@ export const ModerationView: React.FC<ModerationViewProps> = ({ onOpenBanModal }
     players,
     addToast
   } = useDashboard();
+
+  // Real anticheat violations — fetched from backend
+  const [grimViolations, setGrimViolations] = useState<any[]>([]);
+  const [violationsLoading, setViolationsLoading] = useState(false);
+  const [violationsError, setViolationsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchViolations = async () => {
+      setViolationsLoading(true);
+      setViolationsError(null);
+      try {
+        const data = await api.getAnticheatViolations({ limit: 50 });
+        if (!cancelled) setGrimViolations(data);
+      } catch (err: any) {
+        if (!cancelled) setViolationsError(err?.message || 'Failed to load anticheat violations.');
+      } finally {
+        if (!cancelled) setViolationsLoading(false);
+      }
+    };
+    fetchViolations();
+    return () => { cancelled = true; };
+  }, []);
 
   type SubTab = 'punishments' | 'grimac' | 'alt-detection' | 'appeals';
   const [subTab, setSubTab] = useState<SubTab>('punishments');
@@ -310,7 +333,15 @@ export const ModerationView: React.FC<ModerationViewProps> = ({ onOpenBanModal }
           </div>
 
           <div className="space-y-3">
-            {grimViolations.length === 0 ? (
+            {violationsLoading ? (
+              <div className="p-8 rounded-xl border border-slate-800 bg-[#0c1017] text-center text-xs text-slate-400 font-mono animate-pulse">
+                Loading anticheat violations...
+              </div>
+            ) : violationsError ? (
+              <div className="p-6 rounded-xl border border-rose-500/30 bg-rose-950/10 text-xs text-rose-400 font-mono">
+                {violationsError}
+              </div>
+            ) : grimViolations.length === 0 ? (
               <div className="p-8 rounded-xl border border-slate-800 bg-[#0c1017] text-center text-xs text-slate-500 font-mono">
                 No active violation packets streamed. Anticheat reporting clear status.
               </div>
