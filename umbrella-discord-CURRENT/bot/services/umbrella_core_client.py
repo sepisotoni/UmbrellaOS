@@ -71,7 +71,7 @@ class UmbrellaCoreClient:
         exactly, so this is purely additive.
         """
         url = f"{self._base_url}/api/v1/capabilities/{capability_name}/invoke"
-        headers = {"X-Api-Key": self._api_key}
+        headers = {"X-Admin-Key": self._api_key}
         if discord_user_id is not None:
             headers["X-Discord-User-Id"] = discord_user_id
 
@@ -101,7 +101,7 @@ class UmbrellaCoreClient:
         useful for a cog building help text or validating a capability
         name exists before invoking it."""
         url = f"{self._base_url}/api/v1/capabilities"
-        headers = {"X-Api-Key": self._api_key}
+        headers = {"X-Admin-Key": self._api_key}
 
         try:
             async with httpx.AsyncClient(timeout=self._timeout, transport=self._transport) as client:
