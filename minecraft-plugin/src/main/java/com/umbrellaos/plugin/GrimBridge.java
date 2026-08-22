@@ -32,21 +32,32 @@ import java.util.logging.Logger;
  * {@code double}. Core's {@code handle_cheat_flag} takes {@code vl: int}.
  * We round (not truncate) per the dispatch doc: {@code Math.round(check.getViolations())}.
  * This preserves intent — a 1.9-VL flag is a 2, not a 1.
+ *
+ * <p><b>server_id (P15 Task 5):</b> The {@code server_id} field is read from
+ * {@code server.id} in {@code config.yml} (via the constructor) and included
+ * in every flag payload sent to core. This allows the dashboard's
+ * {@code GET /api/v1/anticheat/violations?server_id=...} filter to work
+ * when multiple Minecraft servers report to the same umbrella-core instance.
+ * Defaults to {@code "default"} when the config key is blank or absent.
  */
 public final class GrimBridge {
 
     private static final String FLAG_PATH = "/api/v1/anticheat/flag";
+    private static final String DEFAULT_SERVER_ID = "default";
 
     private final Plugin owningPlugin;
     private final CoreApiClient apiClient;
     private final Logger logger;
+    private final String serverId;
 
     private boolean registered = false;
 
-    public GrimBridge(Plugin owningPlugin, CoreApiClient apiClient) {
+    public GrimBridge(Plugin owningPlugin, CoreApiClient apiClient, String serverId) {
         this.owningPlugin = owningPlugin;
         this.apiClient = apiClient;
         this.logger = apiClient.logger();
+        // Normalise: blank/null config value → "default"
+        this.serverId = (serverId != null && !serverId.isBlank()) ? serverId : DEFAULT_SERVER_ID;
     }
 
     /**
@@ -81,7 +92,8 @@ public final class GrimBridge {
 
         registered = true;
         logger.info("[GrimBridge] Registered against GrimAC EventBus — "
-                + "flag events will be forwarded to " + FLAG_PATH);
+                + "flag events will be forwarded to " + FLAG_PATH
+                + " (server_id=" + serverId + ")");
     }
 
     /**
@@ -90,6 +102,14 @@ public final class GrimBridge {
      */
     public boolean isRegistered() {
         return registered;
+    }
+
+    /**
+     * Returns the server ID this bridge will include in flag payloads.
+     * Package-private for test assertions.
+     */
+    String getServerId() {
+        return serverId;
     }
 
     /**
@@ -104,7 +124,7 @@ public final class GrimBridge {
      */
     void reportFlag(UUID playerUuid, String playerName,
                     String checkName, String verbose, int vl) {
-        String body = buildFlagPayload(playerUuid, playerName, checkName, verbose, vl);
+        String body = buildFlagPayload(playerUuid, playerName, checkName, verbose, vl, serverId);
         try {
             HttpResponse<String> response = apiClient.post(FLAG_PATH, body);
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
@@ -126,25 +146,32 @@ public final class GrimBridge {
      * Package-private so tests can assert on it without making network calls.
      *
      * <p>Shape verified against {@code api/routers/anticheat.py} in
-     * umbrella-core — specifically {@code handle_cheat_flag}'s Pydantic
+     * umbrella-core — specifically {@code AnticheatFlagRequest}'s Pydantic
      * model. Using manual string-building here (same pattern as Step 1/2)
      * rather than a JSON library, because {@code verbose} is the only
      * potentially-untrusted string field and we escape it manually.
+     *
+     * <p>The {@code server_id} field was added in P15 Task 5. Old core
+     * versions (pre-P15) will simply ignore the unknown field — Pydantic
+     * silently discards extra keys by default.
      */
     static String buildFlagPayload(UUID playerUuid, String playerName,
-                                   String checkName, String verbose, int vl) {
+                                   String checkName, String verbose, int vl,
+                                   String serverId) {
         // Escape double-quotes in free-text fields so the JSON body stays valid
         // if GrimAC's verbose string contains them (it sometimes does).
         String safeName    = escapeJson(playerName);
         String safeCheck   = escapeJson(checkName);
         String safeVerbose = verbose != null ? escapeJson(verbose) : "";
+        String safeServerId = serverId != null ? escapeJson(serverId) : DEFAULT_SERVER_ID;
 
         return "{"
                 + "\"player_uuid\":\"" + playerUuid + "\","
                 + "\"player_name\":\"" + safeName + "\","
                 + "\"check_name\":\"" + safeCheck + "\","
                 + "\"verbose\":\"" + safeVerbose + "\","
-                + "\"vl\":" + vl
+                + "\"vl\":" + vl + ","
+                + "\"server_id\":\"" + safeServerId + "\""
                 + "}";
     }
 

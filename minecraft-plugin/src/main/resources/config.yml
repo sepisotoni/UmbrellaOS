@@ -26,7 +26,13 @@ commands:
   poll-interval-seconds: 5
 
 server:
-  # Sent as heartbeat's server_id. Leave blank to let core default it to
-  # "default" (matches the server-side default in HeartbeatRequest).
-  id: ""
+  # Unique identifier for this Minecraft server instance.
+  # Sent as server_id in:
+  #   - POST /api/v1/plugin/heartbeat  (identifies the server in the dashboard)
+  #   - POST /api/v1/anticheat/flag    (tags each GrimAC violation so the
+  #     dashboard's server_id filter on GET /api/v1/anticheat/violations works)
+  # When running multiple servers against one umbrella-core, give each a
+  # distinct value (e.g. "survival", "creative", "minigames").
+  # Leave blank to use "default" — fine for single-server setups.
+  id: "default"
   name: "Minecraft Server"

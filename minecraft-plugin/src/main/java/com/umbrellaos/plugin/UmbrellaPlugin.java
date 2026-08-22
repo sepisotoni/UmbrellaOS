@@ -54,7 +54,7 @@ public final class UmbrellaPlugin extends JavaPlugin {
         // GrimBridge: soft-dependency — register() checks isPluginEnabled("GrimAC")
         // internally and logs the outcome either way. No extra config needed; if
         // GrimAC is absent the bridge stays inactive and everything else runs normally.
-        grimBridge = new GrimBridge(this, apiClient);
+        grimBridge = new GrimBridge(this, apiClient, serverId);
         grimBridge.register();
 
         heartbeatManager.start(heartbeatIntervalSeconds);
