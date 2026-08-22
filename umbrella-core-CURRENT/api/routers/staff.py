@@ -109,3 +109,93 @@ async def discord_members(
         for m in members
         if not m["user"].get("bot")
     ]
+
+
+class StaffMemberSchema(BaseModel):
+    id: str
+    discord_id: str
+    username: str
+    discriminator: str
+    avatar_url: str | None
+    role: str | None
+    permissions: list[str]
+    email: str | None
+    linked_minecraft_uuid: str | None
+    linked_minecraft_username: str | None
+
+    class Config:
+        from_attributes = True
+
+
+@router.get("", response_model=list[StaffMemberSchema])
+async def list_staff(
+    db: AsyncSession = Depends(get_db),
+    _auth: User | str = Depends(require_permission("roles.manage")),
+) -> list[StaffMemberSchema]:
+    """List all staff users (users with a non-player role).
+
+    The dashboard calls GET /api/v1/staff to populate the staff directory.
+    Queries User rows with a role assigned, excluding the player role.
+    """
+    from models.discord import DiscordAccount
+
+    # Load users that have a role_id (unassigned users = players without a role)
+    result = await db.execute(
+        select(User)
+        .where(User.is_active == True, User.role_id.is_not(None))
+        .order_by(User.created_at.desc())
+    )
+    users = result.scalars().all()
+
+    if not users:
+        return []
+
+    # Bulk-load role data
+    role_ids = list({u.role_id for u in users if u.role_id})
+    roles_result = await db.execute(
+        select(Role)
+        .options(selectinload(Role.permissions))
+        .where(Role.id.in_(role_ids))
+    )
+    role_map: dict[str, Role] = {r.id: r for r in roles_result.scalars().all()}
+
+    # Bulk-load Discord accounts for MC uuid lookup
+    discord_ids = [u.discord_id for u in users]
+    da_result = await db.execute(
+        select(DiscordAccount).where(DiscordAccount.discord_id.in_(discord_ids))
+    )
+    discord_map: dict[str, DiscordAccount] = {
+        da.discord_id: da for da in da_result.scalars().all()
+    }
+
+    staff_members = []
+    for user in users:
+        role_obj = role_map.get(user.role_id) if user.role_id else None
+        role_name = role_obj.name if role_obj else None
+
+        # Exclude explicit player roles
+        if role_name and role_name.lower() == "player":
+            continue
+
+        # Merge role permissions + user's extra_permissions
+        permissions: list[str] = list(user.extra_permissions or [])
+        if role_obj and hasattr(role_obj, "permissions"):
+            permissions = sorted(
+                {p.permission_key for p in role_obj.permissions} | set(user.extra_permissions or [])
+            )
+
+        da = discord_map.get(user.discord_id)
+        staff_members.append(StaffMemberSchema(
+            id=user.id,
+            discord_id=user.discord_id,
+            username=user.username,
+            discriminator="0",  # Modern Discord accounts have no discriminator
+            avatar_url=None,
+            role=role_name,
+            permissions=permissions,
+            email=user.email,
+            linked_minecraft_uuid=da.player_uuid if da and da.verified else None,
+            linked_minecraft_username=None,  # would need Player lookup; skip for performance
+        ))
+
+    return staff_members
