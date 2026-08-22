@@ -70,6 +70,8 @@ from api.routers.metrics import router as metrics_router
 from api.routers.logs import router as logs_router
 from api.routers.security import router as security_router
 from api.routers.feature_flags import router as feature_flags_router
+from api.routers.webhooks_rest import router as webhooks_rest_router
+from api.routers.auth import keys_router as auth_keys_router
 
 settings = get_settings()
 
@@ -242,6 +244,8 @@ app.include_router(server_control_router)
 app.include_router(staff_router)
 app.include_router(capabilities_router)
 app.include_router(feature_flags_router)
+app.include_router(webhooks_rest_router)
+app.include_router(auth_keys_router)
 app.include_router(hosting_console_ws_router)
 
 

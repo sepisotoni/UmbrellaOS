@@ -28,7 +28,7 @@ from database import get_db
 from models import User, Session, DiscordOAuthPending
 from models.permissions import Role
 from api.middleware.auth import require_admin_key
-from api.dependencies.permissions import RoleChecker
+from api.dependencies.permissions import RoleChecker, require_permission
 from services import discord_service
 from services.discord_service import DiscordOAuthError
 from services.settings_service import SettingsService
@@ -424,3 +424,86 @@ async def get_current_user_endpoint(
         raise HTTPException(status_code=401, detail="Invalid or expired session")
 
     return await _user_to_schema(session.user, db)
+
+
+# ---------------------------------------------------------------------------
+# API Key management — REST facades over the identity.apikey.* capabilities
+# (Task 7, P14 backend fixes). Dashboard APIHub calls GET/POST/DELETE
+# /api/v1/auth/keys; the actual CRUD lives in ApiKeyService.
+# ---------------------------------------------------------------------------
+
+from models.api_key import ApiKey
+from services.api_key_service import ApiKeyService
+
+
+class ApiKeySchema(BaseModel):
+    id: str
+    name: str
+    key_prefix: str
+    permissions: list[str]
+    revoked: bool
+    created_at: datetime
+    last_used_at: datetime | None
+    expires_at: datetime | None
+    plaintext_key: str | None = None  # only on creation
+
+
+class CreateApiKeyRequest(BaseModel):
+    name: str
+    permissions: list[str] = []
+    expires_in_days: int | None = None
+
+
+keys_router = APIRouter(prefix="/api/v1/auth/keys", tags=["auth"])
+
+
+@keys_router.get("", response_model=list[ApiKeySchema])
+async def list_api_keys(
+    db: AsyncSession = Depends(get_db),
+    _auth=Depends(require_permission("identity.apikey.manage")),
+) -> list[ApiKeySchema]:
+    """List all API keys (never includes the plaintext value)."""
+    keys = await ApiKeyService.list_api_keys(db)
+    return [
+        ApiKeySchema(
+            id=k.id, name=k.name, key_prefix=k.key_prefix,
+            permissions=k.permissions, revoked=k.revoked,
+            created_at=k.created_at, last_used_at=k.last_used_at,
+            expires_at=k.expires_at,
+        )
+        for k in keys
+    ]
+
+
+@keys_router.post("", response_model=ApiKeySchema, status_code=201)
+async def create_api_key(
+    body: CreateApiKeyRequest,
+    db: AsyncSession = Depends(get_db),
+    _auth=Depends(require_permission("identity.apikey.manage")),
+) -> ApiKeySchema:
+    """Create a new scoped API key. The plaintext key is shown once."""
+    key, plaintext = await ApiKeyService.create_api_key(
+        db, body.name, body.permissions, created_by=None, expires_in_days=body.expires_in_days
+    )
+    await db.commit()
+    return ApiKeySchema(
+        id=key.id, name=key.name, key_prefix=key.key_prefix,
+        permissions=key.permissions, revoked=key.revoked,
+        created_at=key.created_at, last_used_at=key.last_used_at,
+        expires_at=key.expires_at, plaintext_key=plaintext,
+    )
+
+
+@keys_router.delete("/{key_id}")
+async def revoke_api_key(
+    key_id: str,
+    db: AsyncSession = Depends(get_db),
+    _auth=Depends(require_permission("identity.apikey.manage")),
+) -> dict:
+    """Revoke an API key by ID."""
+    try:
+        await ApiKeyService.revoke_api_key(db, key_id)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    await db.commit()
+    return {"revoked": True, "id": key_id}
