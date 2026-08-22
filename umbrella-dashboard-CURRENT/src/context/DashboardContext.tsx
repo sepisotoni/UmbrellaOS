@@ -259,10 +259,9 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return saved ? JSON.parse(saved) : EMPTY_SERVERS;
   });
 
-  const [nodes, setNodes] = useState<NodeInfrastructure[]>(() => {
-    const saved = localStorage.getItem('umb_nodes');
-    return saved ? JSON.parse(saved) : EMPTY_NODES;
-  });
+  // Nodes are derived from servers (each server reports its own metrics via plugin heartbeat)
+  // No physical node layer exists — the plugin pushes TPS/RAM/CPU to umbrella-core directly
+  const [nodes, setNodes] = useState<NodeInfrastructure[]>(EMPTY_NODES);
 
   const [players, setPlayers] = useState<PlayerRecord[]>(() => {
     const saved = localStorage.getItem('umb_players');
