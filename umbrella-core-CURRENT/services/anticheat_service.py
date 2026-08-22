@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from models import AITask, Player, Punishment, ReplaySession
+from models.anticheat_violation import AnticheatViolation
 from services.settings_service import SettingsService
 
 
@@ -74,6 +75,7 @@ async def handle_cheat_flag(
     check_name: str,
     verbose: str,
     vl: int = 0,
+    server_id: str | None = None,
 ) -> dict:
     """Process a Grim anticheat flag with severity tiers based on VL.
 
@@ -81,6 +83,11 @@ async def handle_cheat_flag(
       VL < anticheat.warn_vl_threshold  (default 10)  -> warn only
       VL < anticheat.kick_vl_threshold  (default 30)  -> kick
       VL >= anticheat.kick_vl_threshold                -> tempban
+
+    Now writes to both AnticheatViolation (new dedicated table) and AITask
+    (retained for backward-compatible audit history and tempban tracking).
+    The server_id parameter is forwarded from the plugin payload — may be
+    None for old plugin versions that pre-date the Task 5 update.
     """
     enabled = await _bool_setting(db, "anticheat.enabled", False)
     if not enabled:
@@ -133,6 +140,20 @@ async def handle_cheat_flag(
     db.add(replay)
     await db.flush()
 
+    # --- Write to dedicated AnticheatViolation table (P15 Task 3) ---
+    violation = AnticheatViolation(
+        player_uuid=player_uuid,
+        player_name=username or player_uuid,
+        server_id=server_id or None,
+        check_name=check_name,
+        verbose=verbose[:2000] if verbose else "",
+        vl=vl,
+        timestamp=datetime.now(timezone.utc),
+    )
+    db.add(violation)
+    await db.flush()
+
+    # --- Retain AITask write for audit history and tempban context ---
     task = AITask(
         task_type="anticheat_review",
         status="pending",
@@ -159,5 +180,6 @@ async def handle_cheat_flag(
         "username": username or player_uuid,
         "replay_id": replay.id,
         "ai_task_id": task.id,
+        "violation_id": violation.id,
         "notify_staff": True,      # always notify — plugin decides channel/method
     }
