@@ -22,12 +22,13 @@ router = APIRouter(prefix="/api/v1/bridge", tags=["bridge"])
 
 
 class BridgeMessageRequest(BaseModel):
-    source: str  # "minecraft" or "discord"
+    source: str = "DASHBOARD"  # "minecraft", "discord", or "DASHBOARD" (dashboard broadcast)
     player_uuid: str | None = None
     player_name: str | None = None
     discord_id: str | None = None
     message: str
     channel_id: str | None = None
+    scope: str | None = None  # optional scope from dashboard broadcastGlobalMessage()
 
 
 class BridgeMessageResponse(BaseModel):
@@ -79,9 +80,9 @@ async def receive_bridge_message(
     Receive a chat message from either MC plugin or Discord bot.
     Saves to ChatMessage table and determines if it should be forwarded.
     """
-    # Validate source
-    if body.source not in ("minecraft", "discord"):
-        raise HTTPException(status_code=400, detail="Invalid source. Must be 'minecraft' or 'discord'")
+    # Validate source — DASHBOARD is accepted from dashboard broadcast calls
+    if body.source not in ("minecraft", "discord", "DASHBOARD"):
+        raise HTTPException(status_code=400, detail="Invalid source. Must be 'minecraft', 'discord', or 'DASHBOARD'")
     
     # Validate that at least one identifier is provided
     if body.source == "minecraft" and not body.player_uuid:
