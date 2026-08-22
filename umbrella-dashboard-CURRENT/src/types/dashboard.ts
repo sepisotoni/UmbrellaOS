@@ -353,3 +353,101 @@ export interface AIEngineConfiguration {
   strictSafetyGuard: boolean;
   maxTokensPerQuery: number;
 }
+
+// ========================================================
+// Phase 15 — Player Profile, AI Review, Appeals Decision
+// ========================================================
+
+export interface PlayerDetail {
+  uuid: string;
+  username: string;
+  first_seen: string;
+  last_seen: string;
+  playtime: number; // seconds
+  current_server: string | null;
+  risk_score: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  suspicion_score: number;
+}
+
+export interface VerificationLink {
+  discord_id: string;
+  discord_username: string;
+  linked_at: string;
+  status: string;
+}
+
+export interface Punishment {
+  id: string;
+  type: string;
+  reason: string;
+  staff_name: string;
+  created_at: string;
+  expires_at: string | null;
+  status: string;
+  appeal_id?: string;
+}
+
+export interface AnticheatFlag {
+  check_name: string;
+  vl: number;
+  verbose: string;
+  timestamp: string;
+}
+
+export interface AltAccount {
+  uuid: string;
+  username: string;
+  confidence: number;
+  cluster_type: string;
+}
+
+export interface Appeal {
+  id: string;
+  punishment_id: string;
+  status: 'OPEN' | 'ACCEPTED' | 'REJECTED' | 'ESCALATED' | 'REVIEW_SCHEDULED' | 'PENDING' | 'AI_REVIEWED';
+  created_at: string;
+  action_taken: string | null;
+  handled_by: string | null;
+  ai_recommendation: string | null;
+  ai_review_status: 'COMPLETED' | 'FAILED' | 'PENDING' | null;
+  ai_result?: AIReviewResult | null;
+  case_summary?: string | null;
+  closed_at?: string | null;
+  // Appeal details
+  player_username?: string;
+  player_uuid?: string;
+  appeal_text?: string;
+  punishment?: Punishment | null;
+}
+
+export interface PlayerFullProfile {
+  player: PlayerDetail;
+  verification: VerificationLink | null;
+  punishment_history: Punishment[];
+  anticheat_history: {
+    total_flags: number;
+    by_check: Record<string, { count: number; avg_vl: number; max_vl: number }>;
+    timeline: AnticheatFlag[];
+  };
+  appeal_history: Appeal[];
+  alt_accounts: AltAccount[];
+}
+
+export interface AIReviewResult {
+  recommendation: 'ACCEPT' | 'REDUCE_SENTENCE' | 'REJECT' | 'ESCALATE' | 'SCHEDULE_REVIEW';
+  confidence: number;
+  reasoning: string;
+  punishment_context: string;
+  flag_summary: string | null;
+  risk_factors: string[];
+  mitigating_factors: string[];
+}
+
+export interface PlayerAIReview {
+  risk_level: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  confidence: number;
+  reasoning: string;
+  recommendation: 'MONITOR' | 'WARN' | 'TEMP_BAN' | 'PERMANENT_BAN' | 'FALSE_POSITIVE';
+  key_findings: string[];
+  mitigating_factors: string[];
+}
