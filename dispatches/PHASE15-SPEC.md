@@ -204,3 +204,31 @@ AI only activates when a staff member explicitly clicks:
 - The copilot send button
 
 This applies to all phases. The AI is a staff tool, not an autonomous system.
+
+---
+
+## AI Review Settings & Failure Handling
+
+### Toggleable from Settings
+
+The following AI review features must be individually toggleable from the dashboard Settings page:
+- `ai.review.enabled` — master toggle, disables all AI review buttons if off
+- `ai.review.appeals` — enable/disable AI review on appeals specifically
+- `ai.review.players` — enable/disable AI review on player profiles specifically
+- `ai.review.crashes` — enable/disable crash risk analysis specifically
+- `ai.copilot.enabled` — enable/disable the copilot chat
+
+If `ai.review.enabled` is off, all "AI Review" buttons are hidden or greyed out with a tooltip: "AI review is disabled — enable in Settings."
+
+### Failure Handling
+
+If an AI review fails (provider error, timeout, 503 from core):
+- Show a clear error state on the review result card: "AI review failed — [reason]"
+- Do NOT show a partial or fabricated result
+- Show a **"Re-review"** button that re-triggers the exact same review call
+- The appeal/player record stores `ai_review_status: "FAILED"` so staff can see at a glance which ones need attention
+- Staff can always proceed with a manual decision regardless of AI status — AI failure never blocks the workflow
+
+### Manual Override Always Available
+
+Even if AI review succeeds, staff are never forced to follow the recommendation. The action buttons (Accept/Reject/Escalate etc.) are always available regardless of AI status. The AI recommendation is advisory only — displayed prominently but never the only path forward.
