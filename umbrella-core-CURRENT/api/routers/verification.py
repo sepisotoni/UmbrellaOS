@@ -437,3 +437,71 @@ async def resolve_pending(
     db.add(audit)
     await db.flush()
     return {"resolved": True, "discord_id": account.discord_id}
+
+
+class VerificationLinkSchema(BaseModel):
+    id: int
+    discord_id: str
+    discord_username: str | None
+    minecraft_uuid: str | None
+    minecraft_username: str | None
+    linked_at: datetime | None
+    verified_by: str
+    status: str
+
+    class Config:
+        from_attributes = True
+
+
+@router.get("/links", response_model=list[VerificationLinkSchema])
+async def list_verification_links(
+    limit: int = Query(50, ge=1, le=200, description="Max records to return"),
+    offset: int = Query(0, ge=0, description="Pagination offset"),
+    db: AsyncSession = Depends(get_db),
+    _auth=Depends(require_permission("players.view")),
+) -> list[VerificationLinkSchema]:
+    """List all verified Discord<->Minecraft account links.
+
+    The dashboard's VerificationView calls this to populate the verified
+    links table. Queries DiscordAccount rows and enriches with player usernames.
+    """
+    from models import Player
+
+    result = await db.execute(
+        select(DiscordAccount)
+        .order_by(DiscordAccount.linked_at.desc().nulls_last())
+        .offset(offset)
+        .limit(limit)
+    )
+    accounts = result.scalars().all()
+
+    if not accounts:
+        return []
+
+    # Bulk-load player usernames
+    uuids = [a.player_uuid for a in accounts if a.player_uuid]
+    player_map: dict[str, str] = {}
+    if uuids:
+        pr = await db.execute(select(Player).where(Player.uuid.in_(uuids)))
+        for p in pr.scalars().all():
+            player_map[p.uuid] = p.username
+
+    links = []
+    for acct in accounts:
+        if acct.verified:
+            status = "VERIFIED"
+        else:
+            status = "PENDING_CODE"
+
+        links.append(VerificationLinkSchema(
+            id=acct.id,
+            discord_id=acct.discord_id,
+            discord_username=acct.discord_username,
+            minecraft_uuid=acct.player_uuid,
+            minecraft_username=player_map.get(acct.player_uuid) if acct.player_uuid else None,
+            linked_at=acct.linked_at,
+            verified_by="BOT_CODE",  # all current links are bot-code verified; manual adds via /manual-link
+            status=status,
+        ))
+
+    return links
