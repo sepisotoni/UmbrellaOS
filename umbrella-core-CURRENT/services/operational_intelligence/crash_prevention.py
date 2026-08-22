@@ -30,8 +30,9 @@ from services.operational_intelligence.metrics import recent_snapshots
 
 class CrashRiskLevel(str, enum.Enum):
     INSUFFICIENT_DATA = "insufficient_data"
-    NONE = "none"
-    WATCH = "watch"
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
     CRITICAL = "critical"
 
 
@@ -89,7 +90,7 @@ async def assess_crash_risk(db: AsyncSession, server_id: str) -> CrashRiskAssess
     if trending_down and current_tps < settings.crash_prevention_watch_tps:
         return CrashRiskAssessment(
             server_id=server_id,
-            risk_level=CrashRiskLevel.WATCH,
+            risk_level=CrashRiskLevel.MEDIUM,
             current_tps=current_tps,
             trend_delta=trend_delta,
             samples_analyzed=len(snapshots),
@@ -103,7 +104,7 @@ async def assess_crash_risk(db: AsyncSession, server_id: str) -> CrashRiskAssess
 
     return CrashRiskAssessment(
         server_id=server_id,
-        risk_level=CrashRiskLevel.NONE,
+        risk_level=CrashRiskLevel.LOW,
         current_tps=current_tps,
         trend_delta=trend_delta,
         samples_analyzed=len(snapshots),
