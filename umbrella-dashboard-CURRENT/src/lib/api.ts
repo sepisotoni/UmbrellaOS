@@ -891,6 +891,33 @@ class ApiClient {
       body: JSON.stringify(embed),
     });
   }
+  // ==========================================
+  // Phase 15 — Player Full Profile & Appeals Decision
+  // ==========================================
+  public async getPlayerFullProfile(uuid: string): Promise<any> {
+    return await this.request<any>(`/api/v1/players/${uuid}/full-profile`);
+  }
+
+  public async closeAppeal(id: string, action: string, staffNote?: string, newExpiry?: string): Promise<any> {
+    return await this.request<any>(`/api/v1/appeals/${id}/close`, {
+      method: 'POST',
+      body: JSON.stringify({
+        action,
+        ...(staffNote ? { staff_note: staffNote } : {}),
+        ...(newExpiry ? { new_expiry: newExpiry } : {}),
+      }),
+    });
+  }
+
+  public async reviewAppealAI(id: string): Promise<any> {
+    return await this.request<any>(`/api/v1/ai/review/appeal/${id}`, { method: 'POST' });
+  }
+
+  public async reviewPlayerFullAI(uuid: string): Promise<any> {
+    return await this.request<any>(`/api/v1/ai/review/player/${uuid}`, { method: 'POST' });
+  }
+
+
 }
 
 export const api = new ApiClient();
