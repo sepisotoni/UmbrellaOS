@@ -52,7 +52,6 @@ export const DiscordView: React.FC = () => {
   const { 
     servers, 
     players, 
-    grimViolations, 
     currentUser, 
     addToast 
   } = useDashboard();
@@ -60,56 +59,42 @@ export const DiscordView: React.FC = () => {
   type TabType = 'bridge' | 'embed-builder' | 'commands' | 'webhooks' | 'status';
   const [activeSubTab, setActiveSubTab] = useState<TabType>('bridge');
 
-  // Live Chat Bridge State - dynamically seeded with live network data
+  // Live Chat Bridge State
   const [selectedChannel, setSelectedChannel] = useState<'#global-chat' | '#staff-chat' | '#donator-chat'>('#global-chat');
   const [chatInput, setChatInput] = useState('');
   const [chatMessages, setChatMessages] = useState<DiscordMessage[]>([]);
+  const [bridgeLoading, setBridgeLoading] = useState(false);
 
-  // Seed live initial messages from active players and grim violations
+  // Fetch real bridge messages from backend
   useEffect(() => {
-    const initialMsgs: DiscordMessage[] = [];
-    const onlineList = players.filter(p => p.online);
-    
-    if (onlineList.length > 0) {
-      initialMsgs.push({
-        id: 'msg-seed-1',
-        sender: onlineList[0].username,
-        avatarUrl: onlineList[0].avatarUrl,
-        source: 'MINECRAFT',
-        serverName: onlineList[0].server || servers[0]?.name || 'Survival',
-        channel: '#global-chat',
-        content: `Connected to ${onlineList[0].server || 'Survival'} • Latency: ${onlineList[0].ping}ms`,
-        timestamp: new Date(Date.now() - 1000 * 60 * 3).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        roleColor: 'text-emerald-400'
-      });
-    }
-
-    if (grimViolations.length > 0) {
-      const topViolation = grimViolations[0];
-      initialMsgs.push({
-        id: 'msg-seed-2',
-        sender: 'GrimAC Watchdog',
-        source: 'SYSTEM',
-        serverName: topViolation.server,
-        channel: '#staff-chat',
-        content: `Auto-mitigated [${topViolation.checkName}] flag for ${topViolation.playerName} @ ${topViolation.server} (${topViolation.details})`,
-        timestamp: topViolation.timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        roleColor: 'text-rose-400'
-      });
-    }
-
-    initialMsgs.push({
-      id: 'msg-seed-3',
-      sender: 'UmbrellaBot (Bridge)',
-      source: 'DISCORD',
-      channel: '#global-chat',
-      content: `Bridge active across ${servers.length} nodes with ${onlineList.length} players online.`,
-      timestamp: new Date(Date.now() - 1000 * 30).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      roleColor: 'text-[#5865F2]'
-    });
-
-    setChatMessages(initialMsgs);
-  }, [players, grimViolations, servers]);
+    if (activeSubTab !== 'bridge') return;
+    let cancelled = false;
+    const fetchBridge = async () => {
+      setBridgeLoading(true);
+      try {
+        const data = await api.getBridgeMessages({ limit: 50 });
+        if (!cancelled && Array.isArray(data) && data.length > 0) {
+          setChatMessages(data.map((m: any) => ({
+            id: m.id || `msg-${Date.now()}-${Math.random()}`,
+            sender: m.sender || m.username || 'Unknown',
+            avatarUrl: m.avatar_url || m.avatarUrl,
+            source: m.source || (m.platform === 'minecraft' ? 'MINECRAFT' : 'DISCORD'),
+            serverName: m.server_name || m.serverName || '',
+            channel: m.channel || '#global-chat',
+            content: m.content || m.message || '',
+            timestamp: m.timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            roleColor: m.source === 'SYSTEM' ? 'text-rose-400' : m.source === 'DISCORD' ? 'text-[#5865F2]' : 'text-emerald-400',
+          })));
+        }
+      } catch {
+        // endpoint may not be live yet — leave messages empty
+      } finally {
+        if (!cancelled) setBridgeLoading(false);
+      }
+    };
+    fetchBridge();
+    return () => { cancelled = true; };
+  }, [activeSubTab]);
 
   // Embed Builder State
   const [embedTitle, setEmbedTitle] = useState('🚨 Scheduled Network Maintenance & Update');
@@ -398,7 +383,11 @@ export const DiscordView: React.FC = () => {
 
             {/* Chat Stream Message Area */}
             <div className="flex-1 overflow-y-auto p-4 space-y-3 font-sans text-xs">
-              {chatMessages.map(msg => {
+              {bridgeLoading ? (
+                <div className="text-center text-slate-500 font-mono text-xs animate-pulse py-8">Loading bridge messages...</div>
+              ) : chatMessages.length === 0 ? (
+                <div className="text-center text-slate-600 font-mono text-xs py-8">No bridge messages yet.</div>
+              ) : chatMessages.map(msg => {
                 const isDiscord = msg.source === 'DISCORD';
                 const isSystem = msg.source === 'SYSTEM';
 
