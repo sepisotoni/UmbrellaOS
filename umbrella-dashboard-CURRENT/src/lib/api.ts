@@ -376,7 +376,7 @@ class ApiClient {
 
   public async revokePunishment(punishmentId: string, reason?: string): Promise<{ success: boolean }> {
     return await this.request(`/api/v1/punishments/${punishmentId}/revoke`, {
-      method: 'PATCH',
+      method: 'POST',
       body: JSON.stringify({ reason: reason || 'Staff pardon via dashboard' }),
     });
   }
@@ -437,10 +437,14 @@ class ApiClient {
     });
   }
 
-  public async translateText(payload: { text: string; targetLang: string }): Promise<{ translated: string }> {
+  public async translateText(payload: { text: string; targetLang: string; player_uuid?: string }): Promise<{ translated: string }> {
     return await this.request<{ translated: string }>('/api/v1/translation/translate', {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        text: payload.text,
+        target_language: payload.targetLang,
+        ...(payload.player_uuid ? { player_uuid: payload.player_uuid } : {}),
+      }),
     });
   }
 
@@ -451,8 +455,11 @@ class ApiClient {
     });
   }
 
-  public async approveAITask(taskId: string): Promise<{ success: boolean }> {
-    return await this.request(`/api/v1/ai/tasks/${taskId}/approve`, { method: 'POST' });
+  public async approveAITask(taskId: string, reviewedBy: string = 'staff'): Promise<{ success: boolean }> {
+    return await this.request(`/api/v1/ai/tasks/${taskId}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ action_taken: 'APPROVED', reviewed_by: reviewedBy }),
+    });
   }
 
   public async denyAITask(taskId: string): Promise<{ success: boolean }> {
@@ -519,9 +526,9 @@ class ApiClient {
   }
 
   public async updateFeatureFlag(name: string, enabled: boolean): Promise<{ success: boolean }> {
-    return await this.request(`/api/v1/feature-flags/${name}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ enabled }),
+    return await this.request(`/api/v1/feature-flags`, {
+      method: 'POST',
+      body: JSON.stringify({ name, enabled }),
     });
   }
 
@@ -651,6 +658,16 @@ class ApiClient {
   // ==========================================
   // Anticheat Violations & Diagnostics
   // ==========================================
+  public async getAnticheatViolations(params?: { player_uuid?: string; server_id?: string; check_name?: string; limit?: number }): Promise<any[]> {
+    const query = new URLSearchParams();
+    if (params?.player_uuid) query.set('player_uuid', params.player_uuid);
+    if (params?.server_id) query.set('server_id', params.server_id);
+    if (params?.check_name) query.set('check_name', params.check_name);
+    if (params?.limit) query.set('limit', String(params.limit));
+    const path = `/api/v1/anticheat/violations${query.toString() ? `?${query.toString()}` : ''}`;
+    return await this.request<any[]>(path);
+  }
+
   public async getGrimViolations(limit: number = 50): Promise<any[]> {
     return await this.request<any[]>(`/api/v1/anticheat/violations?limit=${limit}`);
   }
@@ -744,14 +761,12 @@ class ApiClient {
         server: data.server,
         rank: data.rank
       };
-    } catch {
-      // Return structured response with Mojang avatar link
-      return {
-        found: true,
-        uuid: 'mojang-' + Math.random().toString(36).substring(2, 10),
-        username: usernameOrUuid.trim(),
-        avatarUrl: `https://mc-heads.net/avatar/${usernameOrUuid.trim()}/64`
-      };
+    } catch (err: any) {
+      throw new ApiError(
+        err?.message || `Player "${usernameOrUuid.trim()}" not found or lookup endpoint unavailable.`,
+        err?.status ?? 0,
+        err
+      );
     }
   }
 
@@ -770,33 +785,86 @@ class ApiClient {
     quotaPercent: number;
     message: string;
   }> {
-    try {
-      const res = await this.request<any>('/api/v1/ai/providers/test', {
-        method: 'POST',
-        body: JSON.stringify({
-          provider: providerId,
-          api_key: apiKey,
-          base_url: baseUrl,
-          model: modelName
-        })
-      });
-      return {
-        success: true,
-        latencyMs: res.latency_ms || Math.floor(Math.random() * 120 + 40),
-        model: modelName || res.model || 'default',
-        quotaPercent: res.quota_percent ?? 95,
-        message: 'Endpoint verified & active with nominal response latency.'
-      };
-    } catch {
-      // Local verified fallback simulation
-      return {
-        success: true,
-        latencyMs: Math.floor(Math.random() * 120 + 40),
-        model: modelName || 'default',
-        quotaPercent: 95,
-        message: 'Provider reached and validated (simulated response).'
-      };
-    }
+    const res = await this.request<any>('/api/v1/ai/providers/test', {
+      method: 'POST',
+      body: JSON.stringify({
+        provider: providerId,
+        api_key: apiKey,
+        base_url: baseUrl,
+        model: modelName
+      })
+    });
+    return {
+      success: true,
+      latencyMs: res.latency_ms ?? 0,
+      model: res.model || modelName || 'default',
+      quotaPercent: res.quota_percent ?? 0,
+      message: res.message || 'Provider test complete.'
+    };
+  }
+
+  // ==========================================
+  // AI Copilot Chat (real backend)
+  // ==========================================
+  public async sendCopilotMessage(message: string, context?: string): Promise<{ response: string }> {
+    return await this.request<{ response: string }>('/api/v1/ai/copilot', {
+      method: 'POST',
+      body: JSON.stringify({ message, ...(context ? { context } : {}) }),
+    });
+  }
+
+  // ==========================================
+  // Crash Risk Assessment
+  // ==========================================
+  public async getCrashRisk(serverId: string): Promise<{
+    server_id: string;
+    server_name?: string;
+    risk_level: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+    tps_trend?: number[];
+    recommendation?: string;
+  }> {
+    return await this.request(`/api/v1/ai/crash-risk/${encodeURIComponent(serverId)}`);
+  }
+
+  // ==========================================
+  // Webhooks (CRUD)
+  // ==========================================
+  public async deleteWebhook(webhookId: string): Promise<{ success: boolean }> {
+    return await this.request(`/api/v1/webhooks/${webhookId}`, { method: 'DELETE' });
+  }
+
+  // ==========================================
+  // Bridge Messages & Settings
+  // ==========================================
+  public async getBridgeMessages(params?: { limit?: number; server_id?: string }): Promise<any[]> {
+    const query = new URLSearchParams();
+    if (params?.limit) query.set('limit', String(params.limit));
+    if (params?.server_id) query.set('server_id', params.server_id);
+    const path = `/api/v1/bridge/messages${query.toString() ? `?${query.toString()}` : ''}`;
+    return await this.request<any[]>(path);
+  }
+
+  public async getBridgeSettings(): Promise<any> {
+    return await this.request('/api/v1/bridge/settings');
+  }
+
+  public async updateBridgeSettings(settings: {
+    mc_to_discord?: boolean;
+    discord_to_mc?: boolean;
+    show_avatars?: boolean;
+    channel_id?: string;
+  }): Promise<{ success: boolean }> {
+    return await this.request('/api/v1/bridge/settings', {
+      method: 'PATCH',
+      body: JSON.stringify(settings),
+    });
+  }
+
+  // ==========================================
+  // Translation — Player Language Preferences
+  // ==========================================
+  public async getPlayerLanguages(): Promise<any[]> {
+    return await this.request<any[]>('/api/v1/translation/language/all');
   }
 
   // ==========================================

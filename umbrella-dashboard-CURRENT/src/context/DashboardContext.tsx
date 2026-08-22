@@ -915,25 +915,23 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setCopilotMessages(prev => [...prev, userMsg]);
 
     try {
-      const taskRes = await executeAITask('copilot', { prompt });
+      const res = await api.sendCopilotMessage(prompt);
       const assistantMsg: AICopilotMessage = {
         id: `copilot-res-${Date.now()}`,
         role: 'assistant',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        content: typeof taskRes.result === 'string' ? taskRes.result : (taskRes.result?.text || `Telemetric diagnostics complete for: "${prompt}". All nodes reporting nominal TPS (20.0).`),
-        actionPayload: prompt.toLowerCase().includes('restart') ? {
-          type: 'RESTART_SERVER',
-          label: 'Restart Degraded Nodes',
-          details: 'Dispatches safe rolling reboot across Paper/Purpur instances'
-        } : prompt.toLowerCase().includes('patch') || prompt.toLowerCase().includes('gc') ? {
-          type: 'AUTO_PATCH_CONFIG',
-          label: 'Auto-Apply Memory Tuning',
-          details: 'Applies ZGC concurrent collector flags to paper.yml'
-        } : undefined
+        content: res.response,
       };
       setCopilotMessages(prev => [...prev, assistantMsg]);
     } catch (err: any) {
-      addToast('error', 'Copilot Query Failed', err?.message || 'AI Copilot encountered an unhandled error.');
+      const errorMsg: AICopilotMessage = {
+        id: `copilot-err-${Date.now()}`,
+        role: 'assistant',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        content: 'Copilot unavailable — AI backend returned an error.',
+      };
+      setCopilotMessages(prev => [...prev, errorMsg]);
+      addToast('error', 'Copilot Unavailable', err?.message || 'AI backend returned an error.');
     }
   };
 
