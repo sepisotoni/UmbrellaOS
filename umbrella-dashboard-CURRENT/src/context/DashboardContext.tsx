@@ -425,7 +425,28 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       try {
         const backendServers = await api.getServers();
         if (Array.isArray(backendServers) && backendServers.length > 0) {
-          setServers(backendServers.map(adaptBackendServer));
+          const adaptedServers = backendServers.map(adaptBackendServer);
+          setServers(adaptedServers);
+          // Topology nodes derived from server heartbeat data — no separate infra layer
+          setNodes(adaptedServers.map(s => ({
+            id: s.id,
+            name: s.name,
+            region: s.location || 'Unknown',
+            ip: s.host || '—',
+            status: s.status === 'online' ? 'healthy' : s.status === 'restarting' ? 'degraded' : 'unreachable',
+            cpuCores: 0,
+            cpuUsage: s.cpuPercent,
+            ramGb: s.memoryMb / 1024,
+            ramTotalGb: s.maxMemoryMb / 1024,
+            diskUsageGb: 0,
+            diskTotalGb: 0,
+            networkInMbps: 0,
+            networkOutMbps: 0,
+            pingMs: 0,
+            runningContainers: 1,
+            daemonVersion: s.version || 'umbrella-core-bridge',
+            assignedServers: [s.id],
+          })));
         }
       } catch {
         // Servers fetch fallback
