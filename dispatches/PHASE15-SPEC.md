@@ -171,3 +171,22 @@ This is one phase (Phase 15) with three tracks that can be partially parallelise
 - The log filtering rules apply to ALL AI calls that read server logs, not just cheat review
 - `server_id` in anticheat flags requires a plugin update — coordinate with plugin phase
 - Appeal `SCHEDULE_REVIEW_CALL` action just sets a flag on the appeal — the actual scheduling is out of scope for now
+
+---
+
+## Additional Note — Configurable Verification Messages
+
+The messages the Discord bot sends during the verification flow (DM prompts, success messages, error messages) and the in-game messages the Minecraft plugin sends (e.g. "Check your DMs for a verification code") must be configurable from the dashboard — not hardcoded in the bot or plugin.
+
+These should be stored in the core settings table (already exists) and editable from the Settings page in the dashboard. The bot and plugin read them via `GET /api/v1/plugin/config` and `GET /api/v1/settings/{key}` respectively on startup and on reconnect.
+
+Keys to make configurable (at minimum):
+- `verification.dm_prompt` — the DM message asking the player to send their code
+- `verification.success_message` — sent in DM on successful link
+- `verification.error_already_linked` — if Discord already linked to another account
+- `verification.error_invalid_code` — if code is wrong/expired
+- `verification.ingame_prompt` — message shown in-game telling player to check their DMs
+- `verification.ingame_success` — message shown in-game on successful verification
+- `verification.nickname_format` — format for the Discord nickname set on verify (e.g. `{minecraft_username}` or `{minecraft_username} | {server}`)
+
+Dashboard Settings page should have a "Verification Messages" section where staff can edit these without touching code or redeploying.
