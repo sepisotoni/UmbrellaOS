@@ -84,6 +84,10 @@ class Punishment(Base):
     active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
     )
+    # status field for PARDONED etc.  Default "ACTIVE" for existing rows.
+    status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="ACTIVE", server_default="ACTIVE"
+    )
 
     player: Mapped["Player"] = relationship("Player", back_populates="punishments")
     appeals: Mapped[list["Appeal"]] = relationship(
@@ -106,11 +110,25 @@ class Appeal(Base):
     player_uuid: Mapped[str] = mapped_column(
         String(36), ForeignKey("players.uuid", ondelete="CASCADE"), nullable=False, index=True
     )
-    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
     message: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+    # --- P15 Task 2: Appeal close fields ---
+    # ACCEPT | REDUCE_SENTENCE | REJECT | ESCALATE | SCHEDULE_REVIEW
+    action_taken: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Staff username who closed the appeal
+    handled_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # Auto-generated case summary on close
+    case_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # When the appeal was closed
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # PENDING | COMPLETED | FAILED
+    ai_review_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # JSON blob of AI output
+    ai_review_result: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     punishment: Mapped["Punishment"] = relationship("Punishment", back_populates="appeals")
     player: Mapped["Player"] = relationship("Player", back_populates="appeals")
