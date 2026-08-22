@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { PlayerProfileView } from './PlayerProfileView';
 import { useDashboard } from '../../context/DashboardContext';
 import { PlayerRecord } from '../../types/dashboard';
 import { api } from '../../lib/api';
@@ -35,6 +36,7 @@ export const PlayersView: React.FC<PlayersViewProps> = ({ onQuickBan }) => {
   const [rankFilter, setRankFilter] = useState<string>('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ONLINE' | 'FLAGGED'>('ALL');
   const [selectedPlayer, setSelectedPlayer] = useState<PlayerRecord | null>(null);
+  const [profileTarget, setProfileTarget] = useState<{ uuid: string; username: string } | null>(null);
   const [aiReviewResult, setAiReviewResult] = useState<any | null>(null);
   const [isAiReviewing, setIsAiReviewing] = useState<boolean>(false);
 
@@ -296,8 +298,7 @@ export const PlayersView: React.FC<PlayersViewProps> = ({ onQuickBan }) => {
                     <td className="p-3.5 text-right">
                       <button
                         onClick={() => {
-                          setSelectedPlayer(p);
-                          setAiReviewResult(null);
+                          setProfileTarget({ uuid: p.uuid, username: p.username });
                         }}
                         className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-slate-800 hover:bg-cyan-950 hover:text-cyan-300 hover:border-cyan-500/40 text-slate-300 border border-slate-700 text-xs transition-colors"
                       >
@@ -448,6 +449,17 @@ export const PlayersView: React.FC<PlayersViewProps> = ({ onQuickBan }) => {
             </div>
           </div>
         </div>
+      )}
+    </div>
+
+      {/* Full Player Profile Modal (P15) */}
+      {profileTarget && (
+        <PlayerProfileView
+          uuid={profileTarget.uuid}
+          username={profileTarget.username}
+          onClose={() => setProfileTarget(null)}
+          onOpenBanModal={onQuickBan ? (name) => { onQuickBan(name); setProfileTarget(null); } : undefined}
+        />
       )}
     </div>
   );
