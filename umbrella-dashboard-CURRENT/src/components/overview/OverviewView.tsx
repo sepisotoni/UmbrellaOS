@@ -96,10 +96,10 @@ export const OverviewView: React.FC<OverviewViewProps> = ({ onOpenBanModal, onOp
           </div>
         </div>
 
-        {/* Cluster RAM */}
+        {/* Plugin-reported RAM */}
         <div className="rounded-xl border border-slate-800 bg-[#0c1017] p-3.5 flex flex-col justify-between">
           <div className="flex items-center justify-between text-slate-400 text-xs font-medium font-mono">
-            <span>Allocated RAM</span>
+            <span>Plugin RAM Usage</span>
             <HardDrive className="h-4 w-4 text-indigo-400" />
           </div>
           <div className="mt-2">
@@ -107,21 +107,21 @@ export const OverviewView: React.FC<OverviewViewProps> = ({ onOpenBanModal, onOp
               {(totalMemoryUsedMb / 1024).toFixed(1)} <span className="text-sm font-normal text-slate-400">GB</span>
             </div>
             <div className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5 font-mono">
-              <span>of {(totalMemoryMaxMb / 1024).toFixed(0)} GB Pool</span>
+              <span>of {(totalMemoryMaxMb / 1024).toFixed(0)} GB reported by plugins</span>
             </div>
           </div>
         </div>
 
-        {/* Active Nodes */}
+        {/* Servers with heartbeat */}
         <div className="rounded-xl border border-slate-800 bg-[#0c1017] p-3.5 flex flex-col justify-between">
           <div className="flex items-center justify-between text-slate-400 text-xs font-medium font-mono">
-            <span>Infrastructure</span>
+            <span>Servers Online</span>
             <Server className="h-4 w-4 text-emerald-400" />
           </div>
           <div className="mt-2">
-            <div className="text-2xl font-bold font-mono text-white tracking-tight">{servers.length} Servers</div>
+            <div className="text-2xl font-bold font-mono text-white tracking-tight">{servers.filter(s => s.status === 'online').length} / {servers.length}</div>
             <div className="text-[11px] text-emerald-400 flex items-center gap-1 mt-0.5 font-mono">
-              <span>100% Daemons Online</span>
+              <span>Heartbeat received ≤60s</span>
             </div>
           </div>
         </div>

@@ -88,7 +88,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({ onOpenCreateCron
             <h3 className="text-sm font-bold text-white font-display">Autonomous Self-Healing Policies</h3>
           </div>
           <span className="text-xs font-mono text-emerald-400 bg-emerald-950/40 border border-emerald-500/30 px-2 py-0.5 rounded">
-            Daemon Watchdog Active
+            Plugin Heartbeat Active
           </span>
         </div>
 

@@ -63,7 +63,7 @@ export const ApiHubView: React.FC<ApiHubViewProps> = ({ onOpenCreateApiKeyModal 
     { method: 'GET', path: '/api/v1/appeals', desc: 'Fetch pending ban appeals with AI sentiment scoring' },
     { method: 'GET', path: '/api/v1/alts/flagged', desc: 'Stream flagged alt account clusters and subnet bursts' },
     { method: 'GET', path: '/api/v1/logs?limit=10', desc: 'Query centralized cluster event logs' },
-    { method: 'GET', path: '/health', desc: 'Health check probe for database, redis, and daemon connectivity' }
+    { method: 'GET', path: '/health', desc: 'Health check probe for database, redis, and plugin heartbeat connectivity' }
   ];
 
   const handleExecuteApiTest = async () => {

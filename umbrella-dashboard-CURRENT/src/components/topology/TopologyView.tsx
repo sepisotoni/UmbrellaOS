@@ -37,8 +37,8 @@ export const TopologyView: React.FC = () => {
     addToast('warning', 'Node Drainage Initiated', `Gracefully evacuating players from ${nodeId} to standby proxy routes.`);
   };
 
-  const handleRestartDaemon = (nodeId: string) => {
-    addToast('info', 'Daemon Restarting', `UmbrellaDaemon on ${nodeId} is cycling IPC socket.`);
+  const handleRestartPlugin = (nodeId: string) => {
+    addToast('info', 'Plugin Restart Queued', `Umbrella plugin on ${nodeId} will reload on next heartbeat cycle.`);
   };
 
   return (
@@ -301,8 +301,8 @@ export const TopologyView: React.FC = () => {
                     </div>
 
                     <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-[10px] font-mono text-slate-400">
-                      <span>{node.daemonVersion}</span>
-                      <span className="text-slate-300 font-semibold">{node.assignedServers?.length || 0} Instances Bound</span>
+                      <span>Plugin: {node.daemonVersion || 'umbrella-core-bridge'}</span>
+                      <span className="text-slate-300 font-semibold">{node.assignedServers?.length || 0} Instances</span>
                     </div>
                   </div>
                 );
@@ -347,8 +347,8 @@ export const TopologyView: React.FC = () => {
                     <div className="text-white font-bold mt-0.5">{selectedNode.diskUsageGb} GB / {selectedNode.diskTotalGb} GB</div>
                   </div>
                   <div className="p-2.5 rounded-lg border border-slate-800 bg-slate-900/60">
-                    <div className="text-[10px] text-slate-500">IPC Daemon</div>
-                    <div className="text-emerald-400 font-bold mt-0.5">{selectedNode.daemonVersion || 'v3.2'}</div>
+                    <div className="text-[10px] text-slate-500">Plugin Version</div>
+                    <div className="text-emerald-400 font-bold mt-0.5">{selectedNode.daemonVersion || 'umbrella-core-bridge'}</div>
                   </div>
                 </div>
 
@@ -384,11 +384,11 @@ export const TopologyView: React.FC = () => {
                     <span>Drain & Migrate Players</span>
                   </button>
                   <button
-                    onClick={() => handleRestartDaemon(selectedNode.id)}
+                    onClick={() => handleRestartPlugin(selectedNode.id)}
                     className="w-full py-2 px-3 rounded-lg border border-slate-700 bg-slate-800/60 hover:bg-slate-800 text-slate-200 text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
                   >
                     <RefreshCw className="h-3.5 w-3.5 text-slate-400" />
-                    <span>Restart UmbrellaDaemon Agent</span>
+                    <span>Reload Umbrella Plugin</span>
                   </button>
                 </div>
               </>

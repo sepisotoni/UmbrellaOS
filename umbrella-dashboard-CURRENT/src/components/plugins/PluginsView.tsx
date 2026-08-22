@@ -138,7 +138,7 @@ export const PluginsView: React.FC = () => {
             <span className="text-2xl font-bold font-mono text-white">{avgPing || 0}ms</span>
             <span className="text-xs text-emerald-400 font-mono">● Low Overheads</span>
           </div>
-          <div className="mt-2 text-[11px] text-slate-400 font-mono">Zero daemon overhead (In-JVM)</div>
+          <div className="mt-2 text-[11px] text-slate-400 font-mono">In-JVM plugin (no host agents)</div>
         </div>
 
         <div className="rounded-xl border border-slate-800 bg-[#0d1117] p-4">
@@ -459,7 +459,7 @@ export const PluginsView: React.FC = () => {
       <div className="p-4 rounded-xl border border-slate-800 bg-slate-900/30 text-xs text-slate-400 flex items-start gap-3 font-mono">
         <Info className="h-4 w-4 text-cyan-400 shrink-0 mt-0.5" />
         <div>
-          <span className="font-semibold text-slate-200">Architecture Specification:</span> UmbrellaOS operates via the in-JVM <code className="font-mono text-cyan-300">umbrella-core-bridge.jar</code> plugin mounted directly on Paper, Purpur, Folia, and Velocity proxies. Telemetry, anticheat events, and commands communicate natively over local IPC and REST without running any host systemd daemons.
+          <span className="font-semibold text-slate-200">Architecture Specification:</span> UmbrellaOS operates via the in-JVM <code className="font-mono text-cyan-300">umbrella-core-bridge.jar</code> plugin mounted directly on Paper, Purpur, Folia, and Velocity proxies. Telemetry, anticheat events, and commands are pushed as HTTP POSTs to umbrella-core (FastAPI on Render) — no host-level agents or systemd processes are required.
         </div>
       </div>
 
