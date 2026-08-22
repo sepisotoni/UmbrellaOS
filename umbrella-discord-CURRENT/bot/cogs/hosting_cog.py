@@ -248,7 +248,7 @@ class HostingCog(commands.Cog):
 
         await interaction.followup.send(f"💀 Killed **{server.get('name', server_id)}**.", ephemeral=True)
 
-    @app_commands.command(name="server_delete", description="[Staff] Permanently remove a server and release its allocations. Irreversible — requires confirmation.")
+    @app_commands.command(name="server_delete", description="[Staff] Permanently delete a server and release its allocations. Requires confirmation.")
     @app_commands.describe(server_id="The server's ID")
     @app_commands.default_permissions(administrator=True)
     async def server_delete(self, interaction: discord.Interaction, server_id: str) -> None:
