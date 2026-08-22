@@ -1,3 +1,30 @@
+# CRITICAL CONTEXT — Read before anything else
+
+## No Daemon Layer
+This dashboard has NO daemon layer. There is no node agent, no infrastructure manager, no daemon process. The stack is:
+- **umbrella-core** (FastAPI on Render) — the only backend, everything goes through here
+- **Minecraft plugin** — pushes heartbeats, TPS, player counts, GrimAC flags TO core via HTTP POST
+- **Discord bot** — talks to core via HTTP
+
+Anywhere the dashboard shows "Daemons Online", "RAM Pool", "Allocated RAM", "Infrastructure nodes" — that data doesn't exist. When you hit those in Tasks 9-10, replace daemon language with plugin heartbeat language. "Servers Online" = servers that sent a heartbeat in the last 60 seconds via `GET /api/v1/dashboard/servers`.
+
+## Task 1 is already done — start from Task 2
+Task 1 (6 method/schema blockers) was completed in a previous session. Do NOT redo it. Start from Task 2.
+
+## Before Task 2 — one quick backend fix first
+In `umbrella-core-CURRENT`, find the crash risk endpoint added by the backend sub-chat and change the risk level enum from `NONE/WATCH/CRITICAL/INSUFFICIENT_DATA` to `LOW/MEDIUM/HIGH/CRITICAL/INSUFFICIENT_DATA`. Commit it (`core: fix crash risk levels to LOW/MEDIUM/HIGH/CRITICAL`), push, then start Task 2.
+
+## Commit after EVERY task
+Commit and push after completing each task before moving to the next. Use the format: `dashboard: <what you did> (P14 Task N)`. If you hit the token limit mid-session, committed work is safe. Do NOT batch commits at the end.
+
+## Read files lazily
+Only read the specific function or section you need — not the whole file. DashboardContext.tsx and api.ts are large. Search for the relevant function, read only that part. This preserves your context window.
+
+## Error and empty states
+Every metric card, banner, and data table must have proper error/loading/empty states. Never show a healthy indicator when data is missing or core is unreachable. Known issue: `0/0 Infrastructure` currently shows "100% Daemons Online" — this is wrong and must be fixed when you reach the Overview/Topology tasks.
+
+---
+
 # DISPATCH: Phase 14 — Frontend Fixes & Page Redesigns
 
 **Type:** Sub-chat (write access)
