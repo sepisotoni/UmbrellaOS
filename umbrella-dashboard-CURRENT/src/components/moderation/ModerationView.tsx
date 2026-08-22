@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { PlayerProfileView } from '../players/PlayerProfileView';
+import { AppealDetailPanel } from './AppealDetailPanel';
 import { useDashboard } from '../../context/DashboardContext';
 import { PunishmentRecord, GrimACViolation, AppealTicket } from '../../types/dashboard';
 import api from '../../lib/api';
@@ -62,6 +64,11 @@ export const ModerationView: React.FC<ModerationViewProps> = ({ onOpenBanModal }
     fetchViolations();
     return () => { cancelled = true; };
   }, []);
+
+
+  // P15: Player profile + appeal detail state
+  const [profileTarget, setProfileTarget] = useState<{ uuid: string; username: string; defaultTab?: any; filterFrom?: Date; filterTo?: Date } | null>(null);
+  const [selectedAppeal, setSelectedAppeal] = useState<any | null>(null);
 
   type SubTab = 'punishments' | 'grimac' | 'alt-detection' | 'appeals';
   const [subTab, setSubTab] = useState<SubTab>('punishments');
@@ -245,9 +252,12 @@ export const ModerationView: React.FC<ModerationViewProps> = ({ onOpenBanModal }
                     filteredPunishments.map(p => (
                       <tr key={p.id} className="hover:bg-slate-900/40 transition-colors">
                         <td className="py-3 px-4">
-                          <div className="font-bold text-white flex items-center gap-1.5 font-mono">
-                            <span>{p.playerName}</span>
-                          </div>
+                          <button
+                            onClick={() => setProfileTarget({ uuid: p.playerUuid, username: p.playerName })}
+                            className="font-bold text-cyan-400 hover:text-cyan-300 flex items-center gap-1.5 font-mono transition-colors"
+                          >
+                            {p.playerName}
+                          </button>
                           <div className="text-[10px] font-mono text-slate-500 mt-0.5">#{p.id}</div>
                         </td>
                         <td className="py-3 px-3">
@@ -274,7 +284,25 @@ export const ModerationView: React.FC<ModerationViewProps> = ({ onOpenBanModal }
                           )}
                         </td>
                         <td className="py-3 px-3 font-mono text-slate-400">
-                          {p.staffName}
+                          <div>{p.staffName}</div>
+                          {(p.staffName === 'GrimAC AutoMod' || p.staffName === 'GrimAC') && (
+                            <button
+                              onClick={() => {
+                                const banTime = new Date(p.createdAt);
+                                setProfileTarget({
+                                  uuid: p.playerUuid,
+                                  username: p.playerName,
+                                  defaultTab: 'anticheat',
+                                  filterFrom: new Date(banTime.getTime() - 10 * 60 * 1000),
+                                  filterTo: new Date(banTime.getTime() + 10 * 60 * 1000),
+                                });
+                              }}
+                              className="text-[10px] text-amber-400 hover:text-amber-300 flex items-center gap-1 mt-0.5 font-mono transition-colors"
+                            >
+                              <ExternalLink className="h-2.5 w-2.5" />
+                              View Evidence
+                            </button>
+                          )}
                         </td>
                         <td className="py-3 px-3 font-mono text-[11px] text-slate-400">
                           <div>{p.createdAt}</div>
@@ -391,7 +419,7 @@ export const ModerationView: React.FC<ModerationViewProps> = ({ onOpenBanModal }
                     </button>
                   </div>
                 </div>
-              ))
+              )})
             )}
           </div>
         </div>
@@ -479,7 +507,7 @@ export const ModerationView: React.FC<ModerationViewProps> = ({ onOpenBanModal }
                     )}
                   </div>
                 </div>
-              ))
+              )})
             )}
           </div>
         </div>
@@ -508,23 +536,55 @@ export const ModerationView: React.FC<ModerationViewProps> = ({ onOpenBanModal }
                 Zero pending appeals currently in queue.
               </div>
             ) : (
-              appeals.map(ticket => (
+              appeals.map(ticket => {
+                const ticketAny = ticket as any;
+                const isClosed = ['ACCEPTED','REJECTED','ESCALATED','REVIEW_SCHEDULED'].includes(ticket.status);
+                return (
                 <div
                   key={ticket.id}
-                  className="rounded-xl border border-slate-800 bg-[#0c1017] p-5 space-y-4"
+                  className="rounded-xl border border-slate-800 bg-[#0c1017] p-5 space-y-4 cursor-pointer hover:border-slate-700 transition-colors"
+                  onClick={() => setSelectedAppeal(ticketAny)}
                 >
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {isClosed && ticketAny.action_taken && (
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${
+                            ticketAny.action_taken === 'ACCEPT' ? 'bg-emerald-950/40 text-emerald-300 border-emerald-500/30' :
+                            ticketAny.action_taken === 'REJECT' ? 'bg-rose-950/40 text-rose-300 border-rose-500/30' :
+                            ticketAny.action_taken === 'ESCALATE' ? 'bg-orange-950/40 text-orange-300 border-orange-500/30' :
+                            'bg-purple-950/40 text-purple-300 border-purple-500/30'
+                          }`}>
+                            {ticketAny.action_taken === 'ACCEPT' ? '✅ ACCEPTED' :
+                             ticketAny.action_taken === 'REJECT' ? '❌ REJECTED' :
+                             ticketAny.action_taken === 'ESCALATE' ? '⬆️ ESCALATED' :
+                             ticketAny.action_taken === 'SCHEDULE_REVIEW' ? '📞 REVIEW SCHEDULED' :
+                             ticketAny.action_taken === 'REDUCE_SENTENCE' ? '⏳ SENTENCE REDUCED' :
+                             ticket.status}
+                          </span>
+                        )}
                         <span className="font-bold text-white text-sm font-mono">{ticket.playerUsername}</span>
                         <span className="text-[10px] font-mono text-slate-500">#{ticket.id}</span>
                         <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${
                           ticket.status === 'ACCEPTED' ? 'bg-emerald-950/40 text-emerald-300 border-emerald-500/30' :
                           ticket.status === 'REJECTED' ? 'bg-rose-950/40 text-rose-300 border-rose-500/30' :
+                          ticket.status === 'ESCALATED' ? 'bg-orange-950/40 text-orange-300 border-orange-500/30' :
+                          ticket.status === 'REVIEW_SCHEDULED' ? 'bg-purple-950/40 text-purple-300 border-purple-500/30' :
                           'bg-amber-950/40 text-amber-300 border-amber-500/30'
                         }`}>
                           {ticket.status}
                         </span>
+                        {/* AI review status badge */}
+                        {ticketAny.ai_review_status && (
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold border ${
+                            ticketAny.ai_review_status === 'COMPLETED' ? 'bg-indigo-950/40 text-indigo-300 border-indigo-500/30' :
+                            ticketAny.ai_review_status === 'FAILED' ? 'bg-red-950/40 text-red-300 border-red-500/30' :
+                            'bg-slate-800 text-slate-400 border-slate-700'
+                          }`}>
+                            {ticketAny.ai_review_status === 'COMPLETED' ? '🤖 AI Reviewed' :
+                             ticketAny.ai_review_status === 'FAILED' ? '⚠️ AI Failed' : '⏳ Pending AI'}
+                          </span>
+                        )}
                       </div>
                       <div className="text-[11px] text-slate-400 mt-0.5 font-mono">
                         Original Punishment: <strong className="text-rose-400">{ticket.originalReason}</strong>
@@ -581,7 +641,7 @@ export const ModerationView: React.FC<ModerationViewProps> = ({ onOpenBanModal }
                     </div>
                   )}
                 </div>
-              ))
+              )})
             )}
           </div>
         </div>
