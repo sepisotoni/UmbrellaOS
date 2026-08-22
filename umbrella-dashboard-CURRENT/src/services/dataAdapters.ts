@@ -140,3 +140,35 @@ export const adaptBackendPlayer = (raw: any): PlayerRecord => {
     punishmentHistoryCount: raw.punishmentHistoryCount || raw.punishment_history_count || 0
   };
 };
+
+export interface StaffMember {
+  id: string;
+  discordId: string;
+  discordTag: string;
+  avatarUrl: string;
+  role: 'SUPERADMIN' | 'ADMIN' | 'MODERATOR' | 'SUPPORT' | 'DEVELOPER' | 'VIEWER';
+  minecraftUsername?: string;
+  permissionsCount: number;
+  addedAt: string;
+  twoFactorEnabled: boolean;
+  status: 'ACTIVE' | 'SUSPENDED';
+}
+
+export const adaptBackendStaffMember = (raw: any): StaffMember => {
+  const discordId = raw.discord_id || raw.discordId || '000000000000000000';
+  const username = raw.username || raw.discord_tag || raw.discordTag || 'StaffMember';
+  // Avatar index derived deterministically from discordId (no Math.random)
+  const avatarIndex = Number(discordId.slice(-1)) % 5;
+  return {
+    id: raw.id || `staff-${discordId}`,
+    discordId,
+    discordTag: username,
+    avatarUrl: raw.avatar_url || raw.avatarUrl || `https://cdn.discordapp.com/embed/avatars/${avatarIndex}.png`,
+    role: (raw.role ? raw.role.toUpperCase() : 'MODERATOR') as StaffMember['role'],
+    minecraftUsername: raw.linked_minecraft_username || raw.minecraft_username || raw.minecraftUsername,
+    permissionsCount: raw.permissions_count ?? (Array.isArray(raw.permissions) ? raw.permissions.length : 0),
+    addedAt: (raw.added_at || raw.created_at || raw.createdAt || new Date().toISOString()).substring(0, 10),
+    twoFactorEnabled: Boolean(raw.two_factor_enabled ?? raw.twoFactorEnabled),
+    status: (raw.status || 'ACTIVE').toUpperCase() as 'ACTIVE' | 'SUSPENDED',
+  };
+};

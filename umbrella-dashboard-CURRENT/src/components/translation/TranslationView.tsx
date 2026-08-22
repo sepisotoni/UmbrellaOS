@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useDashboard } from '../../context/DashboardContext';
 import { api } from '../../lib/api';
 import {
@@ -26,6 +26,14 @@ export const TranslationView: React.FC = () => {
   const [activeLang, setActiveLang] = useState<string>('es_es');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
+
+  // Player language preferences — fetched from backend
+  const [playerLanguages, setPlayerLanguages] = useState<any[]>([]);
+  useEffect(() => {
+    api.getPlayerLanguages().then(data => {
+      if (Array.isArray(data)) setPlayerLanguages(data);
+    }).catch(() => {/* endpoint may not be live */});
+  }, []);
 
   // Test translation scratchpad
   const [testInput, setTestInput] = useState('Welcome to the Umbrella Network! Enjoy our 1.20.4 cluster.');
@@ -98,16 +106,15 @@ export const TranslationView: React.FC = () => {
 
   const handleTranslateScratchpad = async () => {
     setIsTranslating(true);
+    setTestOutput('');
     try {
       const res = await api.translateText({ text: testInput, targetLang: activeLang });
       if (res && res.translated) {
         setTestOutput(res.translated);
-      } else {
-        setTestOutput(`[AI Local] ${testInput} (${activeLang.toUpperCase()})`);
+        addToast('success', 'Translation Complete', `Translated into ${activeLang}`);
       }
-      addToast('success', 'Translation Complete', `Translated string into ${activeLang}`);
-    } catch {
-      setTestOutput(`[AI Translated] ${testInput} -> ${activeLang}`);
+    } catch (err: any) {
+      addToast('error', 'Translation Failed', err?.message || 'Translation endpoint unavailable.');
     } finally {
       setIsTranslating(false);
     }
@@ -117,9 +124,9 @@ export const TranslationView: React.FC = () => {
     setIsSyncing(true);
     try {
       await api.syncTranslations(translationKeys);
-      addToast('success', 'Translations Deployed', 'Synced localized bundles to Velocity proxy and Paper lobbies.');
-    } catch {
-      addToast('success', 'Translations Saved', 'Updated local translation strings.');
+      addToast('success', 'Translations Deployed', 'Synced localized bundles to plugin.');
+    } catch (err: any) {
+      addToast('error', 'Sync Failed', err?.message || 'Could not sync translations.');
     } finally {
       setIsSyncing(false);
     }

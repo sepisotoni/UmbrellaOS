@@ -12,7 +12,6 @@ import {
   Flame,
   Shield,
   RefreshCw,
-  Zap,
   Activity,
   Terminal,
   Trash2,
@@ -35,11 +34,6 @@ export const AutomationView: React.FC<AutomationViewProps> = ({ onOpenCreateCron
   } = useDashboard();
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
-
-  // Self healing rule states
-  const [autoRestartOnTpsDrop, setAutoRestartOnTpsDrop] = useState(true);
-  const [autoGCThresholdPercent, setAutoGCThresholdPercent] = useState(90);
-  const [autoGrimStrictOnRaid, setAutoGrimStrictOnRaid] = useState(true);
 
   const handleOpenModal = () => {
     if (onOpenCreateCronModal) {
@@ -77,75 +71,6 @@ export const AutomationView: React.FC<AutomationViewProps> = ({ onOpenCreateCron
             <Plus className="h-3.5 w-3.5" />
             <span>Create Cron Schedule</span>
           </button>
-        </div>
-      </div>
-
-      {/* Autonomous Self-Healing Rules Card */}
-      <div className="rounded-xl border border-emerald-500/30 bg-[#0c1017] p-5 space-y-4 shadow-sm">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-          <div className="flex items-center gap-2">
-            <Zap className="h-4 w-4 text-emerald-400" />
-            <h3 className="text-sm font-bold text-white font-display">Autonomous Self-Healing Policies</h3>
-          </div>
-          <span className="text-xs font-mono text-emerald-400 bg-emerald-950/40 border border-emerald-500/30 px-2 py-0.5 rounded">
-            Daemon Watchdog Active
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="p-3.5 rounded-xl border border-slate-800 bg-slate-900/40 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-white font-sans">Lag Spike Auto-Restarter</span>
-              <input
-                type="checkbox"
-                checked={autoRestartOnTpsDrop}
-                onChange={(e) => {
-                  setAutoRestartOnTpsDrop(e.target.checked);
-                  addToast('info', 'Policy Updated', `Auto-restart on TPS drop set to ${e.target.checked}`);
-                }}
-                className="h-4 w-4 rounded border-slate-700 bg-slate-800 text-cyan-500 cursor-pointer"
-              />
-            </div>
-            <p className="text-[11px] text-slate-400 leading-relaxed font-mono">
-              If any game node drops below <strong className="text-amber-400">14.0 TPS</strong> for 3 consecutive minutes, trigger safe chunk-save and graceful restart.
-            </p>
-          </div>
-
-          <div className="p-3.5 rounded-xl border border-slate-800 bg-slate-900/40 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-white font-sans">Heap Memory GC Threshold</span>
-              <span className="text-xs font-mono font-bold text-cyan-400">{autoGCThresholdPercent}%</span>
-            </div>
-            <p className="text-[11px] text-slate-400 leading-relaxed font-mono">
-              Automatically dispatches low-pause ZGC sweeps when instance RAM exceeds {autoGCThresholdPercent}% of Xmx allocation.
-            </p>
-            <input
-              type="range"
-              min={75}
-              max={95}
-              value={autoGCThresholdPercent}
-              onChange={(e) => setAutoGCThresholdPercent(Number(e.target.value))}
-              className="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-500 mt-2"
-            />
-          </div>
-
-          <div className="p-3.5 rounded-xl border border-slate-800 bg-slate-900/40 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-white font-sans">GrimAC Raid Shield Mode</span>
-              <input
-                type="checkbox"
-                checked={autoGrimStrictOnRaid}
-                onChange={(e) => {
-                  setAutoGrimStrictOnRaid(e.target.checked);
-                  addToast('info', 'Policy Updated', `GrimAC raid mode set to ${e.target.checked}`);
-                }}
-                className="h-4 w-4 rounded border-slate-700 bg-slate-800 text-cyan-500 cursor-pointer"
-              />
-            </div>
-            <p className="text-[11px] text-slate-400 leading-relaxed font-mono">
-              If network detects &gt; 20 bot connection attempts per second, enables strict captcha & packet delay checks automatically.
-            </p>
-          </div>
         </div>
       </div>
 

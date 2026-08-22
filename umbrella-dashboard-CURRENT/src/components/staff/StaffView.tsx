@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useDashboard } from '../../context/DashboardContext';
 import { api } from '../../lib/api';
+import { adaptBackendStaffMember, StaffMember } from '../../services/dataAdapters';
 import {
   ShieldCheck,
   UserPlus,
@@ -20,50 +21,28 @@ import {
   X
 } from 'lucide-react';
 
-interface StaffMember {
-  id: string;
-  discordId: string;
-  discordTag: string;
-  avatarUrl: string;
-  role: 'SUPERADMIN' | 'ADMIN' | 'MODERATOR' | 'SUPPORT' | 'DEVELOPER' | 'VIEWER';
-  minecraftUsername?: string;
-  permissionsCount: number;
-  addedAt: string;
-  twoFactorEnabled: boolean;
-  status: 'ACTIVE' | 'SUSPENDED';
-}
-
 export const StaffView: React.FC = () => {
   const { currentUser, addToast } = useDashboard();
 
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('ALL');
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [newDiscordId, setNewDiscordId] = useState('');
-  const [newRole, setNewRole] = useState<'SUPERADMIN' | 'ADMIN' | 'MODERATOR' | 'SUPPORT' | 'DEVELOPER' | 'VIEWER'>('MODERATOR');
+  const [newRole, setNewRole] = useState<StaffMember['role']>('MODERATOR');
 
   const fetchStaff = async () => {
     setLoading(true);
+    setFetchError(null);
     try {
       const data = await api.getStaff();
-      if (Array.isArray(data) && data.length > 0) {
-        setStaffList(data.map(d => ({
-          id: d.id || `staff-${d.discord_id || Math.random()}`,
-          discordId: d.discord_id || d.discordId || '000000000000',
-          discordTag: d.discord_tag || d.discordTag || d.username || 'StaffMember#0001',
-          avatarUrl: d.avatar_url || d.avatarUrl || `https://cdn.discordapp.com/embed/avatars/${Math.floor(Math.random() * 5)}.png`,
-          role: (d.role ? d.role.toUpperCase() : 'MODERATOR') as any,
-          minecraftUsername: d.minecraft_username || d.minecraftUsername,
-          permissionsCount: d.permissions_count || (d.permissions ? d.permissions.length : 10),
-          addedAt: d.added_at || d.createdAt || new Date().toISOString().substring(0, 10),
-          twoFactorEnabled: Boolean(d.two_factor_enabled || d.twoFactorEnabled),
-          status: (d.status || 'ACTIVE') as any
-        })));
+      if (Array.isArray(data)) {
+        setStaffList(data.map(adaptBackendStaffMember));
       }
-    } catch {
-      // Backend not connected or unauthenticated
+    } catch (err: any) {
+      setFetchError(err?.message || 'Failed to load staff list.');
     } finally {
       setLoading(false);
     }
@@ -86,27 +65,15 @@ export const StaffView: React.FC = () => {
     e.preventDefault();
     if (!newDiscordId.trim()) return;
 
-    const newMember: StaffMember = {
-      id: `staff-${Date.now()}`,
-      discordId: newDiscordId.trim(),
-      discordTag: `StaffMember#${Math.floor(1000 + Math.random() * 9000)}`,
-      avatarUrl: `https://cdn.discordapp.com/embed/avatars/${Math.floor(Math.random() * 5)}.png`,
-      role: newRole,
-      permissionsCount: newRole === 'SUPERADMIN' ? 20 : newRole === 'ADMIN' ? 14 : 8,
-      addedAt: new Date().toISOString().substring(0, 10),
-      twoFactorEnabled: false,
-      status: 'ACTIVE'
-    };
-
-    setStaffList(prev => [newMember, ...prev]);
     setInviteModalOpen(false);
     setNewDiscordId('');
 
     try {
       await api.inviteStaffMember({ discord_id: newDiscordId.trim(), role: newRole });
       addToast('success', 'Staff Role Provisioned', `Added Discord ID ${newDiscordId} with role ${newRole}.`);
-    } catch {
-      addToast('success', 'Staff Role Staged', `Staged staff record for Discord ID ${newDiscordId}.`);
+      await fetchStaff(); // Refresh list from backend
+    } catch (err: any) {
+      addToast('error', 'Failed to Add Staff', err?.message || `Could not provision access for Discord ID ${newDiscordId}.`);
     }
   };
 
@@ -224,7 +191,19 @@ export const StaffView: React.FC = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/60">
-            {filteredStaff.length === 0 ? (
+            {loading ? (
+              <tr>
+                <td colSpan={7} className="p-8 text-center text-slate-400 font-mono animate-pulse">
+                  Loading staff list...
+                </td>
+              </tr>
+            ) : fetchError ? (
+              <tr>
+                <td colSpan={7} className="p-6 text-center text-rose-400 font-mono text-xs">
+                  {fetchError}
+                </td>
+              </tr>
+            ) : filteredStaff.length === 0 ? (
               <tr>
                 <td colSpan={7} className="p-8 text-center text-slate-500 font-mono">
                   No staff members configured. Click "Add Staff Member" to grant role access.

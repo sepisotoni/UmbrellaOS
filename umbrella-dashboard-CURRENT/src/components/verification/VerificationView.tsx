@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useDashboard } from '../../context/DashboardContext';
 import { api } from '../../lib/api';
 import {
@@ -29,42 +29,42 @@ interface VerificationLink {
 export const VerificationView: React.FC = () => {
   const { addToast } = useDashboard();
 
-  const [links, setLinks] = useState<VerificationLink[]>([
-    {
-      id: 'lnk-1',
-      discordId: '8921049281928391',
-      discordTag: 'UmbrellaLead#0420',
-      minecraftUsername: 'UmbrellaLead_MC',
-      minecraftUuid: '9f2348a1-3004-4df8-9538-3482a0149eef',
-      linkedAt: '2026-08-20 14:12:00',
-      verifiedBy: 'OAUTH',
-      status: 'VERIFIED'
-    },
-    {
-      id: 'lnk-2',
-      discordId: '7729104829104821',
-      discordTag: 'ViperPvP#1337',
-      minecraftUsername: 'ViperMC',
-      minecraftUuid: '1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d',
-      linkedAt: '2026-08-21 09:45:00',
-      verifiedBy: 'BOT_CODE',
-      status: 'VERIFIED'
-    },
-    {
-      id: 'lnk-3',
-      discordId: '6618294019283019',
-      discordTag: 'KryptoMod#9999',
-      minecraftUsername: 'KryptoStaff',
-      minecraftUuid: '88776655-4433-2211-00aa-bbccddeeff00',
-      linkedAt: '2026-08-21 11:20:00',
-      verifiedBy: 'MANUAL_STAFF',
-      status: 'VERIFIED'
-    }
-  ]);
+  const [links, setLinks] = useState<VerificationLink[]>([]);
+  const [linksLoading, setLinksLoading] = useState(false);
+  const [linksError, setLinksError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [manualLinkOpen, setManualLinkOpen] = useState(false);
   const [manualDiscordId, setManualDiscordId] = useState('');
   const [manualMcUsername, setManualMcUsername] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchLinks = async () => {
+      setLinksLoading(true);
+      setLinksError(null);
+      try {
+        const data = await api.getVerificationLinks();
+        if (!cancelled && Array.isArray(data)) {
+          setLinks(data.map((raw: any) => ({
+            id: raw.id || `lnk-${raw.minecraft_uuid || raw.discord_id}`,
+            discordId: raw.discord_id || raw.discordId || '',
+            discordTag: raw.discord_tag || raw.discordTag || raw.discord_id || 'Unknown',
+            minecraftUsername: raw.minecraft_username || raw.minecraftUsername || 'Unknown',
+            minecraftUuid: raw.minecraft_uuid || raw.minecraftUuid || '00000000-0000-0000-0000-000000000000',
+            linkedAt: (raw.linked_at || raw.linkedAt || raw.created_at || new Date().toISOString()).replace('T', ' ').substring(0, 19),
+            verifiedBy: raw.verified_by || raw.verifiedBy || 'BOT_CODE',
+            status: raw.status || 'VERIFIED',
+          })));
+        }
+      } catch (err: any) {
+        if (!cancelled) setLinksError(err?.message || 'Failed to load verification links.');
+      } finally {
+        if (!cancelled) setLinksLoading(false);
+      }
+    };
+    fetchLinks();
+    return () => { cancelled = true; };
+  }, []);
 
   const filteredLinks = links.filter(l => {
     return (
@@ -84,22 +84,32 @@ export const VerificationView: React.FC = () => {
     e.preventDefault();
     if (!manualDiscordId.trim() || !manualMcUsername.trim()) return;
 
-    const newLink: VerificationLink = {
-      id: `lnk-${Date.now()}`,
-      discordId: manualDiscordId.trim(),
-      discordTag: `DiscordUser#${Math.floor(1000 + Math.random() * 9000)}`,
-      minecraftUsername: manualMcUsername.trim(),
-      minecraftUuid: '00000000-0000-0000-0000-000000000000',
-      linkedAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
-      verifiedBy: 'MANUAL_STAFF',
-      status: 'VERIFIED'
-    };
-
-    setLinks(prev => [newLink, ...prev]);
     setManualLinkOpen(false);
+    const discordId = manualDiscordId.trim();
+    const mcUsername = manualMcUsername.trim();
     setManualDiscordId('');
     setManualMcUsername('');
-    addToast('success', 'Manual Link Created', `Linked Discord ID ${newLink.discordId} with Minecraft user ${newLink.minecraftUsername}.`);
+
+    try {
+      await api.manualLinkDiscord(mcUsername, discordId);
+      addToast('success', 'Manual Link Created', `Linked Discord ID ${discordId} with Minecraft user ${mcUsername}.`);
+      // Refresh list from backend
+      const data = await api.getVerificationLinks();
+      if (Array.isArray(data)) {
+        setLinks(data.map((raw: any) => ({
+          id: raw.id || `lnk-${raw.minecraft_uuid || raw.discord_id}`,
+          discordId: raw.discord_id || raw.discordId || '',
+          discordTag: raw.discord_tag || raw.discordTag || raw.discord_id || 'Unknown',
+          minecraftUsername: raw.minecraft_username || raw.minecraftUsername || 'Unknown',
+          minecraftUuid: raw.minecraft_uuid || raw.minecraftUuid || '00000000-0000-0000-0000-000000000000',
+          linkedAt: (raw.linked_at || raw.linkedAt || raw.created_at || new Date().toISOString()).replace('T', ' ').substring(0, 19),
+          verifiedBy: raw.verified_by || raw.verifiedBy || 'MANUAL_STAFF',
+          status: raw.status || 'VERIFIED',
+        })));
+      }
+    } catch (err: any) {
+      addToast('error', 'Link Failed', err?.message || `Could not link Discord ID ${discordId}.`);
+    }
   };
 
   return (
@@ -165,6 +175,13 @@ export const VerificationView: React.FC = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/60 font-mono">
+            {linksLoading ? (
+              <tr><td colSpan={5} className="p-8 text-center text-slate-400 font-mono animate-pulse text-xs">Loading verification links...</td></tr>
+            ) : linksError ? (
+              <tr><td colSpan={5} className="p-6 text-center text-rose-400 font-mono text-xs">{linksError}</td></tr>
+            ) : filteredLinks.length === 0 ? (
+              <tr><td colSpan={5} className="p-8 text-center text-slate-500 font-mono text-xs">No verified account pairs found.</td></tr>
+            ) : null}
             {filteredLinks.map(l => (
               <tr key={l.id} className="hover:bg-slate-900/40 transition-colors">
                 <td className="p-3.5">

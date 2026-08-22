@@ -186,7 +186,7 @@ export const ConsoleView: React.FC<ConsoleViewProps> = ({ onQuickBan }) => {
             <Terminal className="h-6 w-6 text-cyan-400" />
             <h1 className="text-xl font-bold tracking-tight text-white font-display">Live Node Terminal</h1>
             <span className="rounded-md bg-slate-800 border border-slate-700 px-2 py-0.5 text-xs font-mono text-cyan-300">
-              IPC WebSocket Daemon
+              Plugin Log Stream
             </span>
           </div>
           <p className="mt-1 text-xs text-slate-400">
@@ -339,7 +339,7 @@ export const ConsoleView: React.FC<ConsoleViewProps> = ({ onQuickBan }) => {
             <span className="h-2.5 w-2.5 rounded-full bg-amber-500/80" />
             <span className="h-2.5 w-2.5 rounded-full bg-emerald-500/80" />
             <span className="ml-2 font-mono text-[11px] text-slate-400">
-              daemon@umbrella-core:~/{selectedServer?.id || 'cluster'}/logs/latest.log
+              umbrella-core:~/{selectedServer?.id || 'cluster'}/logs/latest.log
             </span>
           </div>
 

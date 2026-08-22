@@ -259,10 +259,9 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return saved ? JSON.parse(saved) : EMPTY_SERVERS;
   });
 
-  const [nodes, setNodes] = useState<NodeInfrastructure[]>(() => {
-    const saved = localStorage.getItem('umb_nodes');
-    return saved ? JSON.parse(saved) : EMPTY_NODES;
-  });
+  // Nodes are derived from servers (each server reports its own metrics via plugin heartbeat)
+  // No physical node layer exists — the plugin pushes TPS/RAM/CPU to umbrella-core directly
+  const [nodes, setNodes] = useState<NodeInfrastructure[]>(EMPTY_NODES);
 
   const [players, setPlayers] = useState<PlayerRecord[]>(() => {
     const saved = localStorage.getItem('umb_players');
@@ -426,7 +425,28 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       try {
         const backendServers = await api.getServers();
         if (Array.isArray(backendServers) && backendServers.length > 0) {
-          setServers(backendServers.map(adaptBackendServer));
+          const adaptedServers = backendServers.map(adaptBackendServer);
+          setServers(adaptedServers);
+          // Topology nodes derived from server heartbeat data — no separate infra layer
+          setNodes(adaptedServers.map(s => ({
+            id: s.id,
+            name: s.name,
+            region: s.location || 'Unknown',
+            ip: s.host || '—',
+            status: s.status === 'online' ? 'healthy' : s.status === 'restarting' ? 'degraded' : 'unreachable',
+            cpuCores: 0,
+            cpuUsage: s.cpuPercent,
+            ramGb: s.memoryMb / 1024,
+            ramTotalGb: s.maxMemoryMb / 1024,
+            diskUsageGb: 0,
+            diskTotalGb: 0,
+            networkInMbps: 0,
+            networkOutMbps: 0,
+            pingMs: 0,
+            runningContainers: 1,
+            daemonVersion: s.version || 'umbrella-core-bridge',
+            assignedServers: [s.id],
+          })));
         }
       } catch {
         // Servers fetch fallback
@@ -915,25 +935,23 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setCopilotMessages(prev => [...prev, userMsg]);
 
     try {
-      const taskRes = await executeAITask('copilot', { prompt });
+      const res = await api.sendCopilotMessage(prompt);
       const assistantMsg: AICopilotMessage = {
         id: `copilot-res-${Date.now()}`,
         role: 'assistant',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        content: typeof taskRes.result === 'string' ? taskRes.result : (taskRes.result?.text || `Telemetric diagnostics complete for: "${prompt}". All nodes reporting nominal TPS (20.0).`),
-        actionPayload: prompt.toLowerCase().includes('restart') ? {
-          type: 'RESTART_SERVER',
-          label: 'Restart Degraded Nodes',
-          details: 'Dispatches safe rolling reboot across Paper/Purpur instances'
-        } : prompt.toLowerCase().includes('patch') || prompt.toLowerCase().includes('gc') ? {
-          type: 'AUTO_PATCH_CONFIG',
-          label: 'Auto-Apply Memory Tuning',
-          details: 'Applies ZGC concurrent collector flags to paper.yml'
-        } : undefined
+        content: res.response,
       };
       setCopilotMessages(prev => [...prev, assistantMsg]);
     } catch (err: any) {
-      addToast('error', 'Copilot Query Failed', err?.message || 'AI Copilot encountered an unhandled error.');
+      const errorMsg: AICopilotMessage = {
+        id: `copilot-err-${Date.now()}`,
+        role: 'assistant',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        content: 'Copilot unavailable — AI backend returned an error.',
+      };
+      setCopilotMessages(prev => [...prev, errorMsg]);
+      addToast('error', 'Copilot Unavailable', err?.message || 'AI backend returned an error.');
     }
   };
 

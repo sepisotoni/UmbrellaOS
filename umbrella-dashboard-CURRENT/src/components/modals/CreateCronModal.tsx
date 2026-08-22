@@ -70,7 +70,7 @@ export const CreateCronModal: React.FC<CreateCronModalProps> = ({ isOpen, onClos
     if (expr.includes('0 */6')) return 'In 6 hours';
     if (expr.includes('0 4 * * *')) return 'Tomorrow at 04:00 AM UTC';
     if (expr.includes('0 3 * * 0')) return 'Next Sunday at 03:00 AM UTC';
-    return 'Calculated on daemon save';
+    return 'Calculated on save';
   };
 
   const handleSubmit = (e: React.FormEvent) => {
