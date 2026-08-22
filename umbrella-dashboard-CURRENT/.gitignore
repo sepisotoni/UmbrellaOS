@@ -1,15 +1,8 @@
-# dependencies
 node_modules/
-.pnpm-store/
-
-# next.js
-.next/
-out/
-
-# env
-.env*.local
-.env
-
-# misc
+build/
+dist/
+coverage/
 .DS_Store
-*.pem
+*.log
+.env*
+!.env.example
