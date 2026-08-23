@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useDashboard } from '../../context/DashboardContext';
 import { api } from '../../lib/api';
 import {
@@ -55,7 +55,7 @@ export const SettingsView: React.FC = () => {
     setDashboardTheme
   } = useDashboard();
 
-  const [activeSection, setActiveSection] = useState<'core' | 'ai' | 'discord' | 'anticheat' | 'storage' | 'preferences'>('core');
+  const [activeSection, setActiveSection] = useState<'core' | 'ai' | 'discord' | 'anticheat' | 'storage' | 'preferences' | 'templates'>('core');
   
   // Core API State
   const [localApiKey, setLocalApiKey] = useState(adminKey || '');
@@ -93,6 +93,59 @@ export const SettingsView: React.FC = () => {
   const [audioNotifications, setAudioNotifications] = useState(true);
   const [highContrastLogs, setHighContrastLogs] = useState(true);
   const [enableDebugLogs, setEnableDebugLogs] = useState(false);
+
+  // Message Templates state
+  const [templates, setTemplates] = useState<Record<string, string>>({});
+  const [templateLoading, setTemplateLoading] = useState(false);
+  const [templateSaving, setTemplateSaving] = useState<Record<string, boolean>>({});
+  const [templateErrors, setTemplateErrors] = useState<Record<string, string>>({});
+
+  // Load templates on mount
+  useEffect(() => {
+    const keys = [
+      'verification.dm_prompt',
+      'verification.success_message',
+      'verification.error_already_linked',
+      'verification.error_invalid_code',
+      'verification.ingame_prompt',
+      'verification.ingame_success',
+      'verification.nickname_format',
+      'discord.invite_url',
+      'greeter.first_join_message',
+      'greeter.return_join_message',
+      'chat_responder.response_style',
+    ];
+    const load = async () => {
+      setTemplateLoading(true);
+      const loaded: Record<string, string> = {};
+      for (const key of keys) {
+        try {
+          const data = await api.getSetting(key);
+          loaded[key] = data?.value ?? '';
+        } catch {
+          loaded[key] = '';
+        }
+      }
+      setTemplates(loaded);
+      setTemplateLoading(false);
+    };
+    load();
+  }, []);
+
+  const handleSaveTemplate = async (key: string) => {
+    setTemplateSaving(prev => ({ ...prev, [key]: true }));
+    setTemplateErrors(prev => ({ ...prev, [key]: '' }));
+    try {
+      await api.updateSetting(key, templates[key] ?? '');
+      addToast('success', 'Template Saved', `${key} updated successfully.`);
+    } catch (err: any) {
+      const msg = err?.message || 'Save failed';
+      setTemplateErrors(prev => ({ ...prev, [key]: msg }));
+      addToast('warning', 'Save Failed', msg);
+    } finally {
+      setTemplateSaving(prev => ({ ...prev, [key]: false }));
+    }
+  };
 
   // AI Testing state
   const [testingProviderId, setTestingProviderId] = useState<string | null>(null);
@@ -179,6 +232,7 @@ export const SettingsView: React.FC = () => {
     { id: 'anticheat', label: 'GrimAC & Moderation', sublabel: 'Sensitivity, subnet, alt rings', icon: Shield, badge: 'Security' },
     { id: 'storage', label: 'Snapshots & S3 Cloud', sublabel: 'Cloudflare R2, auto-purge', icon: HardDrive, badge: 'Backups' },
     { id: 'preferences', label: 'Interface & Telemetry', sublabel: 'Themes, polling, debug logs', icon: Sliders, badge: 'Client' },
+    { id: 'templates', label: 'Message Templates', sublabel: 'Bot, plugin, greeter messages', icon: MessageSquare, badge: 'Templates' },
   ] as const;
 
   return (
@@ -1181,6 +1235,134 @@ export const SettingsView: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* Section 7: Message Templates */}
+        {activeSection === 'templates' && (() => {
+          const templateDefs = [
+            {
+              key: 'verification.dm_prompt',
+              label: 'Verification DM Prompt',
+              hint: 'Available: $PLAYER, $CODE, $EXPIRES',
+              rows: 3,
+            },
+            {
+              key: 'verification.success_message',
+              label: 'Verification Success DM',
+              hint: 'Available: $PLAYER',
+              rows: 2,
+            },
+            {
+              key: 'verification.error_already_linked',
+              label: 'Error: Already Linked',
+              hint: 'No variables.',
+              rows: 2,
+            },
+            {
+              key: 'verification.error_invalid_code',
+              label: 'Error: Invalid or Expired Code',
+              hint: 'No variables.',
+              rows: 2,
+            },
+            {
+              key: 'verification.ingame_prompt',
+              label: 'In-Game Prompt (after /verify)',
+              hint: 'Available: $EXPIRES',
+              rows: 2,
+            },
+            {
+              key: 'verification.ingame_success',
+              label: 'In-Game Success Message',
+              hint: 'No variables.',
+              rows: 2,
+            },
+            {
+              key: 'verification.nickname_format',
+              label: 'Discord Nickname Format',
+              hint: 'Available: $PLAYER',
+              rows: 1,
+            },
+            {
+              key: 'discord.invite_url',
+              label: 'Discord Invite URL',
+              hint: 'Used as $DISCORD_INVITE in greeter messages.',
+              rows: 1,
+            },
+            {
+              key: 'greeter.first_join_message',
+              label: 'First Join Greeter',
+              hint: 'Available: $PLAYER, $DISCORD_INVITE, $SERVER',
+              rows: 2,
+            },
+            {
+              key: 'greeter.return_join_message',
+              label: 'Return Join Greeter',
+              hint: 'Available: $PLAYER',
+              rows: 2,
+            },
+            {
+              key: 'chat_responder.response_style',
+              label: 'AI Chat Response Style',
+              hint: 'Options: friendly, formal, concise',
+              rows: 1,
+            },
+          ];
+
+          return (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-slate-800 bg-[#0c1017] p-5 space-y-5 font-mono text-xs">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <div className="flex items-center gap-2 text-white font-bold">
+                    <MessageSquare className="h-4 w-4 text-cyan-400" />
+                    <span>Configurable Message Templates</span>
+                  </div>
+                  {templateLoading && (
+                    <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
+                      <RefreshCw className="h-3 w-3 animate-spin" />
+                      Loading templates…
+                    </span>
+                  )}
+                </div>
+
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  Edit the wording sent by the bot and plugin. Changes take effect on the next
+                  template refresh (up to 5 minutes) without redeployment.
+                </p>
+
+                <div className="space-y-5">
+                  {templateDefs.map(({ key, label, hint, rows }) => (
+                    <div key={key} className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <label className="text-slate-200 font-semibold">{label}</label>
+                        <button
+                          type="button"
+                          onClick={() => handleSaveTemplate(key)}
+                          disabled={templateSaving[key] || templateLoading}
+                          className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-cyan-900/50 hover:bg-cyan-800/60 border border-cyan-500/40 text-cyan-300 text-[11px] transition-colors cursor-pointer disabled:opacity-50"
+                        >
+                          <Save className="h-3 w-3" />
+                          <span>{templateSaving[key] ? 'Saving…' : 'Save'}</span>
+                        </button>
+                      </div>
+                      <textarea
+                        rows={rows}
+                        value={templates[key] ?? ''}
+                        onChange={(e) =>
+                          setTemplates(prev => ({ ...prev, [key]: e.target.value }))
+                        }
+                        className="w-full rounded-lg border border-slate-700 bg-slate-900 p-2.5 text-white text-xs focus:border-cyan-500 focus:outline-none resize-y font-mono"
+                        placeholder={templateLoading ? 'Loading…' : ''}
+                      />
+                      <p className="text-[10px] text-slate-500">{hint}</p>
+                      {templateErrors[key] && (
+                        <p className="text-[10px] text-rose-400">{templateErrors[key]}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Global Save Button Footer */}
         <div className="flex items-center justify-between border-t border-slate-800/80 pt-5 font-mono">
