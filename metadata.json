@@ -1,0 +1,6 @@
+{
+  "name": "UmbrellaOS Admin Dashboard",
+  "description": "Production admin dashboard for UmbrellaOS Minecraft server network management platform",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
