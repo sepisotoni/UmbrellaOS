@@ -6,13 +6,13 @@ import { ApiError } from '../../lib/api'
 import {
   Card, Button, Input, Textarea, Select, Skeleton, ErrorCard, Badge, Modal, Tabs, Table, Th, Td,
 } from '../ui'
-import { Plus, ShieldOff } from 'lucide-react'
+import { Plus, ShieldOff, ShieldAlert } from 'lucide-react'
 
 function formatDate(d: string) {
   return new Date(d).toLocaleString()
 }
 
-function PunishmentsTab() {
+function PunishmentsTab({ onOpenPunish }: { onOpenPunish?: (username?: string) => void }) {
   const { token, user } = useAuth()
   const [showNew, setShowNew] = useState(false)
   const [revoking, setRevoking] = useState<string | null>(null)
@@ -64,9 +64,16 @@ function PunishmentsTab() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <span className="text-xs text-slate-500">{(data ?? []).length} punishments loaded</span>
-        <Button variant="primary" onClick={() => setShowNew(true)}>
-          <Plus className="h-3.5 w-3.5" /> New Punishment
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="primary" onClick={() => setShowNew(true)}>
+            <Plus className="h-3.5 w-3.5" /> New Punishment
+          </Button>
+          {onOpenPunish && (
+            <Button variant="primary" onClick={() => onOpenPunish()}>
+              <ShieldAlert className="h-3.5 w-3.5" /> Issue New Punishment
+            </Button>
+          )}
+        </div>
       </div>
 
       {error && <ErrorCard message={error} onRetry={reload} />}
@@ -98,17 +105,28 @@ function PunishmentsTab() {
                     </Badge>
                   </Td>
                   <Td>
-                    {p.active && (
-                      <Button
-                        variant="ghost"
-                        className="py-0.5 px-2 text-red-400 hover:text-red-300"
-                        loading={revoking === p.id}
-                        onClick={() => handleRevoke(p.id)}
-                      >
-                        <ShieldOff className="h-3.5 w-3.5" />
-                        Revoke
-                      </Button>
-                    )}
+                    <div className="flex items-center gap-1">
+                      {onOpenPunish && (
+                        <Button
+                          variant="ghost"
+                          className="py-0.5 px-2 text-rose-400 hover:text-rose-300"
+                          onClick={() => onOpenPunish(p.player_uuid)}
+                        >
+                          <ShieldAlert className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                      {p.active && (
+                        <Button
+                          variant="ghost"
+                          className="py-0.5 px-2 text-red-400 hover:text-red-300"
+                          loading={revoking === p.id}
+                          onClick={() => handleRevoke(p.id)}
+                        >
+                          <ShieldOff className="h-3.5 w-3.5" />
+                          Revoke
+                        </Button>
+                      )}
+                    </div>
                   </Td>
                 </tr>
               ))}
@@ -225,13 +243,13 @@ const TABS = [
   { id: 'grimac', label: 'GrimAC Violations' },
 ]
 
-export function ModerationPage() {
+export function ModerationPage({ onOpenPunish }: { onOpenPunish?: (username?: string) => void }) {
   const [tab, setTab] = useState('punishments')
   return (
     <div className="space-y-4">
       <h1 className="text-lg font-semibold text-slate-100">Moderation</h1>
       <Tabs tabs={TABS} active={tab} onChange={setTab} />
-      {tab === 'punishments' && <PunishmentsTab />}
+      {tab === 'punishments' && <PunishmentsTab onOpenPunish={onOpenPunish} />}
       {tab === 'grimac' && <GrimACTab />}
     </div>
   )

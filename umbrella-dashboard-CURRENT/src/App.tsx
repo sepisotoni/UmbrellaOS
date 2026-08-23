@@ -19,11 +19,18 @@ import { SettingsPage } from './components/pages/SettingsPage'
 import { Sidebar, Page } from './components/layout/Sidebar'
 import { DisconnectedBanner } from './components/layout/DisconnectedBanner'
 import { Spinner } from './components/ui'
+import { PunishModal } from './components/modals/PunishModal'
+import { BroadcastModal } from './components/modals/BroadcastModal'
+import { Megaphone, ShieldAlert } from 'lucide-react'
 
 function DashboardApp() {
   const { token, loading: authLoading } = useAuth()
   const { status } = useHealthCheck(30_000)
   const [page, setPage] = useState<Page>('overview')
+
+  const [punishOpen, setPunishOpen] = useState(false)
+  const [punishUsername, setPunishUsername] = useState<string | null>(null)
+  const [broadcastOpen, setBroadcastOpen] = useState(false)
 
   if (authLoading) {
     return (
@@ -37,11 +44,18 @@ function DashboardApp() {
     return <LoginPage onLogin={() => setPage('overview')} />
   }
 
+  const openPunish = (username?: string) => {
+    setPunishUsername(username ?? null)
+    setPunishOpen(true)
+  }
+
   const renderPage = () => {
     switch (page) {
       case 'overview': return <OverviewPage />
       case 'players': return <PlayersPage />
-      case 'moderation': return <ModerationPage />
+      case 'moderation': return (
+        <ModerationPage onOpenPunish={openPunish} />
+      )
       case 'appeals': return <AppealsPage />
       case 'staff': return <StaffPage />
       case 'verification': return <VerificationPage />
@@ -68,6 +82,37 @@ function DashboardApp() {
           {renderPage()}
         </main>
       </div>
+
+      {/* Floating action buttons — bottom left above sidebar */}
+      <div className="fixed bottom-4 left-4 flex flex-col gap-2 z-40">
+        <button
+          onClick={() => setBroadcastOpen(true)}
+          title="Network Broadcast"
+          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-cyan-700/80 hover:bg-cyan-600/90 border border-cyan-500/40 text-white text-xs font-medium shadow-lg backdrop-blur-sm transition-colors"
+        >
+          <Megaphone className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">Broadcast</span>
+        </button>
+        <button
+          onClick={() => openPunish()}
+          title="Issue Punishment"
+          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-rose-700/80 hover:bg-rose-600/90 border border-rose-500/40 text-white text-xs font-medium shadow-lg backdrop-blur-sm transition-colors"
+        >
+          <ShieldAlert className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">Punish</span>
+        </button>
+      </div>
+
+      {/* Modals */}
+      <PunishModal
+        open={punishOpen}
+        onClose={() => setPunishOpen(false)}
+        prefillUsername={punishUsername}
+      />
+      <BroadcastModal
+        open={broadcastOpen}
+        onClose={() => setBroadcastOpen(false)}
+      />
     </div>
   )
 }
