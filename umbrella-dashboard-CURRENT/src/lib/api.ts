@@ -1,924 +1,608 @@
 /**
- * UmbrellaOS Core API Client
- * FastAPI + Postgres Backend Integration (Render Frankfurt)
+ * src/lib/api.ts — Single API client for all backend calls.
+ *
+ * All requests go to VITE_UMBRELLA_CORE_URL (overridable via localStorage key
+ * "umbrella_core_url_override"). Auth token is passed as Authorization Bearer
+ * header and stored only in React context — never in localStorage.
  */
 
-export interface ApiConfig {
-  baseUrl: string;
-  sessionToken: string | null;
-  adminKey: string | null;
-}
-
 export class ApiError extends Error {
-  status: number;
-  data: any;
-
-  constructor(message: string, status: number, data?: any) {
-    super(message);
-    this.name = 'ApiError';
-    this.status = status;
-    this.data = data;
+  constructor(
+    public status: number,
+    message: string,
+    public body?: unknown,
+  ) {
+    super(message)
+    this.name = 'ApiError'
   }
 }
 
-// User & Auth Types from GET /api/v1/auth/me
-export interface AuthUser {
-  id: string;
-  discordId?: string;
-  username: string;
-  discriminator?: string;
-  avatarUrl?: string;
-  role: 'superadmin' | 'admin' | 'moderator' | 'support' | 'developer' | 'viewer';
-  permissions: string[];
-  email?: string;
-  linkedMinecraftUuid?: string;
-  linkedMinecraftUsername?: string;
+export function getBaseUrl(): string {
+  const override = localStorage.getItem('umbrella_core_url_override')
+  if (override) return override.replace(/\/$/, '')
+  return (import.meta.env.VITE_UMBRELLA_CORE_URL ?? 'http://localhost:8000').replace(/\/$/, '')
 }
 
-// Real Backend Response Types
-export interface BackendServer {
-  id: string;
-  name: string;
-  status: 'online' | 'warning' | 'offline' | 'starting' | 'restarting';
-  tps: number;
-  players: number;
-  maxPlayers: number;
-  ramUsedMb: number;
-  ramTotalMb: number;
-  cpu: number;
-  version: string;
-  pluginsConnected: number;
-  pluginsTotal: number;
-  node?: string;
-  location?: string;
+async function request<T>(
+  path: string,
+  options: RequestInit & { token?: string; adminKey?: string } = {},
+): Promise<T> {
+  const { token, adminKey, ...init } = options
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(init.headers as Record<string, string> | undefined),
+  }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  if (adminKey) headers['X-Admin-Key'] = adminKey
+
+  const res = await fetch(`${getBaseUrl()}${path}`, { ...init, headers })
+
+  if (!res.ok) {
+    let body: unknown
+    try { body = await res.json() } catch { body = await res.text() }
+    const msg =
+      typeof body === 'object' && body !== null && 'detail' in body
+        ? String((body as { detail: unknown }).detail)
+        : `HTTP ${res.status}`
+    throw new ApiError(res.status, msg, body)
+  }
+
+  if (res.status === 204) return undefined as T
+  return res.json() as Promise<T>
 }
 
-export interface BackendPluginHeartbeat {
-  id: string;
-  name: string; // 'UmbrellaOS' | 'GrimAC' | custom
-  serverId: string;
-  serverName?: string;
-  version: string;
-  status: 'healthy' | 'stale' | 'unreachable';
-  lastSeen: string;
-  heartbeatMs: number;
-  activeFeatures?: string[];
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+
+export interface UserSchema {
+  id: string
+  discord_id: string
+  username: string
+  email: string | null
+  role_id: string | null
+  role: string | null
+  permissions: string[]
+  is_active: boolean
+  created_at: string
+  updated_at: string
 }
 
-export interface BackendPunishment {
-  id: string;
-  playerUuid: string;
-  playerName: string;
-  staffName: string;
-  staffDiscordId?: string;
-  type: 'BAN' | 'TEMP_BAN' | 'MUTE' | 'TEMP_MUTE' | 'KICK' | 'WARN' | 'IP_BAN' | 'HWID_BAN';
-  reason: string;
-  status: 'ACTIVE' | 'EXPIRED' | 'PARDONED' | 'APPEALED';
-  createdAt: string;
-  expiresAt: string | null;
-  serverScope: string;
-  evidenceUrl?: string;
-  appealId?: string;
-  ipAddress?: string;
-  hwidHash?: string;
+export interface SessionResponse {
+  token: string
+  user: UserSchema
+  expires_in: number
 }
 
-export interface BackendAltFlag {
-  id: string;
-  playerUuid: string;
-  playerName: string;
-  rootIdentifier: string;
-  clusterType: 'IP_SHARED' | 'HWID_MATCH' | 'COOKIE_TOKEN' | 'SUBNET_BURST';
-  confidence: number;
-  associatedAccounts: string[];
-  bannedCount: number;
-  status: 'INVESTIGATING' | 'CONFIRMED_ALT_RING' | 'WHITELISTED_HOUSEHOLD';
-  notes: string;
-  lastDetected: string;
+export const auth = {
+  discordAuthorize: (redirectUri: string) =>
+    request<{ authorize_url: string; state: string }>('/api/v1/auth/discord/authorize', {
+      method: 'POST',
+      body: JSON.stringify({ redirect_uri: redirectUri }),
+    }),
+
+  discordCallback: (state: string, code: string, redirectUri: string) =>
+    request<SessionResponse>('/api/v1/auth/discord/callback', {
+      method: 'POST',
+      body: JSON.stringify({ state, code, redirect_uri: redirectUri }),
+    }),
+
+  me: (token: string) =>
+    request<UserSchema>('/api/v1/auth/me', { token }),
+
+  // POST /api/v1/auth/logout?session_token=...
+  logout: (token: string) =>
+    request<{ success: boolean }>(`/api/v1/auth/logout?session_token=${encodeURIComponent(token)}`, {
+      method: 'POST',
+      token,
+    }),
 }
 
-export interface BackendAppeal {
-  id: string;
-  punishmentId: string;
-  playerUsername: string;
-  playerUuid: string;
-  type: 'BAN' | 'MUTE';
-  originalReason: string;
-  appealReason: string;
-  createdAt: string;
-  status: 'PENDING' | 'AI_REVIEWED' | 'ACCEPTED' | 'REJECTED';
-  aiSentimentScore?: number;
-  aiRecommendedAction?: 'ACCEPT' | 'REDUCE_DURATION' | 'DENY_HIGH_RISK';
-  aiAnalysisSummary?: string;
-  assignedStaff: string | null;
+// ─── Health ───────────────────────────────────────────────────────────────────
+
+export interface HealthResponse {
+  status: string
+  version: string
+  database: string
+  redis: string
+  service: string
 }
 
-export interface BackendAITask {
-  id: string;
-  taskType: 'PLAYER_REVIEW' | 'APPEAL_REVIEW' | 'CRASH_TRIAGE' | 'ANOMALY_CHECK';
-  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'APPROVED' | 'DENIED';
-  targetUuid?: string;
-  targetAppealId?: string;
-  createdAt: string;
-  completedAt?: string;
-  confidence: number;
-  recommendation: string;
-  analysis: Record<string, any>;
+export const health = {
+  get: () => request<HealthResponse>('/health'),
 }
 
-export interface BackendLogEntry {
-  id: string;
-  timestamp: string;
-  serverId?: string;
-  serverName?: string;
-  level: 'INFO' | 'WARN' | 'ERROR' | 'GRIM' | 'DEBUG' | 'CHAT' | 'COMMAND';
-  source?: string;
-  traceId?: string;
-  message: string;
-  rawAnsi?: string;
+// ─── Dashboard ────────────────────────────────────────────────────────────────
+
+export interface ServerRecord {
+  id: string
+  name: string
+  status: string   // "online" | "offline" | "maintenance"
+  tps: number
+  players: number
+  maxPlayers: number
+  ramUsedMb: number
+  ramTotalMb: number
+  cpu: number
+  version: string
+  pluginsConnected: number
+  pluginsTotal: number
 }
 
-export interface BackendHealthResponse {
-  status: 'ok' | 'degraded' | 'error';
-  version?: string;
-  database?: 'connected' | 'disconnected';
-  redis?: 'connected' | 'disconnected';
-  details?: {
-    database?: string;
-    redis?: string;
-    rcon?: string;
-    uptime?: number;
-  };
-  timestamp?: string;
+export interface PluginRecord {
+  id: string
+  name: string
+  version: string
+  server: string
+  status: string
+  heartbeatMs: number
+  lastSeen: string
 }
 
-const DEFAULT_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'https://umbrellaos-core.onrender.com';
-const STORAGE_TOKEN_KEY = 'umbrella_session_token';
-const STORAGE_ADMIN_KEY = 'umbrella_admin_key';
-const STORAGE_BASE_URL_KEY = 'umbrella_api_base_url';
-
-class ApiClient {
-  private config: ApiConfig;
-
-  constructor() {
-    const savedToken = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_TOKEN_KEY) : null;
-    const savedAdminKey = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_ADMIN_KEY) : null;
-    const savedBaseUrl = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_BASE_URL_KEY) : null;
-
-    this.config = {
-      baseUrl: savedBaseUrl || DEFAULT_BASE_URL,
-      sessionToken: savedToken,
-      adminKey: savedAdminKey,
-    };
-  }
-
-  public getConfig(): ApiConfig {
-    return { ...this.config };
-  }
-
-  public getBaseUrl(): string {
-    return this.config.baseUrl;
-  }
-
-  public setBaseUrl(url: string) {
-    this.config.baseUrl = url.replace(/\/+$/, '');
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(STORAGE_BASE_URL_KEY, this.config.baseUrl);
-    }
-  }
-
-  public setSessionToken(token: string | null) {
-    this.config.sessionToken = token;
-    if (typeof window !== 'undefined') {
-      if (token) {
-        localStorage.setItem(STORAGE_TOKEN_KEY, token);
-      } else {
-        localStorage.removeItem(STORAGE_TOKEN_KEY);
-      }
-    }
-  }
-
-  public setAdminKey(key: string | null) {
-    this.config.adminKey = key;
-    if (typeof window !== 'undefined') {
-      if (key) {
-        localStorage.setItem(STORAGE_ADMIN_KEY, key);
-      } else {
-        localStorage.removeItem(STORAGE_ADMIN_KEY);
-      }
-    }
-  }
-
-  private getHeaders(customHeaders: Record<string, string> = {}): Record<string, string> {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      ...customHeaders,
-    };
-
-    if (this.config.sessionToken) {
-      headers['Authorization'] = `Bearer ${this.config.sessionToken}`;
-    }
-
-    if (this.config.adminKey) {
-      headers['X-Admin-Key'] = this.config.adminKey;
-    }
-
-    return headers;
-  }
-
-  private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
-    const cleanPath = path.startsWith('/') ? path : `/${path}`;
-    const url = `${this.config.baseUrl}${cleanPath}`;
-
-    const headers = this.getHeaders((options.headers as Record<string, string>) || {});
-
-    try {
-      const response = await fetch(url, {
-        ...options,
-        headers,
-      });
-
-      if (!response.ok) {
-        let errorData: any = null;
-        try {
-          errorData = await response.json();
-        } catch {
-          errorData = await response.text();
-        }
-
-        const message = 
-          (errorData && typeof errorData === 'object' && (errorData.detail || errorData.message)) 
-            ? (errorData.detail || errorData.message)
-            : `API Request failed with status ${response.status}: ${response.statusText}`;
-
-        throw new ApiError(message, response.status, errorData);
-      }
-
-      // Handle 204 No Content
-      if (response.status === 204) {
-        return null as unknown as T;
-      }
-
-      return await response.json() as T;
-    } catch (err: any) {
-      if (err instanceof ApiError) throw err;
-      throw new ApiError(err.message || 'Network connection to backend failed', 0, err);
-    }
-  }
-
-  // ==========================================
-  // Health Check
-  // ==========================================
-  public async checkHealth(): Promise<BackendHealthResponse> {
-    try {
-      // First try root /health
-      return await this.request<BackendHealthResponse>('/health');
-    } catch {
-      // Fallback to /api/v1/health
-      return await this.request<BackendHealthResponse>('/api/v1/health');
-    }
-  }
-
-  // ==========================================
-  // Auth & Session
-  // ==========================================
-  public async getMe(): Promise<AuthUser> {
-    return await this.request<AuthUser>('/api/v1/auth/me');
-  }
-
-  public getDiscordOAuthUrl(): string {
-    return `${this.config.baseUrl}/api/v1/auth/discord/authorize`;
-  }
-
-  public async exchangeDiscordCallback(code: string, state?: string): Promise<{ token: string; user: AuthUser }> {
-    return await this.request<{ token: string; user: AuthUser }>('/api/v1/auth/discord/callback', {
-      method: 'POST',
-      body: JSON.stringify({ code, state }),
-    });
-  }
-
-  public async logout(): Promise<void> {
-    try {
-      await this.request('/api/v1/auth/logout', { method: 'POST' });
-    } finally {
-      this.setSessionToken(null);
-    }
-  }
-
-  // ==========================================
-  // Servers & Telemetry (GET /api/v1/dashboard/servers)
-  // ==========================================
-  public async getServers(): Promise<BackendServer[]> {
-    return await this.request<BackendServer[]>('/api/v1/dashboard/servers');
-  }
-
-  public async startServer(serverId: string): Promise<{ success: boolean; message: string }> {
-    return await this.request(`/api/v1/hosting/servers/${serverId}/start`, { method: 'POST' });
-  }
-
-  public async stopServer(serverId: string): Promise<{ success: boolean; message: string }> {
-    return await this.request(`/api/v1/hosting/servers/${serverId}/stop`, { method: 'POST' });
-  }
-
-  public async restartServer(serverId: string): Promise<{ success: boolean; message: string }> {
-    return await this.request(`/api/v1/hosting/servers/${serverId}/restart`, { method: 'POST' });
-  }
-
-  public async sendCommand(serverId: string, command: string): Promise<{ success: boolean; output?: string }> {
-    return await this.request(`/api/v1/hosting/servers/${serverId}/command`, {
-      method: 'POST',
-      body: JSON.stringify({ command }),
-    });
-  }
-
-  public async broadcast(message: string, serverScope: string = 'GLOBAL'): Promise<{ success: boolean }> {
-    return await this.request('/api/v1/bridge/message', {
-      method: 'POST',
-      body: JSON.stringify({ message, scope: serverScope }),
-    });
-  }
-
-  // ==========================================
-  // Connected Plugins Health (GET /api/v1/dashboard/plugins)
-  // ==========================================
-  public async getConnectedPlugins(): Promise<BackendPluginHeartbeat[]> {
-    return await this.request<BackendPluginHeartbeat[]>('/api/v1/dashboard/plugins');
-  }
-
-  // ==========================================
-  // Moderation & Punishments
-  // ==========================================
-  public async getPunishments(params?: { active_only?: boolean; player_uuid?: string; limit?: number }): Promise<BackendPunishment[]> {
-    const query = new URLSearchParams();
-    if (params?.active_only !== undefined) query.set('active_only', String(params.active_only));
-    if (params?.player_uuid) query.set('player_uuid', params.player_uuid);
-    if (params?.limit) query.set('limit', String(params.limit));
-
-    const path = `/api/v1/punishments${query.toString() ? `?${query.toString()}` : ''}`;
-    return await this.request<BackendPunishment[]>(path);
-  }
-
-  public async issuePunishment(payload: {
-    type: 'kick' | 'warn' | 'ban' | 'unban' | 'ipban' | 'ipunban' | string;
-    player_uuid: string;
-    player_name?: string;
-    reason: string;
-    duration_seconds?: number | null;
-    server_scope?: string;
-    evidence_url?: string;
-  }): Promise<BackendPunishment> {
-    const endpoint = payload.type.toLowerCase().replace('_', '');
-    return await this.request<BackendPunishment>(`/api/v1/moderation/${endpoint}`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-  }
-
-  public async revokePunishment(punishmentId: string, reason?: string): Promise<{ success: boolean }> {
-    return await this.request(`/api/v1/punishments/${punishmentId}/revoke`, {
-      method: 'POST',
-      body: JSON.stringify({ reason: reason || 'Staff pardon via dashboard' }),
-    });
-  }
-
-  public async getAppeals(): Promise<BackendAppeal[]> {
-    return await this.request<BackendAppeal[]>('/api/v1/appeals');
-  }
-
-  public async resolveAppeal(appealId: string, decision: 'ACCEPTED' | 'REJECTED', staffNote?: string): Promise<{ success: boolean }> {
-    return await this.request(`/api/v1/appeals/${appealId}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ status: decision, staff_note: staffNote }),
-    });
-  }
-
-  // ==========================================
-  // Anticheat & Alt Detection
-  // ==========================================
-  public async getFlaggedAlts(): Promise<BackendAltFlag[]> {
-    return await this.request<BackendAltFlag[]>('/api/v1/alts/flagged');
-  }
-
-  public async getAltGroups(): Promise<BackendAltFlag[]> {
-    return await this.request<BackendAltFlag[]>('/api/v1/alts/groups');
-  }
-
-  public async checkPlayerAlts(playerUuid: string): Promise<BackendAltFlag> {
-    return await this.request<BackendAltFlag>(`/api/v1/alts/player/${playerUuid}`);
-  }
-
-  public async reportFalsePositiveAlt(clusterId: string, reason: string): Promise<{ success: boolean }> {
-    return await this.request('/api/v1/alts/false-positive', {
-      method: 'POST',
-      body: JSON.stringify({ cluster_id: clusterId, reason }),
-    });
-  }
-
-  // ==========================================
-  // AI Intelligence & Tasks
-  // ==========================================
-  public async getAITasks(): Promise<BackendAITask[]> {
-    return await this.request<BackendAITask[]>('/api/v1/ai/tasks');
-  }
-
-  public async reviewPlayerAI(playerUuid: string): Promise<BackendAITask> {
-    return await this.request<BackendAITask>(`/api/v1/ai/review/player/${playerUuid}`, {
-      method: 'POST',
-    });
-  }
-
-  public async reviewPlayer(playerUuid: string): Promise<any> {
-    return await this.reviewPlayerAI(playerUuid);
-  }
-
-  public async unlinkAccount(linkId: string): Promise<{ success: boolean }> {
-    return await this.request(`/api/v1/verification/unlink/${linkId}`, {
-      method: 'DELETE',
-    });
-  }
-
-  public async translateText(payload: { text: string; targetLang: string; player_uuid?: string }): Promise<{ translated: string }> {
-    return await this.request<{ translated: string }>('/api/v1/translation/translate', {
-      method: 'POST',
-      body: JSON.stringify({
-        text: payload.text,
-        target_language: payload.targetLang,
-        ...(payload.player_uuid ? { player_uuid: payload.player_uuid } : {}),
-      }),
-    });
-  }
-
-  public async syncTranslations(bundles: any): Promise<{ success: boolean }> {
-    return await this.request<{ success: boolean }>('/api/v1/translation/sync', {
-      method: 'POST',
-      body: JSON.stringify(bundles),
-    });
-  }
-
-  public async approveAITask(taskId: string, reviewedBy: string = 'staff'): Promise<{ success: boolean }> {
-    return await this.request(`/api/v1/ai/tasks/${taskId}/approve`, {
-      method: 'POST',
-      body: JSON.stringify({ action_taken: 'APPROVED', reviewed_by: reviewedBy }),
-    });
-  }
-
-  public async denyAITask(taskId: string): Promise<{ success: boolean }> {
-    return await this.request(`/api/v1/ai/tasks/${taskId}/deny`, { method: 'POST' });
-  }
-
-  // ==========================================
-  // Logs Stream & Query
-  // ==========================================
-  public async getLogs(params?: {
-    query?: string;
-    level?: string;
-    source?: string;
-    trace_id?: string;
-    limit?: number;
-  }): Promise<BackendLogEntry[]> {
-    const query = new URLSearchParams();
-    if (params?.query) query.set('query', params.query);
-    if (params?.level && params.level !== 'ALL') query.set('level', params.level);
-    if (params?.source) query.set('source', params.source);
-    if (params?.trace_id) query.set('trace_id', params.trace_id);
-    if (params?.limit) query.set('limit', String(params.limit));
-
-    const path = `/api/v1/logs${query.toString() ? `?${query.toString()}` : ''}`;
-    return await this.request<BackendLogEntry[]>(path);
-  }
-
-  // ==========================================
-  // WebSocket Console Connect Helper
-  // ==========================================
-  public createConsoleWebSocket(
-    serverId: string,
-    onMessage: (data: string) => void,
-    onError?: (err: Event) => void,
-    onClose?: (event: CloseEvent) => void
-  ): WebSocket | null {
-    try {
-      const wsProto = this.config.baseUrl.startsWith('https') ? 'wss' : 'ws';
-      const cleanHost = this.config.baseUrl.replace(/^https?:\/\//, '');
-      const tokenParam = this.config.sessionToken ? `?token=${encodeURIComponent(this.config.sessionToken)}` : '';
-      
-      const wsUrl = `${wsProto}://${cleanHost}/api/v1/hosting/servers/${serverId}/console${tokenParam}`;
-      const ws = new WebSocket(wsUrl);
-
-      ws.onmessage = (event) => {
-        onMessage(event.data);
-      };
-
-      if (onError) ws.onerror = onError;
-      if (onClose) ws.onclose = onClose;
-
-      return ws;
-    } catch (e) {
-      console.warn('[UmbrellaOS] Failed to instantiate WebSocket:', e);
-      return null;
-    }
-  }
-
-  // ==========================================
-  // Feature Flags & Settings
-  // ==========================================
-  public async getFeatureFlag(name: string): Promise<{ name: string; enabled: boolean; metadata?: any }> {
-    return await this.request(`/api/v1/feature-flags/${name}`);
-  }
-
-  public async updateFeatureFlag(name: string, enabled: boolean): Promise<{ success: boolean }> {
-    return await this.request(`/api/v1/feature-flags`, {
-      method: 'POST',
-      body: JSON.stringify({ name, enabled }),
-    });
-  }
-
-  public async getSetting(key: string): Promise<{ key: string; value: any }> {
-    return await this.request(`/api/v1/settings/${key}`);
-  }
-
-  public async updateSetting(key: string, value: any): Promise<{ success: boolean }> {
-    return await this.request(`/api/v1/settings/${key}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ value }),
-    });
-  }
-
-  // ==========================================
-  // Players & Telemetry
-  // ==========================================
-  public async getPlayers(params?: { search?: string; online_only?: boolean; limit?: number }): Promise<any[]> {
-    const query = new URLSearchParams();
-    if (params?.search) query.set('search', params.search);
-    if (params?.online_only !== undefined) query.set('online_only', String(params.online_only));
-    if (params?.limit) query.set('limit', String(params.limit));
-
-    const path = `/api/v1/players${query.toString() ? `?${query.toString()}` : ''}`;
-    return await this.request<any[]>(path);
-  }
-
-  // ==========================================
-  // Staff Directory & RBAC
-  // ==========================================
-  public async getStaff(): Promise<any[]> {
-    return await this.request<any[]>('/api/v1/staff');
-  }
-
-  public async inviteStaffMember(payload: { email?: string; discord_id?: string; role: string; notes?: string }): Promise<any> {
-    return await this.request('/api/v1/staff/invite', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-  }
-
-  // ==========================================
-  // Snapshots & Backups
-  // ==========================================
-  public async getSnapshots(serverId?: string): Promise<any[]> {
-    const path = serverId ? `/api/v1/snapshots?server_id=${encodeURIComponent(serverId)}` : '/api/v1/snapshots';
-    return await this.request<any[]>(path);
-  }
-
-  public async createSnapshot(serverId: string, type: string, tags: string[] = []): Promise<any> {
-    return await this.request('/api/v1/snapshots', {
-      method: 'POST',
-      body: JSON.stringify({ server_id: serverId, type, tags }),
-    });
-  }
-
-  public async restoreSnapshot(snapshotId: string): Promise<{ success: boolean; message: string }> {
-    return await this.request(`/api/v1/snapshots/${snapshotId}/restore`, {
-      method: 'POST',
-    });
-  }
-
-  // ==========================================
-  // Automation & Scheduled Crons
-  // ==========================================
-  public async getCronJobs(): Promise<any[]> {
-    return await this.request<any[]>('/api/v1/cron/jobs');
-  }
-
-  public async createCronJob(payload: { name: string; schedule: string; action: string; target: string; payload?: any }): Promise<any> {
-    return await this.request('/api/v1/cron/jobs', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-  }
-
-  public async toggleCronJob(id: string, enabled: boolean): Promise<{ success: boolean }> {
-    return await this.request(`/api/v1/cron/jobs/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ enabled }),
-    });
-  }
-
-  public async runCronJob(id: string): Promise<{ success: boolean }> {
-    return await this.request(`/api/v1/cron/jobs/${id}/run`, {
-      method: 'POST',
-    });
-  }
-
-  // ==========================================
-  // API Keys & Webhooks Hub
-  // ==========================================
-  public async getApiKeys(): Promise<any[]> {
-    return await this.request<any[]>('/api/v1/auth/keys');
-  }
-
-  public async createApiKey(name: string, scopes: string[]): Promise<any> {
-    return await this.request('/api/v1/auth/keys', {
-      method: 'POST',
-      body: JSON.stringify({ name, scopes }),
-    });
-  }
-
-  public async revokeApiKey(keyId: string): Promise<{ success: boolean }> {
-    return await this.request(`/api/v1/auth/keys/${keyId}`, {
-      method: 'DELETE',
-    });
-  }
-
-  public async getWebhooks(): Promise<any[]> {
-    return await this.request<any[]>('/api/v1/webhooks');
-  }
-
-  public async createWebhook(payload: { name: string; url: string; events: string[] }): Promise<any> {
-    return await this.request('/api/v1/webhooks', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-  }
-
-  public async testWebhook(webhookId: string): Promise<{ success: boolean; latency_ms?: number }> {
-    return await this.request(`/api/v1/webhooks/${webhookId}/test`, {
-      method: 'POST',
-    });
-  }
-
-  // ==========================================
-  // Anticheat Violations & Diagnostics
-  // ==========================================
-  public async getAnticheatViolations(params?: { player_uuid?: string; server_id?: string; check_name?: string; limit?: number }): Promise<any[]> {
-    const query = new URLSearchParams();
-    if (params?.player_uuid) query.set('player_uuid', params.player_uuid);
-    if (params?.server_id) query.set('server_id', params.server_id);
-    if (params?.check_name) query.set('check_name', params.check_name);
-    if (params?.limit) query.set('limit', String(params.limit));
-    const path = `/api/v1/anticheat/violations${query.toString() ? `?${query.toString()}` : ''}`;
-    return await this.request<any[]>(path);
-  }
-
-  public async getGrimViolations(limit: number = 50): Promise<any[]> {
-    return await this.request<any[]>(`/api/v1/anticheat/violations?limit=${limit}`);
-  }
-
-  public async getCrashReports(): Promise<any[]> {
-    return await this.request<any[]>('/api/v1/diagnostics/crashes');
-  }
-
-  public async triageCrashReport(reportText: string): Promise<any> {
-    return await this.request('/api/v1/ai/diagnostics/crash', {
-      method: 'POST',
-      body: JSON.stringify({ report: reportText }),
-    });
-  }
-
-  // ==========================================
-  // Nodes & Infrastructure Telemetry
-  // ==========================================
-  public async getNodes(): Promise<any[]> {
-    return await this.request<any[]>('/api/v1/infrastructure/nodes');
-  }
-
-  // ==========================================
-  // Verification (Discord <-> Minecraft)
-  // ==========================================
-  public async getVerificationPending(): Promise<any[]> {
-    return await this.request('/api/v1/verification/pending');
-  }
-
-  public async getVerificationLinks(): Promise<any[]> {
-    return await this.request<any[]>('/api/v1/verification/links');
-  }
-
-  public async manualLinkDiscord(minecraftUuid: string, discordId: string): Promise<{ success: boolean }> {
-    return await this.request('/api/v1/verification/manual-link', {
-      method: 'POST',
-      body: JSON.stringify({ minecraft_uuid: minecraftUuid, discord_id: discordId }),
-    });
-  }
-
-  // ==========================================
-  // Player Lookup & Name Validation
-  // ==========================================
-  public validateMinecraftUsername(username: string): { valid: boolean; error?: string } {
-    const trimmed = username.trim();
-    if (!trimmed) {
-      return { valid: false, error: 'Player username or UUID cannot be empty.' };
-    }
-    // Check if UUID format
-    const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$|^[0-9a-fA-F]{32}$/;
-    if (uuidRegex.test(trimmed)) {
-      return { valid: true };
-    }
-    // Check standard Minecraft username (3-16 chars alphanumeric + underscore)
-    const usernameRegex = /^[a-zA-Z0-9_]{3,16}$/;
-    if (!usernameRegex.test(trimmed)) {
-      if (trimmed.length < 3) {
-        return { valid: false, error: `Username "${trimmed}" is too short (minimum 3 characters).` };
-      }
-      if (trimmed.length > 16) {
-        return { valid: false, error: `Username "${trimmed}" exceeds Mojang maximum length (16 characters).` };
-      }
-      return { valid: false, error: `Username "${trimmed}" contains illegal characters. Only letters, numbers, and underscores are allowed.` };
-    }
-    return { valid: true };
-  }
-
-  public async lookupPlayer(usernameOrUuid: string): Promise<{
-    found: boolean;
-    uuid: string;
-    username: string;
-    avatarUrl: string;
-    online?: boolean;
-    server?: string;
-    rank?: string;
-    error?: string;
-  }> {
-    const validation = this.validateMinecraftUsername(usernameOrUuid);
-    if (!validation.valid) {
-      throw new Error(validation.error || 'Invalid player name format.');
-    }
-
-    try {
-      const data = await this.request<any>(`/api/v1/players/lookup?query=${encodeURIComponent(usernameOrUuid.trim())}`);
-      return {
-        found: true,
-        uuid: data.uuid || '069a79f4-44e9-4726-a5be-fca90e38aaf5',
-        username: data.username || usernameOrUuid.trim(),
-        avatarUrl: `https://mc-heads.net/avatar/${data.username || usernameOrUuid.trim()}/64`,
-        online: data.online,
-        server: data.server,
-        rank: data.rank
-      };
-    } catch (err: any) {
-      throw new ApiError(
-        err?.message || `Player "${usernameOrUuid.trim()}" not found or lookup endpoint unavailable.`,
-        err?.status ?? 0,
-        err
-      );
-    }
-  }
-
-  // ==========================================
-  // AI Multi-Provider & Rate-Limit Failover Engine
-  // ==========================================
-  public async testAIProvider(
-    providerId: string,
-    apiKey: string,
-    baseUrl?: string,
-    modelName?: string
-  ): Promise<{
-    success: boolean;
-    latencyMs: number;
-    model: string;
-    quotaPercent: number;
-    message: string;
-  }> {
-    const res = await this.request<any>('/api/v1/ai/providers/test', {
-      method: 'POST',
-      body: JSON.stringify({
-        provider: providerId,
-        api_key: apiKey,
-        base_url: baseUrl,
-        model: modelName
-      })
-    });
-    return {
-      success: true,
-      latencyMs: res.latency_ms ?? 0,
-      model: res.model || modelName || 'default',
-      quotaPercent: res.quota_percent ?? 0,
-      message: res.message || 'Provider test complete.'
-    };
-  }
-
-  // ==========================================
-  // AI Copilot Chat (real backend)
-  // ==========================================
-  public async sendCopilotMessage(message: string, context?: string): Promise<{ response: string }> {
-    return await this.request<{ response: string }>('/api/v1/ai/copilot', {
-      method: 'POST',
-      body: JSON.stringify({ message, ...(context ? { context } : {}) }),
-    });
-  }
-
-  // ==========================================
-  // Crash Risk Assessment
-  // ==========================================
-  public async getCrashRisk(serverId: string): Promise<{
-    server_id: string;
-    server_name?: string;
-    risk_level: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
-    tps_trend?: number[];
-    recommendation?: string;
-  }> {
-    return await this.request(`/api/v1/ai/crash-risk/${encodeURIComponent(serverId)}`);
-  }
-
-  // ==========================================
-  // Webhooks (CRUD)
-  // ==========================================
-  public async deleteWebhook(webhookId: string): Promise<{ success: boolean }> {
-    return await this.request(`/api/v1/webhooks/${webhookId}`, { method: 'DELETE' });
-  }
-
-  // ==========================================
-  // Bridge Messages & Settings
-  // ==========================================
-  public async getBridgeMessages(params?: { limit?: number; server_id?: string }): Promise<any[]> {
-    const query = new URLSearchParams();
-    if (params?.limit) query.set('limit', String(params.limit));
-    if (params?.server_id) query.set('server_id', params.server_id);
-    const path = `/api/v1/bridge/messages${query.toString() ? `?${query.toString()}` : ''}`;
-    return await this.request<any[]>(path);
-  }
-
-  public async getBridgeSettings(): Promise<any> {
-    return await this.request('/api/v1/bridge/settings');
-  }
-
-  public async updateBridgeSettings(settings: {
-    mc_to_discord?: boolean;
-    discord_to_mc?: boolean;
-    show_avatars?: boolean;
-    channel_id?: string;
-  }): Promise<{ success: boolean }> {
-    return await this.request('/api/v1/bridge/settings', {
-      method: 'PATCH',
-      body: JSON.stringify(settings),
-    });
-  }
-
-  // ==========================================
-  // Translation — Player Language Preferences
-  // ==========================================
-  public async getPlayerLanguages(): Promise<any[]> {
-    return await this.request<any[]>('/api/v1/translation/language/all');
-  }
-
-  // ==========================================
-  // Discord Cloud Hub Notifications & Webhooks
-  // ==========================================
-  public async sendDiscordNotification(content: string, channel?: string): Promise<{ success: boolean }> {
-    return await this.request('/api/v1/discord/notify', {
-      method: 'POST',
-      body: JSON.stringify({ content, channel }),
-    });
-  }
-
-  public async sendDiscordEmbed(embed: {
-    title: string;
-    description: string;
-    color?: number | string;
-    channel?: string;
-    author?: string | { name: string; icon_url?: string };
-    fields?: Array<{ name: string; value: string; inline?: boolean }>;
-    footer?: string | { text: string };
-  }): Promise<{ success: boolean }> {
-    return await this.request('/api/v1/discord/embed', {
-      method: 'POST',
-      body: JSON.stringify(embed),
-    });
-  }
-  // ==========================================
-  // Phase 15 — Player Full Profile & Appeals Decision
-  // ==========================================
-  public async getPlayerFullProfile(uuid: string): Promise<any> {
-    return await this.request<any>(`/api/v1/players/${uuid}/full-profile`);
-  }
-
-  public async closeAppeal(id: string, action: string, staffNote?: string, newExpiry?: string): Promise<any> {
-    return await this.request<any>(`/api/v1/appeals/${id}/close`, {
-      method: 'POST',
-      body: JSON.stringify({
-        action,
-        ...(staffNote ? { staff_note: staffNote } : {}),
-        ...(newExpiry ? { new_expiry: newExpiry } : {}),
-      }),
-    });
-  }
-
-  public async reviewAppealAI(id: string): Promise<any> {
-    return await this.request<any>(`/api/v1/ai/review/appeal/${id}`, { method: 'POST' });
-  }
-
-  public async reviewPlayerFullAI(uuid: string): Promise<any> {
-    return await this.request<any>(`/api/v1/ai/review/player/${uuid}`, { method: 'POST' });
-  }
-
-
+export const dashboard = {
+  servers: (token: string) =>
+    request<ServerRecord[]>('/api/v1/dashboard/servers', { token }),
+  plugins: (token: string) =>
+    request<PluginRecord[]>('/api/v1/dashboard/plugins', { token }),
 }
 
-export const api = new ApiClient();
-export default api;
+// ─── Players ──────────────────────────────────────────────────────────────────
+
+export interface PlayerSchema {
+  uuid: string
+  username: string
+  first_seen: string
+  last_seen: string
+  playtime: number
+  joins: number
+  deaths: number
+  risk_score: number
+  suspicion_score: number
+  discord_id: string | null
+}
+
+export interface FullProfileResponse {
+  player: {
+    uuid: string
+    username: string
+    first_seen: string
+    last_seen: string
+    playtime: number
+    current_server: string | null
+    risk_score: number
+    suspicion_score: number
+  }
+  verification: {
+    discord_id: string
+    discord_username: string | null
+    linked_at: string | null
+    status: string
+  } | null
+  punishment_history: Array<{
+    id: string
+    type: string
+    reason: string
+    staff_id: string | null
+    created_at: string
+    expires_at: string | null
+    active: boolean
+    appeal_id: string | null
+  }>
+  anticheat_history: {
+    total_flags: number
+    by_check: Record<string, { count: number; avg_vl: number; max_vl: number }>
+    timeline: Array<{
+      check_name: string
+      vl: number
+      verbose: string | null
+      timestamp: string
+    }>
+  }
+  appeal_history: Array<{
+    id: string
+    punishment_id: string
+    status: string
+    created_at: string
+    action_taken: string | null
+    handled_by: string | null
+    ai_recommendation: string | null
+  }>
+  alt_accounts: Array<{
+    uuid: string
+    username: string | null
+    confidence: string | null
+    cluster_type: string | null
+  }>
+}
+
+export const players = {
+  list: (token: string, params: { username?: string; skip?: number; limit?: number } = {}) => {
+    const q = new URLSearchParams()
+    if (params.username) q.set('username', params.username)
+    if (params.skip !== undefined) q.set('skip', String(params.skip))
+    if (params.limit !== undefined) q.set('limit', String(params.limit))
+    return request<PlayerSchema[]>(`/api/v1/players?${q}`, { token })
+  },
+  get: (token: string, uuid: string) =>
+    request<PlayerSchema & { ip_addresses: Array<{ id: string; ip_address: string; first_seen: string; last_seen: string }> }>(
+      `/api/v1/players/${uuid}`, { token },
+    ),
+  fullProfile: (token: string, uuid: string) =>
+    request<FullProfileResponse>(`/api/v1/players/${uuid}/full-profile`, { token }),
+}
+
+// ─── Punishments ──────────────────────────────────────────────────────────────
+
+export interface PunishmentSchema {
+  id: string
+  player_uuid: string
+  staff_id: string | null
+  type: string
+  reason: string
+  created_at: string
+  expires_at: string | null
+  active: boolean
+}
+
+export const punishments = {
+  list: (token: string, params: { player_uuid?: string; active_only?: boolean; skip?: number; limit?: number } = {}) => {
+    const q = new URLSearchParams()
+    if (params.player_uuid) q.set('player_uuid', params.player_uuid)
+    if (params.active_only !== undefined) q.set('active_only', String(params.active_only))
+    if (params.skip !== undefined) q.set('skip', String(params.skip))
+    if (params.limit !== undefined) q.set('limit', String(params.limit))
+    return request<PunishmentSchema[]>(`/api/v1/punishments?${q}`, { token })
+  },
+  create: (token: string, body: { player_uuid: string; type: string; reason: string; expires_at?: string; staff_id?: string }) =>
+    request<PunishmentSchema>('/api/v1/punishments', {
+      method: 'POST', token, body: JSON.stringify(body),
+    }),
+  // POST /api/v1/punishments/{id}/revoke — no body required
+  revoke: (token: string, id: string) =>
+    request<PunishmentSchema>(`/api/v1/punishments/${id}/revoke`, { method: 'POST', token }),
+}
+
+// ─── Appeals ──────────────────────────────────────────────────────────────────
+
+export interface AppealSchema {
+  id: string
+  punishment_id: string
+  player_uuid: string
+  status: string
+  message: string
+  created_at: string
+  action_taken: string | null
+  handled_by: string | null
+  case_summary: string | null
+  closed_at: string | null
+  ai_review_status: string | null
+}
+
+export const appeals = {
+  list: (token: string, params: { status?: string; player_uuid?: string; skip?: number; limit?: number } = {}) => {
+    const q = new URLSearchParams()
+    if (params.status) q.set('status', params.status)
+    if (params.player_uuid) q.set('player_uuid', params.player_uuid)
+    if (params.skip !== undefined) q.set('skip', String(params.skip))
+    if (params.limit !== undefined) q.set('limit', String(params.limit))
+    return request<AppealSchema[]>(`/api/v1/appeals?${q}`, { token })
+  },
+  // POST /api/v1/appeals/{id}/close — action: ACCEPT|REDUCE_SENTENCE|REJECT|ESCALATE|SCHEDULE_REVIEW
+  close: (token: string, id: string, body: { action: string; staff_note?: string; new_expiry?: string }) =>
+    request<AppealSchema>(`/api/v1/appeals/${id}/close`, {
+      method: 'POST', token, body: JSON.stringify(body),
+    }),
+}
+
+// ─── Anticheat ────────────────────────────────────────────────────────────────
+
+export interface ViolationRecord {
+  id: string
+  player_uuid: string
+  player_name: string
+  server_id: string | null
+  check_name: string
+  verbose: string
+  vl: number
+  created_at: string
+}
+
+export const anticheat = {
+  violations: (token: string, params: { player_uuid?: string; server_id?: string; check_name?: string; limit?: number } = {}) => {
+    const q = new URLSearchParams()
+    if (params.player_uuid) q.set('player_uuid', params.player_uuid)
+    if (params.server_id) q.set('server_id', params.server_id)
+    if (params.check_name) q.set('check_name', params.check_name)
+    if (params.limit !== undefined) q.set('limit', String(params.limit))
+    return request<ViolationRecord[]>(`/api/v1/anticheat/violations?${q}`, { token })
+  },
+}
+
+// ─── Staff ────────────────────────────────────────────────────────────────────
+
+export interface StaffMemberSchema {
+  id: string
+  discord_id: string
+  username: string
+  discriminator: string
+  avatar_url: string | null
+  role: string | null
+  permissions: string[]
+  email: string | null
+  linked_minecraft_uuid: string | null
+  linked_minecraft_username: string | null
+}
+
+export interface StaffManageResponse {
+  user_id: string
+  username: string
+  previous_role: string
+  new_role: string
+  action: string
+}
+
+export const staff = {
+  list: (token: string) =>
+    request<StaffMemberSchema[]>('/api/v1/staff', { token }),
+  manage: (token: string, body: { user_id: string; action: 'promote' | 'demote' }) =>
+    request<StaffManageResponse>('/api/v1/staff/manage', {
+      method: 'POST', token, body: JSON.stringify(body),
+    }),
+  add: (token: string, body: { discord_id: string; role: string; username?: string }) =>
+    request<StaffManageResponse>('/api/v1/staff/add', {
+      method: 'POST', token, body: JSON.stringify(body),
+    }),
+}
+
+// ─── Verification ─────────────────────────────────────────────────────────────
+
+export interface VerificationLinkSchema {
+  id: number
+  discord_id: string
+  discord_username: string | null
+  minecraft_uuid: string | null
+  minecraft_username: string | null
+  linked_at: string | null
+  verified_by: string
+  status: string
+}
+
+export interface VerificationCodeSchema {
+  id: number
+  player_uuid: string
+  player_username: string
+  code: string
+  created_at: string
+  expires_at: string
+  used: boolean
+  ip_address: string | null
+}
+
+export const verification = {
+  links: (token: string, params: { limit?: number; offset?: number } = {}) => {
+    const q = new URLSearchParams()
+    if (params.limit !== undefined) q.set('limit', String(params.limit))
+    if (params.offset !== undefined) q.set('offset', String(params.offset))
+    return request<VerificationLinkSchema[]>(`/api/v1/verification/links?${q}`, { token })
+  },
+  pending: (token: string) =>
+    request<VerificationCodeSchema[]>('/api/v1/verification/pending', { token }),
+  // DELETE /api/v1/verification/unlink/{discord_id}
+  unlink: (token: string, discordId: string) =>
+    request<{ success: boolean }>(`/api/v1/verification/unlink/${discordId}`, {
+      method: 'DELETE', token,
+    }),
+}
+
+// ─── Alt Detection ────────────────────────────────────────────────────────────
+
+export interface FlaggedPlayerSchema {
+  uuid: string
+  username: string
+  suspicion_score: number
+  first_seen: string
+}
+
+export interface AltGroupSchema {
+  id: number
+  created_at: string
+  notes: string | null
+  confirmed: boolean
+}
+
+export const alts = {
+  // Players with suspicion_score >= 80
+  flagged: (token: string, params: { skip?: number; limit?: number } = {}) => {
+    const q = new URLSearchParams()
+    if (params.skip !== undefined) q.set('skip', String(params.skip))
+    if (params.limit !== undefined) q.set('limit', String(params.limit))
+    return request<FlaggedPlayerSchema[]>(`/api/v1/alts/flagged?${q}`, { token })
+  },
+  // Only returns confirmed=true groups
+  groups: (token: string) =>
+    request<AltGroupSchema[]>('/api/v1/alts/groups', { token }),
+  // Marks most recent suspicion event for player as false positive
+  falsePositive: (token: string, body: { event_id?: number; player_uuid?: string; reviewed_by: string }) =>
+    request<{ success: boolean }>('/api/v1/alts/false-positive', {
+      method: 'POST', token, body: JSON.stringify(body),
+    }),
+}
+
+// ─── AI Tasks ─────────────────────────────────────────────────────────────────
+
+export interface AITaskRecord {
+  id: number
+  task_type: string
+  status: string    // "pending" | "approved" | "denied"
+  player_uuid: string | null
+  created_at: string
+  expires_at: string
+  ai_summary: string | null
+  ai_recommendation: string | null
+  ai_confidence: number | null
+  reviewed_by: string | null
+  reviewed_at: string | null
+  action_taken: string | null
+}
+
+export const aiTasks = {
+  list: (token: string, params: { status?: string; task_type?: string; skip?: number; limit?: number } = {}) => {
+    const q = new URLSearchParams()
+    if (params.status) q.set('status', params.status)
+    if (params.task_type) q.set('task_type', params.task_type)
+    if (params.skip !== undefined) q.set('skip', String(params.skip))
+    if (params.limit !== undefined) q.set('limit', String(params.limit))
+    return request<AITaskRecord[]>(`/api/v1/ai/tasks?${q}`, { token })
+  },
+  // Both action_taken and reviewed_by are required by the backend
+  approve: (token: string, taskId: number, body: { action_taken: string; reviewed_by: string }) =>
+    request<AITaskRecord>(`/api/v1/ai/tasks/${taskId}/approve`, {
+      method: 'POST', token, body: JSON.stringify(body),
+    }),
+  deny: (token: string, taskId: number, body: { reviewed_by: string; reason?: string }) =>
+    request<AITaskRecord>(`/api/v1/ai/tasks/${taskId}/deny`, {
+      method: 'POST', token, body: JSON.stringify(body),
+    }),
+  // Triggers on-demand AI review — returns 503 on AI failure (not 400)
+  reviewPlayer: (token: string, uuid: string) =>
+    request<AITaskRecord>(`/api/v1/ai/review/player/${uuid}`, { method: 'POST', token }),
+  reviewAppeal: (token: string, appealId: string) =>
+    request<AITaskRecord & { ai_review_status?: string; ai_result?: unknown }>(
+      `/api/v1/ai/review/appeal/${appealId}`, { method: 'POST', token },
+    ),
+}
+
+// ─── AI Copilot & Crash Risk ──────────────────────────────────────────────────
+
+export interface CopilotResponse {
+  response: string
+  model_used: string
+  latency_ms: number
+}
+
+export interface CrashRiskResponse {
+  server_id: string
+  // Real enum values from crash_prevention.py: INSUFFICIENT_DATA | NONE | WATCH | CRITICAL
+  risk_level: 'INSUFFICIENT_DATA' | 'NONE' | 'WATCH' | 'CRITICAL' | string
+  tps_trend: number | null
+  mspt_avg: number | null   // always null — MSPT not tracked in current schema
+  recommendation: string
+  assessed_at: string
+}
+
+export const ai = {
+  copilot: (token: string, body: { message: string; context?: string }) =>
+    request<CopilotResponse>('/api/v1/ai/copilot', {
+      method: 'POST', token, body: JSON.stringify(body),
+    }),
+  crashRisk: (token: string, serverId: string) =>
+    request<CrashRiskResponse>(`/api/v1/ai/crash-risk/${serverId}`, { token }),
+}
+
+// ─── AI Config (per-task model assignments) ───────────────────────────────────
+
+export interface TaskModelAssignment {
+  primary: string       // "gemini" | "anthropic" | "openai" | "deepseek" | "openrouter"
+  failover: string | null
+}
+
+export interface TaskConfigResponse {
+  player_review: TaskModelAssignment
+  appeal_review: TaskModelAssignment
+  copilot: TaskModelAssignment
+  crash_risk: TaskModelAssignment
+  chat_responder: TaskModelAssignment
+}
+
+export const aiConfig = {
+  // GET /api/v1/ai/config/tasks — per-task model assignments
+  getTasks: (token: string) =>
+    request<TaskConfigResponse>('/api/v1/ai/config/tasks', { token }),
+  // POST /api/v1/ai/config/tasks — update one task's provider
+  updateTask: (token: string, body: { task: string; primary: string; failover?: string | null }) =>
+    request<TaskConfigResponse>('/api/v1/ai/config/tasks', {
+      method: 'POST', token, body: JSON.stringify(body),
+    }),
+  // POST /api/v1/ai/providers/test — live key validation
+  testProvider: (token: string, body: { provider: string; api_key?: string }) =>
+    request<{ success: boolean; latency_ms: number; message: string; model: string }>(
+      '/api/v1/ai/providers/test', { method: 'POST', token, body: JSON.stringify(body) },
+    ),
+}
+
+// ─── Audit ────────────────────────────────────────────────────────────────────
+
+export interface AuditEntry {
+  id: string
+  actor: string
+  actor_type: string
+  action: string
+  target: string | null
+  details_json: string | null
+  created_at: string
+  trace_id: string | null
+}
+
+// Audit returns {items, total} dict from the capability registry
+export interface AuditResponse {
+  items: AuditEntry[]
+  total: number
+}
+
+export const audit = {
+  list: (token: string, params: { limit?: number; offset?: number; actor_type?: string } = {}) => {
+    const q = new URLSearchParams()
+    if (params.limit !== undefined) q.set('limit', String(params.limit))
+    if (params.offset !== undefined) q.set('offset', String(params.offset))
+    if (params.actor_type) q.set('actor_type', params.actor_type)
+    return request<AuditResponse>(`/api/v1/audit?${q}`, { token })
+  },
+}
+
+// ─── Feature Flags ────────────────────────────────────────────────────────────
+
+export interface FeatureFlagRecord {
+  id: string
+  name: string
+  enabled: boolean
+  description: string
+}
+
+export const featureFlags = {
+  list: (token: string) =>
+    request<FeatureFlagRecord[]>('/api/v1/feature-flags', { token }),
+  // POST /api/v1/feature-flags — upsert by name, returns 200 (not 201)
+  upsert: (token: string, body: { name: string; enabled: boolean; description: string }) =>
+    request<FeatureFlagRecord>('/api/v1/feature-flags', {
+      method: 'POST', token, body: JSON.stringify(body),
+    }),
+}
+
+// ─── Settings ─────────────────────────────────────────────────────────────────
+
+export interface SettingRecord {
+  key: string
+  value: string
+  sensitive: boolean
+  category: string
+  description: string
+}
+
+export const settings = {
+  list: (token: string) =>
+    request<SettingRecord[]>('/api/v1/settings', { token }),
+  get: (token: string, key: string) =>
+    request<SettingRecord>(`/api/v1/settings/${encodeURIComponent(key)}`, { token }),
+  // POST /api/v1/settings/{key} — upsert (creates if not exists)
+  update: (token: string, key: string, value: string) =>
+    request<SettingRecord>(`/api/v1/settings/${encodeURIComponent(key)}`, {
+      method: 'POST', token, body: JSON.stringify({ value }),
+    }),
+}
+
+// ─── WebSocket Console ────────────────────────────────────────────────────────
+
+export function openConsoleWebSocket(serverId: string, token: string): WebSocket {
+  const base = getBaseUrl().replace(/^http/, 'ws')
+  // Token travels as query param — standard pattern for browser WebSocket auth
+  // (browsers can't set arbitrary headers on WebSocket connections)
+  return new WebSocket(`${base}/api/v1/hosting/servers/${serverId}/console?token=${encodeURIComponent(token)}`)
+}

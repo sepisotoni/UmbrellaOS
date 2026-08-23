@@ -1,326 +1,186 @@
-# UmbrellaOS Command Center — Backend Requirements & Integration Specification
-
-> **Target Audience:** Claude / Backend Engineering Team  
-> **Architecture Target:** FastAPI + PostgreSQL + Redis/IPC Socket  
-> **Authentication Method:** Header `X-Admin-Key` / Bearer JWT  
-> **Status:** Production Dashboard Specification
+# BACKEND_REQUIREMENTS.md
+# UmbrellaOS Dashboard — Backend Endpoint Reference
+# Generated from reading umbrella-core-CURRENT/api/routers/* directly.
 
 ---
 
-## 1. Overview & Objectives
+## Health
 
-The **UmbrellaOS Command Center Dashboard** is built as a modular single-pane-of-glass management console for Minecraft server networks running Velocity, Paper/Purpur, and GrimAC anticheat. 
-
-To achieve full operational parity with zero mock fallbacks, the backend FastAPI service must support the following REST endpoints, WebSocket streams, and data schemas.
-
----
-
-## 2. Authentication & Security Headers
-
-Every request issued by the dashboard includes:
-- `X-Admin-Key: <token>`: Passed in API client headers.
-- `Authorization: Bearer <jwt>`: Discord OAuth staff token.
-- CORS configuration must allow origin header from the dashboard frontend:
-  ```python
-  from fastapi.middleware.cors import CORSMiddleware
-
-  app.add_middleware(
-      CORSMiddleware,
-      allow_origins=["*"], # Or specific dashboard domain
-      allow_credentials=True,
-      allow_methods=["*"],
-      allow_headers=["*"],
-  )
-  ```
+| Method | Path | Notes |
+|--------|------|-------|
+| GET | `/health` | No auth. Used for DISCONNECTED banner (polled every 30s). Returns `{status, version, database, redis, service}`. |
 
 ---
 
-## 3. Required REST API Endpoints & Schemas
+## Auth
 
-### 3.1 Overview & Server Topology (`/api/v1/dashboard/overview`)
-
-- **Method:** `GET`
-- **Route:** `/api/v1/dashboard/overview`
-- **Response Schema:**
-```json
-{
-  "total_players": 148,
-  "max_players": 1500,
-  "active_servers": 6,
-  "total_servers": 6,
-  "average_tps": 19.9,
-  "cluster_memory_used_mb": 14336,
-  "cluster_memory_total_mb": 49152,
-  "cluster_cpu_usage": 32.5,
-  "servers": [
-    {
-      "id": "survival-alpha",
-      "name": "Survival Alpha",
-      "type": "PAPER",
-      "status": "online",
-      "tps": 19.8,
-      "mspt": 24.2,
-      "players_count": 84,
-      "max_players": 250,
-      "memory_mb": 4096,
-      "max_memory_mb": 8192,
-      "cpu_percent": 28.4,
-      "version": "Paper 1.20.4-R0.1",
-      "node": "Node-US-East-1",
-      "host": "10.0.1.20",
-      "port": 25565,
-      "uptime": "14d 6h 12m"
-    }
-  ],
-  "nodes": [
-    {
-      "id": "node-us-east-1",
-      "name": "Node US-East-1",
-      "region": "US-East (N. Virginia)",
-      "ip": "198.51.100.22",
-      "status": "HEALTHY",
-      "cpu_usage": 38.5,
-      "memory_usage_mb": 24576,
-      "memory_total_mb": 65536,
-      "disk_usage_gb": 180,
-      "disk_total_gb": 1000,
-      "active_containers": 5,
-      "docker_version": "24.0.7",
-      "uptime": "45d 18h"
-    }
-  ]
-}
-```
+| Method | Path | Body / Params | Notes |
+|--------|------|---------------|-------|
+| POST | `/api/v1/auth/discord/authorize` | `{redirect_uri}` | Returns `{authorize_url, state}`. No auth required. |
+| POST | `/api/v1/auth/discord/callback` | `{state, code, redirect_uri}` | Returns `{token, user, expires_in}`. No auth required. |
+| GET | `/api/v1/auth/me` | Bearer token | Returns `UserSchema`. |
+| POST | `/api/v1/auth/logout` | Query: `?session_token=` | Returns `{success}`. Sets `session.revoked = True`. |
 
 ---
 
-### 3.2 Server Lifecycle Operations
+## Dashboard / Fleet
 
-- **Start Server:** `POST /api/v1/hosting/servers/{id}/start`
-- **Stop Server:** `POST /api/v1/hosting/servers/{id}/stop`
-- **Restart Server:** `POST /api/v1/hosting/servers/{id}/restart`
-- **Console Command:** `POST /api/v1/hosting/servers/{id}/command`
-  - **Body:** `{"command": "tps"}`
-  - **Response:** `{"status": "ok", "output": "TPS from last 1m, 5m, 15m: 19.98, 19.95, 19.92"}`
+| Method | Path | Notes |
+|--------|------|-------|
+| GET | `/api/v1/dashboard/servers` | Lists servers from `PluginHeartbeat` rows seen in last 3 minutes. Returns `list[dict]` with `id, name, status, tps, players, maxPlayers, version, pluginsConnected, pluginsTotal`. `ramUsedMb`/`ramTotalMb`/`cpu` always 0 — not tracked. |
+| GET | `/api/v1/dashboard/plugins` | Lists UmbrellaOS + GrimAC entries per active server. |
 
 ---
 
-### 3.3 Real-Time WebSocket Console Stream
+## Players
 
-- **Route:** `WS /api/v1/hosting/servers/{id}/console`
-- **Protocol:** WebSocket
-- **Payload Format (JSON or raw ANSI text):**
-```json
-{
-  "level": "INFO",
-  "message": "[15:42:01 INFO]: [UmbrellaCore] Player Steve joined the game (127.0.0.1)",
-  "timestamp": "15:42:01"
-}
-```
+| Method | Path | Params | Notes |
+|--------|------|--------|-------|
+| GET | `/api/v1/players` | `username` (ilike), `skip`, `limit` (max 100) | |
+| GET | `/api/v1/players/{uuid}` | — | Includes `ip_addresses`. |
+| GET | `/api/v1/players/{uuid}/full-profile` | — | **Ordered before `/{uuid}`** in router. Returns all sub-data in one call. Queries `AnticheatViolation` with graceful fallback if model not migrated yet. |
 
 ---
 
-### 3.4 Player Analytics & Inspection
+## Punishments
 
-- **Get Online Players:** `GET /api/v1/players/online`
-- **Inspect Player Dossier:** `GET /api/v1/players/{username}/inspect`
-  - **Response Schema:**
-```json
-{
-  "username": "VortexPvP",
-  "uuid": "8c42c13d-5df7-4b72-a55a-69452b45e7aa",
-  "ip_address": "192.0.2.45",
-  "hwid": "HWID-8FA-41B0-9C21",
-  "server": "Survival Alpha",
-  "ping": 28,
-  "client_brand": "LunarClient 1.20.4",
-  "playtime_hours": 142.5,
-  "first_joined": "2024-01-15 14:22:00",
-  "suspicion_score": 78,
-  "violations_count": 14,
-  "is_banned": false,
-  "is_muted": false,
-  "known_alts": ["VortexAlt", "ShadowSniper99"],
-  "inventory_peek": [
-    {"slot": 0, "id": "minecraft:netherite_sword", "count": 1, "name": "Godblade", "enchants": ["Sharpness V", "Unbreaking III"]}
-  ]
-}
-```
+| Method | Path | Body / Params | Notes |
+|--------|------|---------------|-------|
+| GET | `/api/v1/punishments` | `player_uuid`, `active_only` (default **True**), `skip`, `limit` | Pass `active_only=false` to see all. |
+| POST | `/api/v1/punishments` | `{player_uuid, type, reason, expires_at?, staff_id?}` | Returns 404 if player not found. |
+| POST | `/api/v1/punishments/{id}/revoke` | No body | Sets `active=False`. **Use POST, not PATCH.** |
 
 ---
 
-### 3.5 Punishments Ledger & Enforcement
+## Appeals
 
-- **Get Punishments:** `GET /api/v1/moderation/punishments?status=ACTIVE&limit=50`
-- **Issue Punishment:** `POST /api/v1/moderation/punish`
-  - **Body:**
-```json
-{
-  "player_name": "BadActor99",
-  "player_uuid": "optional-uuid",
-  "type": "TEMP_BAN",
-  "reason": "GrimAC Autoclicker Kurtosis spike (VL48)",
-  "staff_name": "Console Admin",
-  "server_scope": "GLOBAL",
-  "expires_at": "2026-03-01",
-  "evidence_url": "https://youtu.be/example"
-}
-```
-- **Pardon Punishment:** `POST /api/v1/moderation/punishments/{id}/pardon`
+| Method | Path | Body / Params | Notes |
+|--------|------|---------------|-------|
+| GET | `/api/v1/appeals` | `status`, `player_uuid`, `skip`, `limit` | Status values seen in DB: `pending`, `ACCEPTED`, `REJECTED`, `ESCALATED`, `REVIEW_SCHEDULED`, `REDUCED`. |
+| POST | `/api/v1/appeals/{id}/close` | `{action, staff_note?, new_expiry?}` | Valid actions: `ACCEPT`, `REDUCE_SENTENCE`, `REJECT`, `ESCALATE`, `SCHEDULE_REVIEW`. `new_expiry` required when action=`REDUCE_SENTENCE`. Returns `AppealSchema` with `action_taken`, `handled_by`, `case_summary`, `closed_at` populated. |
 
 ---
 
-### 3.6 Anticheat & GrimAC Real-Time Flags
+## Anticheat
 
-- **Get Violations:** `GET /api/v1/moderation/grimac/violations`
-- **Response Schema:**
-```json
-[
-  {
-    "id": "grim-vl-1049",
-    "player_name": "VortexPvP",
-    "server": "KitPvP-1",
-    "check_name": "AimDeltaPrediction (Reach 3.42b)",
-    "violation_level": 48,
-    "details": "Sub-tick bounding box reach exceeded raytrace limit by 0.42 blocks.",
-    "player_ping": 32,
-    "tps_at_time": 19.9,
-    "auto_mitigation_taken": "Packet Cancelled (Damage Zeroed)"
-  }
-]
-```
+| Method | Path | Params | Notes |
+|--------|------|--------|-------|
+| GET | `/api/v1/anticheat/violations` | `player_uuid`, `server_id`, `check_name` (ilike), `limit` (max 200, default 50) | Reads `AnticheatViolation` table. `created_at` is mapped from `timestamp` column. |
 
 ---
 
-### 3.7 Alt-Account Ring Detection & Graph
+## Staff
 
-- **Get Alt Clusters:** `GET /api/v1/moderation/alts/clusters`
-- **Bulk Ban Alt Cluster:** `POST /api/v1/moderation/alts/clusters/{id}/ban-all`
-
----
-
-### 3.8 Appeals Desk & AI Triage
-
-- **Get Appeals:** `GET /api/v1/moderation/appeals`
-- **Resolve Appeal:** `POST /api/v1/moderation/appeals/{id}/resolve`
-  - **Body:** `{"verdict": "ACCEPTED", "reason": "First offense, false-positive VL confirmed"}`
+| Method | Path | Body | Notes |
+|--------|------|------|-------|
+| GET | `/api/v1/staff` | — | Returns users with `role_id IS NOT NULL` and `is_active=True`, excluding `player` role. Includes `linked_minecraft_uuid`. |
+| POST | `/api/v1/staff/manage` | `{user_id, action: "promote"\|"demote"}` | Walks `ROLE_LADDER` in `staff_service.py`. |
+| POST | `/api/v1/staff/add` | `{discord_id, role, username?}` | Returns 403 if role=`owner`. |
 
 ---
 
-### 3.9 Connected Plugins Health & Heartbeats
+## Verification
 
-- **Route:** `GET /api/v1/dashboard/plugins`
-- **Response Schema:**
-```json
-[
-  {
-    "id": "hb-survival-alpha-umbrella",
-    "name": "UmbrellaOS",
-    "version": "v2.4.1",
-    "server_id": "survival-alpha",
-    "server_name": "Survival Alpha",
-    "status": "healthy",
-    "heartbeat_ms": 14,
-    "last_seen": "1s ago",
-    "active_features": ["PacketSniffer", "WorldDeltaWatcher", "HWIDTagger", "ChatAudit"]
-  },
-  {
-    "id": "hb-survival-alpha-grim",
-    "name": "GrimAC",
-    "version": "2.3.69-PROD",
-    "server_id": "survival-alpha",
-    "server_name": "Survival Alpha",
-    "status": "healthy",
-    "heartbeat_ms": 12,
-    "last_seen": "1s ago",
-    "active_features": ["QuantumSimulation", "SubTickReach", "MovementDelta", "KurtosisClick"]
-  }
-]
-```
+| Method | Path | Params / Body | Notes |
+|--------|------|---------------|-------|
+| GET | `/api/v1/verification/links` | `limit` (max 200), `offset` | Lists `DiscordAccount` rows enriched with player usernames. `verified_by` always `"BOT_CODE"`. |
+| GET | `/api/v1/verification/pending` | — | Active, unexpired `VerificationCode` rows. |
+| DELETE | `/api/v1/verification/unlink/{discord_id}` | — | Sets `verified=False, player_uuid=None, linked_at=None`. Returns `{success}`. |
 
 ---
 
-### 3.10 Time-Travel Snapshots & Disaster Recovery
+## Alt Detection
 
-- **List Snapshots:** `GET /api/v1/hosting/snapshots`
-- **Create Snapshot Checkpoint:** `POST /api/v1/hosting/snapshots`
-  - **Body:** `{"server_id": "survival-alpha", "type": "MANUAL", "tags": ["pre-boss-fight"]}`
-- **Execute Rollback:** `POST /api/v1/hosting/snapshots/{id}/rollback`
-
----
-
-### 3.11 Staff RBAC & Centralized Logs
-
-- **Get Staff List:** `GET /api/v1/staff`
-- **Invite Staff:** `POST /api/v1/staff/invite`
-- **Query Logs:** `GET /api/v1/logs?level=ERROR&limit=100`
+| Method | Path | Body / Params | Notes |
+|--------|------|---------------|-------|
+| GET | `/api/v1/alts/flagged` | `skip`, `limit` | Players with `suspicion_score >= 80`. |
+| GET | `/api/v1/alts/groups` | — | **Only returns `confirmed=True` groups.** |
+| POST | `/api/v1/alts/false-positive` | `{event_id?, player_uuid?, reviewed_by}` | One of `event_id` or `player_uuid` required (422 otherwise). Marks most recent event for player as false positive and reduces their score. |
 
 ---
 
-## 4. Suggested Database Schema (PostgreSQL DDL)
+## AI Tasks
 
-```sql
--- Servers Table
-CREATE TABLE IF NOT EXISTS servers (
-    id VARCHAR(64) PRIMARY KEY,
-    name VARCHAR(128) NOT NULL,
-    type VARCHAR(32) NOT NULL DEFAULT 'PAPER',
-    status VARCHAR(32) NOT NULL DEFAULT 'offline',
-    host VARCHAR(64) NOT NULL,
-    port INTEGER NOT NULL,
-    max_players INTEGER NOT NULL DEFAULT 100,
-    memory_mb INTEGER NOT NULL DEFAULT 4096,
-    node VARCHAR(64) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- Punishments Table
-CREATE TABLE IF NOT EXISTS punishments (
-    id VARCHAR(64) PRIMARY KEY,
-    player_name VARCHAR(64) NOT NULL,
-    player_uuid VARCHAR(64),
-    type VARCHAR(32) NOT NULL, -- PERM_BAN, TEMP_BAN, HWID_BAN, MUTE, WARN
-    reason TEXT NOT NULL,
-    staff_name VARCHAR(64) NOT NULL,
-    server_scope VARCHAR(64) NOT NULL DEFAULT 'GLOBAL',
-    status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE', -- ACTIVE, PARDONED, EXPIRED
-    evidence_url TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    expires_at TIMESTAMP WITH TIME ZONE
-);
-
--- GrimAC Violations
-CREATE TABLE IF NOT EXISTS grim_violations (
-    id VARCHAR(64) PRIMARY KEY,
-    player_name VARCHAR(64) NOT NULL,
-    server VARCHAR(64) NOT NULL,
-    check_name VARCHAR(128) NOT NULL,
-    violation_level INTEGER NOT NULL DEFAULT 1,
-    details TEXT,
-    player_ping INTEGER,
-    tps_at_time NUMERIC(4,2),
-    auto_mitigation_taken TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- Plugin Heartbeats
-CREATE TABLE IF NOT EXISTS plugin_heartbeats (
-    id VARCHAR(128) PRIMARY KEY,
-    name VARCHAR(64) NOT NULL,
-    version VARCHAR(32) NOT NULL,
-    server_id VARCHAR(64) REFERENCES servers(id) ON DELETE CASCADE,
-    heartbeat_ms INTEGER NOT NULL DEFAULT 0,
-    active_features JSONB NOT NULL DEFAULT '[]',
-    last_seen TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-```
+| Method | Path | Body / Params | Notes |
+|--------|------|---------------|-------|
+| GET | `/api/v1/ai/tasks` | `status`, `task_type`, `skip`, `limit` (max 200) | |
+| GET | `/api/v1/ai/tasks/{task_id}` | — | Returns with `evidence` blob. |
+| POST | `/api/v1/ai/tasks/{task_id}/approve` | `{action_taken, reviewed_by}` | **Both fields required** — omitting either returns 422. Returns 400 if task not `pending`. |
+| POST | `/api/v1/ai/tasks/{task_id}/deny` | `{reviewed_by, reason?}` | Returns 400 if task not `pending`. |
+| POST | `/api/v1/ai/review/player/{uuid}` | No body | Returns 503 (not 400) on AI failure — dashboard shows Re-review button. |
+| POST | `/api/v1/ai/review/appeal/{appeal_id}` | No body | Returns 503 on AI failure. Response also includes `ai_review_status` and `ai_result`. |
 
 ---
 
-## 5. Summary Checklist for Backend Implementation
+## AI Copilot & Crash Risk
 
-- [ ] Ensure all responses follow camelCase or snake_case matching `dataAdapters.ts` normalization.
-- [ ] Mount `/api/v1/dashboard/plugins` returning heartbeat status for active instances.
-- [ ] Mount WebSocket endpoint at `/api/v1/hosting/servers/{id}/console` for bi-directional live log streaming.
-- [ ] Enable CORS with credentials for local dev (`localhost:3000`) and production deployment.
-- [ ] Validate `X-Admin-Key` middleware for write/lifecycle operations.
+| Method | Path | Body | Notes |
+|--------|------|------|-------|
+| POST | `/api/v1/ai/copilot` | `{message, context?}` | Returns `{response, model_used, latency_ms}`. Returns 503 if no provider available — never fakes a response. |
+| GET | `/api/v1/ai/crash-risk/{server_id}` | — | Real enum values: `INSUFFICIENT_DATA`, `NONE`, `WATCH`, `CRITICAL`. `mspt_avg` always null (not tracked). |
+
+---
+
+## AI Config (per-task model assignments)
+
+| Method | Path | Body | Notes |
+|--------|------|------|-------|
+| GET | `/api/v1/ai/config/tasks` | — | Returns `{player_review, appeal_review, copilot, crash_risk, chat_responder}` each with `{primary, failover}`. Falls back to defaults if not yet configured in DB. |
+| POST | `/api/v1/ai/config/tasks` | `{task, primary, failover?}` | Valid providers: `gemini`, `anthropic`, `openai`, `deepseek`, `openrouter`. Returns full updated config. |
+| POST | `/api/v1/ai/providers/test` | `{provider, api_key?}` | Live key test. `api_key` overrides DB setting for this test only. Returns `{success, latency_ms, message, model}`. |
+
+---
+
+## Audit Log
+
+| Method | Path | Params | Notes |
+|--------|------|--------|-------|
+| GET | `/api/v1/audit` | `limit` (max 200), `offset`, `actor_type` | Delegates to `platform.audit.search` capability. Returns `{items: [...], total: N}`. |
+
+---
+
+## Feature Flags
+
+| Method | Path | Body | Notes |
+|--------|------|------|-------|
+| GET | `/api/v1/feature-flags` | — | |
+| POST | `/api/v1/feature-flags` | `{name, enabled, description}` | Upsert by name. Returns **200** (not 201). |
+
+---
+
+## Settings
+
+| Method | Path | Body | Notes |
+|--------|------|------|-------|
+| GET | `/api/v1/settings` | — | Sensitive values masked for session-auth users; unmasked for admin-key. Requires owner role or admin key. |
+| GET | `/api/v1/settings/{key}` | — | 404 if key not found. |
+| POST | `/api/v1/settings/{key}` | `{value}` | **Preferred** — upsert, creates key if not exists. Derives `category` from key prefix. Returns 400 if value is `"***"`. |
+| PATCH | `/api/v1/settings/{key}` | `{value}` | Update only — returns 404 if key not found. |
+
+---
+
+## WebSocket — Console
+
+| Protocol | Path | Auth | Notes |
+|----------|------|------|-------|
+| WS | `/api/v1/hosting/servers/{server_id}/console` | `?token=` query param | Browser WebSockets cannot set headers — token travels as query param, validated identically to Bearer. Proxied through Core to the node daemon. Connects **only** when staff opens the Console page; disconnects on page leave. Requires `hosting.server.view` permission. |
+
+---
+
+## Auth Headers Summary
+
+- **Session auth**: `Authorization: Bearer <token>` on all dashboard requests
+- **Admin key**: `X-Admin-Key` — used only for plugin/bot integration; dashboard always uses session tokens
+
+## Key Gotchas (verified from source)
+
+1. `GET /api/v1/players/{uuid}/full-profile` is declared **before** `GET /api/v1/players/{uuid}` in the router — FastAPI matches it correctly without path conflict.
+2. `POST /api/v1/punishments/{id}/revoke` takes **no body**. Using PATCH returns 405.
+3. `POST /api/v1/ai/tasks/{id}/approve` requires **both** `action_taken` and `reviewed_by` — the backend 422s if either is missing.
+4. `GET /api/v1/anticheat/violations` returns `created_at` mapped from the model's `timestamp` column, not a column literally named `created_at`.
+5. Crash risk levels are `INSUFFICIENT_DATA`, `NONE`, `WATCH`, `CRITICAL` — not LOW/MEDIUM/HIGH.
+6. The audit endpoint returns `{items: [...], total: N}`, not a bare list.
+7. `POST /api/v1/feature-flags` returns HTTP **200**, not 201.
+8. `ramUsedMb`, `ramTotalMb`, `cpu` in server records are always 0 — the plugin heartbeat does not send these.
+9. AI review endpoints return **503** (not 400) on AI failure so the dashboard can show a Re-review button without treating it as a client error.
+10. The dashboard never connects to Supabase/Postgres directly — all data flows through Core's REST/WS APIs.
