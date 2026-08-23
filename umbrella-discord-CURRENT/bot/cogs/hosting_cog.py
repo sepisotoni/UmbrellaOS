@@ -226,7 +226,8 @@ class HostingCog(commands.Cog):
             await interaction.followup.send(self._format_error(exc), ephemeral=True)
             return
 
-        await interaction.followup.send(f"🔄 Restarted **{server.get('name', server_id)}**.", ephemeral=True)
+        # ephemeral=True + wait=True: action confirmations must not go public (SILENT-2)
+        await interaction.followup.send(f"🔄 Restarted **{server.get('name', server_id)}**.", ephemeral=True, wait=True)
 
     @app_commands.command(name="server_kill", description="[Staff] Forcibly kill a server with no grace period. Irreversible — requires confirmation.")
     @app_commands.describe(server_id="The server's ID")
@@ -246,7 +247,8 @@ class HostingCog(commands.Cog):
             await interaction.followup.send(self._format_error(exc), ephemeral=True)
             return
 
-        await interaction.followup.send(f"💀 Killed **{server.get('name', server_id)}**.", ephemeral=True)
+        # ephemeral=True + wait=True: action confirmations must not go public (SILENT-2)
+        await interaction.followup.send(f"💀 Killed **{server.get('name', server_id)}**.", ephemeral=True, wait=True)
 
     @app_commands.command(name="server_delete", description="[Staff] Permanently delete a server and release its allocations. Requires confirmation.")
     @app_commands.describe(server_id="The server's ID")
