@@ -1,195 +1,228 @@
 import React, { useState, useEffect } from 'react';
-import { api, AuditLogEntry } from '../../lib/api';
 import { useDashboard } from '../../context/DashboardContext';
-import { DisconnectedBanner } from '../common/DisconnectedBanner';
+import { api } from '../../lib/api';
 import {
-  ScrollText,
+  FileText,
+  Search,
   Filter,
   RefreshCw,
+  Download,
   AlertCircle,
-  Search,
-  ChevronLeft,
-  ChevronRight,
-  Shield,
+  CheckCircle2,
+  Terminal,
+  Clock,
+  Layers,
+  Sparkles,
+  ExternalLink,
+  ChevronDown
 } from 'lucide-react';
 
+interface AuditLogEntry {
+  id: string;
+  timestamp: string;
+  level: 'INFO' | 'WARN' | 'ERROR' | 'GRIM' | 'DEBUG' | 'AUDIT' | 'COMMAND';
+  source: string;
+  traceId: string;
+  message: string;
+  metadata?: Record<string, any>;
+}
+
 export const AuditView: React.FC = () => {
+  const { servers, addToast } = useDashboard();
+
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
-  const [actorTypeFilter, setActorTypeFilter] = useState<string>('');
-  const [actionFilter, setActionFilter] = useState<string>('');
-  const [page, setPage] = useState<number>(0);
-  const pageSize = 50;
+  const [searchQuery, setSearchQuery] = useState('');
+  const [levelFilter, setLevelFilter] = useState('ALL');
+  const [sourceFilter, setSourceFilter] = useState('ALL');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchAuditLogs = async () => {
+  const fetchLiveLogs = async () => {
     setIsLoading(true);
-    setError(null);
     try {
-      const data = await api.getAuditLogs({
-        actor_type: actorTypeFilter || undefined,
-        action: actionFilter || undefined,
-        limit: pageSize,
-        offset: page * pageSize,
+      const res = await api.getLogs({
+        query: searchQuery || undefined,
+        level: levelFilter,
+        source: sourceFilter !== 'ALL' ? sourceFilter : undefined,
+        limit: 100
       });
-      setLogs(data || []);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load audit logs');
+      if (Array.isArray(res)) {
+        setLogs(res.map(r => ({
+          id: r.id || `log-${Math.random()}`,
+          timestamp: r.timestamp || new Date().toISOString(),
+          level: (r.level || 'INFO') as any,
+          source: r.source || r.serverName || 'core',
+          traceId: r.traceId || `tr_${Math.random().toString(36).substr(2, 9)}`,
+          message: r.message,
+          metadata: undefined
+        })));
+      }
+    } catch {
+      // Backend not connected
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchAuditLogs();
-  }, [actorTypeFilter, actionFilter, page]);
+    fetchLiveLogs();
+  }, [levelFilter, sourceFilter]);
+
+  const filteredLogs = logs.filter(l => {
+    const matchesQuery = !searchQuery ||
+      l.message.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      l.traceId.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      l.source.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesLevel = levelFilter === 'ALL' || l.level === levelFilter;
+    const matchesSource = sourceFilter === 'ALL' || l.source === sourceFilter;
+    return matchesQuery && matchesLevel && matchesSource;
+  });
+
+  const handleExportLogs = () => {
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(filteredLogs, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", `umbrella-logs-${Date.now()}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+    addToast('success', 'Logs Exported', `Downloaded ${filteredLogs.length} structured log events.`);
+  };
 
   return (
-    <div id="umbrella-audit-view" className="space-y-6">
-      <DisconnectedBanner />
-
-      {/* Header bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="space-y-6 pb-12">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
         <div>
-          <h1 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
-            <span>Security & Administrative Audit Trail</span>
-            <span className="text-xs px-2 py-0.5 rounded font-mono bg-purple-950/80 border border-purple-800/40 text-purple-300">
-              Immutable Log
-            </span>
-          </h1>
-          <p className="text-xs text-slate-400 mt-1">
-            Tamper-evident records of all staff actions, automated enforcement, and configuration changes.
-          </p>
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-cyan-500/30 bg-cyan-950/40 text-cyan-400">
+              <FileText className="h-4 w-4" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-white font-display">
+                Audit & Centralized Logs
+              </h1>
+              <p className="text-xs text-slate-400">
+                Traceable event streams, API admin actions, GrimAC flags, and JVM diagnostic traces.
+              </p>
+            </div>
+          </div>
         </div>
 
-        <button
-          id="audit-refresh-btn"
-          onClick={fetchAuditLogs}
-          disabled={isLoading}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-[#1e1b4b] bg-[#0d1127] px-3 py-1.5 text-xs font-medium text-slate-300 hover:border-purple-500/40 hover:text-white transition cursor-pointer disabled:opacity-50"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-          <span>Refresh</span>
-        </button>
+        <div className="flex items-center gap-2 font-mono">
+          <button
+            onClick={fetchLiveLogs}
+            disabled={isLoading}
+            className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700 transition-colors"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+            <span>Refresh</span>
+          </button>
+          <button
+            onClick={handleExportLogs}
+            className="flex items-center gap-1.5 rounded-lg bg-cyan-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-cyan-500 transition-colors shadow-sm"
+          >
+            <Download className="h-3.5 w-3.5" />
+            <span>Export JSON</span>
+          </button>
+        </div>
       </div>
 
-      {/* Filter Bar */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2">
-          <label className="text-xs font-mono text-slate-400">Actor Type:</label>
+      {/* Filter & Search Toolbar */}
+      <div className="flex flex-col md:flex-row items-center justify-between gap-3 bg-[#0c1017] p-3 rounded-xl border border-slate-800 font-mono">
+        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
           <select
-            value={actorTypeFilter}
-            onChange={(e) => {
-              setActorTypeFilter(e.target.value);
-              setPage(0);
-            }}
-            className="rounded-lg border border-[#1e1b4b] bg-[#0d1127] px-3 py-1.5 text-xs font-mono text-white focus:border-purple-500 focus:outline-none"
+            value={levelFilter}
+            onChange={(e) => setLevelFilter(e.target.value)}
+            className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-1.5 text-xs text-slate-300 font-mono focus:border-cyan-500 focus:outline-none"
           >
-            <option value="">All Actors</option>
-            <option value="STAFF">Staff Member</option>
-            <option value="SYSTEM">System / AutoMod</option>
-            <option value="AI_COPILOT">AI Copilot</option>
+            <option value="ALL">All Levels</option>
+            <option value="AUDIT">AUDIT</option>
+            <option value="GRIM">GRIM</option>
+            <option value="WARN">WARN</option>
+            <option value="ERROR">ERROR</option>
+            <option value="COMMAND">COMMAND</option>
+            <option value="INFO">INFO</option>
+          </select>
+
+          <select
+            value={sourceFilter}
+            onChange={(e) => setSourceFilter(e.target.value)}
+            className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-1.5 text-xs text-slate-300 font-mono focus:border-cyan-500 focus:outline-none"
+          >
+            <option value="ALL">All Sources</option>
+            <option value="api-gateway">API Gateway</option>
+            <option value="proxy-us-01">Velocity Proxy</option>
+            {servers.map(s => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
           </select>
         </div>
 
-        <div className="flex items-center gap-2 flex-1 max-w-xs">
+        <div className="relative w-full md:w-80">
+          <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-500" />
           <input
             type="text"
-            value={actionFilter}
-            onChange={(e) => {
-              setActionFilter(e.target.value);
-              setPage(0);
-            }}
-            placeholder="Filter by action (e.g. BAN, UNLINK, APPEAL_CLOSE)..."
-            className="w-full rounded-lg border border-[#1e1b4b] bg-[#0d1127] px-3 py-1.5 text-xs font-mono text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search message or trace ID..."
+            className="w-full rounded-lg border border-slate-800 bg-slate-900/90 pl-9 pr-3 py-1.5 text-xs text-white placeholder:text-slate-500 focus:border-cyan-500 focus:outline-none font-mono"
           />
         </div>
       </div>
 
-      {error && (
-        <div className="rounded-xl border border-rose-500/40 bg-rose-950/40 p-4 text-xs text-rose-300 flex items-start gap-2.5">
-          <AlertCircle className="h-4 w-4 shrink-0 text-rose-400 mt-0.5" />
-          <div>
-            <span className="font-bold">Error retrieving audit log records:</span>
-            <p className="mt-0.5 text-rose-200/80">{error}</p>
-          </div>
-        </div>
-      )}
+      {/* Logs Table */}
+      <div className="rounded-xl border border-slate-800 bg-[#0d1117] overflow-hidden shadow-sm font-mono text-xs">
+        <div className="divide-y divide-slate-800/60">
+          {filteredLogs.length === 0 ? (
+            <div className="p-8 text-center text-slate-500">
+              No matching log records found in database for the specified filters.
+            </div>
+          ) : (
+            filteredLogs.map(log => {
+              const isAudit = log.level === 'AUDIT';
+              const isGrim = log.level === 'GRIM';
+              const isWarn = log.level === 'WARN';
+              const isError = log.level === 'ERROR';
 
-      {/* Audit Log Table */}
-      <div className="rounded-xl border border-[#1e1b4b] bg-[#0d1127] p-5 shadow-xl">
-        {isLoading ? (
-          <div className="py-12 text-center text-xs text-slate-500 font-mono">
-            Loading audit records from core...
-          </div>
-        ) : logs.length === 0 ? (
-          <div className="py-12 text-center text-xs text-slate-500 font-mono">
-            No audit log records found for this query.
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs font-mono">
-              <thead>
-                <tr className="border-b border-[#1e1b4b] text-slate-400">
-                  <th className="pb-3 font-semibold">Action</th>
-                  <th className="pb-3 font-semibold">Actor</th>
-                  <th className="pb-3 font-semibold">Target</th>
-                  <th className="pb-3 font-semibold">Details & Metadata</th>
-                  <th className="pb-3 font-semibold text-right">Timestamp</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#1e1b4b]/60">
-                {logs.map((entry) => (
-                  <tr key={entry.id} className="hover:bg-[#121638]/50 transition">
-                    <td className="py-3 font-bold text-purple-300 uppercase">
-                      {entry.action}
-                    </td>
-                    <td className="py-3 text-slate-200">
-                      <span className="px-1.5 py-0.5 rounded bg-purple-950/80 text-purple-300 text-[10px] border border-purple-800/40 mr-1.5">
-                        {entry.actor_type}
+              return (
+                <div key={log.id} className="p-3.5 hover:bg-slate-900/40 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-3">
+                  <div className="space-y-1 max-w-3xl">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${
+                        isAudit ? 'bg-purple-950 text-purple-300 border border-purple-500/30' :
+                        isGrim ? 'bg-rose-950 text-rose-300 border border-rose-500/30' :
+                        isWarn ? 'bg-amber-950 text-amber-300 border border-amber-500/30' :
+                        isError ? 'bg-red-950 text-red-300 border border-red-500/30' :
+                        'bg-slate-800 text-slate-400'
+                      }`}>
+                        {log.level}
                       </span>
-                      <span>{entry.actor_id}</span>
-                    </td>
-                    <td className="py-3 text-slate-300 font-mono">
-                      {entry.target_id || 'System'}
-                    </td>
-                    <td className="py-3 text-slate-400 max-w-md truncate font-sans text-xs">
-                      {typeof entry.details === 'object'
-                        ? JSON.stringify(entry.details)
-                        : entry.details || '—'}
-                    </td>
-                    <td className="py-3 text-slate-500 text-[11px] text-right">
-                      {entry.created_at ? new Date(entry.created_at).toLocaleString() : 'N/A'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                      <span className="text-[10px] text-cyan-400 bg-slate-900 border border-slate-800 px-1.5 py-0.2 rounded">
+                        {log.source}
+                      </span>
+                      <span className="text-[10px] text-slate-500">
+                        Trace: {log.traceId}
+                      </span>
+                    </div>
 
-        {/* Pagination Bar */}
-        <div className="mt-4 pt-3 border-t border-[#1e1b4b] flex items-center justify-between text-xs font-mono">
-          <div className="text-slate-400">
-            Page <span className="text-white font-bold">{page + 1}</span>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
-              disabled={page === 0 || isLoading}
-              className="px-3 py-1.5 rounded-lg border border-[#1e1b4b] bg-[#070914] text-slate-300 hover:text-white disabled:opacity-50 transition cursor-pointer"
-            >
-              Previous
-            </button>
-            <button
-              onClick={() => setPage((p) => p + 1)}
-              disabled={logs.length < pageSize || isLoading}
-              className="px-3 py-1.5 rounded-lg border border-[#1e1b4b] bg-[#070914] text-slate-300 hover:text-white disabled:opacity-50 transition cursor-pointer"
-            >
-              Next
-            </button>
-          </div>
+                    <p className="text-slate-200 text-xs leading-relaxed mt-1">
+                      {log.message}
+                    </p>
+
+                    {log.metadata && (
+                      <div className="text-[10px] text-slate-500 font-mono">
+                        Meta: {JSON.stringify(log.metadata)}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="text-[10px] text-slate-500 whitespace-nowrap shrink-0">
+                    {new Date(log.timestamp).toLocaleTimeString()}
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
     </div>

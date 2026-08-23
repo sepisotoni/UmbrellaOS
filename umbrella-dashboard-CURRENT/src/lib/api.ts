@@ -1,7 +1,6 @@
 /**
  * UmbrellaOS Core API Client
- * FastAPI + Postgres Backend Integration
- * All API calls route through this single client.
+ * FastAPI + Postgres Backend Integration (Render Frankfurt)
  */
 
 export interface ApiConfig {
@@ -22,462 +21,216 @@ export class ApiError extends Error {
   }
 }
 
-// User & Auth Types
-export interface UserSchema {
+// User & Auth Types from GET /api/v1/auth/me
+export interface AuthUser {
   id: string;
-  discord_id: string;
+  discordId?: string;
   username: string;
-  email: string | null;
-  role_id: string | null;
-  role: string | null;
+  discriminator?: string;
+  avatarUrl?: string;
+  role: 'superadmin' | 'admin' | 'moderator' | 'support' | 'developer' | 'viewer';
   permissions: string[];
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
+  email?: string;
+  linkedMinecraftUuid?: string;
+  linkedMinecraftUsername?: string;
 }
 
-export interface DiscordOAuthStartResponse {
-  authorize_url: string;
-  state: string;
-}
-
-export interface DiscordOAuthCallbackResponse {
-  token: string;
-  user: UserSchema;
-  expires_in: number;
-}
-
-// Server & Mesh Types
-export interface ServerRecord {
+// Real Backend Response Types
+export interface BackendServer {
   id: string;
   name: string;
-  status: 'online' | 'warning' | 'offline' | 'maintenance';
+  status: 'online' | 'warning' | 'offline' | 'starting' | 'restarting';
   tps: number;
   players: number;
   maxPlayers: number;
-  ramUsedMb?: number;
-  ramTotalMb?: number;
-  cpu?: number;
+  ramUsedMb: number;
+  ramTotalMb: number;
+  cpu: number;
   version: string;
   pluginsConnected: number;
   pluginsTotal: number;
-  grim_status?: string;
-  last_heartbeat?: string;
+  node?: string;
+  location?: string;
 }
 
-export interface PluginHeartbeatRecord {
+export interface BackendPluginHeartbeat {
   id: string;
-  name: string;
+  name: string; // 'UmbrellaOS' | 'GrimAC' | custom
+  serverId: string;
+  serverName?: string;
   version: string;
-  server: string;
-  status: 'connected' | 'stale' | 'unreachable';
-  heartbeatMs: number;
+  status: 'healthy' | 'stale' | 'unreachable';
   lastSeen: string;
+  heartbeatMs: number;
+  activeFeatures?: string[];
 }
 
-export interface PluginHeartbeatStatus {
-  server_id: string;
-  server_name?: string;
-  umbrella_status: string;
-  umbrella_version?: string;
-  grimac_status?: string;
-  last_heartbeat?: string;
-}
-
-export interface NetworkSettings {
-  discord_guild_id?: string;
-  verification_channel_id?: string;
-  ai_model?: string;
-}
-
-export interface FlaggedAltAccount {
+export interface BackendPunishment {
   id: string;
-  primary_uuid: string;
-  primary_username?: string;
-  alt_uuid: string;
-  alt_username?: string;
-  method: string;
+  playerUuid: string;
+  playerName: string;
+  staffName: string;
+  staffDiscordId?: string;
+  type: 'BAN' | 'TEMP_BAN' | 'MUTE' | 'TEMP_MUTE' | 'KICK' | 'WARN' | 'IP_BAN' | 'HWID_BAN';
+  reason: string;
+  status: 'ACTIVE' | 'EXPIRED' | 'PARDONED' | 'APPEALED';
+  createdAt: string;
+  expiresAt: string | null;
+  serverScope: string;
+  evidenceUrl?: string;
+  appealId?: string;
+  ipAddress?: string;
+  hwidHash?: string;
+}
+
+export interface BackendAltFlag {
+  id: string;
+  playerUuid: string;
+  playerName: string;
+  rootIdentifier: string;
+  clusterType: 'IP_SHARED' | 'HWID_MATCH' | 'COOKIE_TOKEN' | 'SUBNET_BURST';
   confidence: number;
-  created_at: string;
+  associatedAccounts: string[];
+  bannedCount: number;
+  status: 'INVESTIGATING' | 'CONFIRMED_ALT_RING' | 'WHITELISTED_HOUSEHOLD';
+  notes: string;
+  lastDetected: string;
 }
 
-export interface AltClusterGroup {
-  group_id: string;
-  reason: string;
-  members: Array<{
-    uuid: string;
-    username: string;
-    is_banned: boolean;
-  }>;
-}
-
-// Player Types
-export interface PlayerSummary {
-  uuid: string;
-  username: string;
-  first_seen: string;
-  last_seen: string;
-  playtime: number;
-  joins: number;
-  deaths: number;
-  risk_score: number;
-  suspicion_score: number;
-  discord_id: string | null;
-}
-
-export interface FullProfileResponse {
-  player: {
-    uuid: string;
-    username: string;
-    first_seen: string;
-    last_seen: string;
-    playtime: number;
-    joins?: number;
-    deaths?: number;
-    current_server?: string | null;
-    risk_score: number;
-    suspicion_score?: number;
-    discord_id?: string | null;
-    discord_username?: string | null;
-    ip_address?: string | null;
-  };
-  metrics: {
-    total_playtime_hours: number;
-    session_count: number;
-    average_session_mins: number;
-    total_punishments: number;
-    active_punishments: number;
-    anticheat_flags: number;
-  };
-  anticheat_history: {
-    total_flags: number;
-    flags_last_24h: number;
-    by_check: Record<string, { count: number; max_vl: number }>;
-    recent_violations: Array<{
-      id: string;
-      check_name: string;
-      verbose: string;
-      vl: number;
-      created_at: string;
-      server_id?: string | null;
-    }>;
-  };
-  punishment_history: Array<{
-    id: string;
-    type: string;
-    reason: string;
-    created_at: string;
-    expires_at?: string | null;
-    active: boolean;
-    staff_name?: string | null;
-  }>;
-  appeal_history: Array<{
-    id: string;
-    punishment_id: string;
-    status: string;
-    created_at: string;
-    action_taken?: string | null;
-    handled_by?: string | null;
-    ai_recommendation?: string | null;
-    case_summary?: string | null;
-  }>;
-  alt_accounts: Array<{
-    uuid: string;
-    username: string | null;
-    confidence: string | null;
-    cluster_type: string | null;
-  }>;
-}
-
-// Punishments
-export interface PunishmentSchema {
+export interface BackendAppeal {
   id: string;
-  player_uuid: string;
-  staff_id: string | null;
-  type: string;
-  reason: string;
-  created_at: string;
-  expires_at: string | null;
-  active: boolean;
+  punishmentId: string;
+  playerUsername: string;
+  playerUuid: string;
+  type: 'BAN' | 'MUTE';
+  originalReason: string;
+  appealReason: string;
+  createdAt: string;
+  status: 'PENDING' | 'AI_REVIEWED' | 'ACCEPTED' | 'REJECTED';
+  aiSentimentScore?: number;
+  aiRecommendedAction?: 'ACCEPT' | 'REDUCE_DURATION' | 'DENY_HIGH_RISK';
+  aiAnalysisSummary?: string;
+  assignedStaff: string | null;
 }
 
-export interface CreatePunishmentPayload {
-  player_uuid: string;
-  player_username?: string;
-  type: string; // 'ban' | 'mute' | 'warn' | 'kick' | 'ipban'
-  reason: string;
-  expires_at?: string | null;
-  staff_id?: string | null;
-  server_scope?: string;
-  evidence_url?: string;
-}
-
-// Anticheat
-export interface AnticheatViolationRecord {
+export interface BackendAITask {
   id: string;
-  player_uuid: string;
-  player_name: string;
-  server_id: string | null;
-  check_name: string;
-  verbose: string;
-  vl: number;
-  created_at: string;
-}
-
-// Appeals
-export interface AppealSchema {
-  id: string;
-  punishment_id: string;
-  player_uuid: string;
-  status: string;
-  message: string;
-  created_at: string;
-  action_taken?: string | null;
-  handled_by?: string | null;
-  case_summary?: string | null;
-  closed_at?: string | null;
-  ai_review_status?: string | null;
-}
-
-export interface AppealClosePayload {
-  action: 'ACCEPT' | 'REDUCE_SENTENCE' | 'REJECT' | 'ESCALATE' | 'SCHEDULE_REVIEW';
-  staff_note?: string;
-  new_expiry?: string;
-}
-
-export interface AIReviewAppealResponse {
-  recommendation: 'ACCEPT' | 'REDUCE_SENTENCE' | 'REJECT' | 'ESCALATE' | 'SCHEDULE_REVIEW';
+  taskType: 'PLAYER_REVIEW' | 'APPEAL_REVIEW' | 'CRASH_TRIAGE' | 'ANOMALY_CHECK';
+  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'APPROVED' | 'DENIED';
+  targetUuid?: string;
+  targetAppealId?: string;
+  createdAt: string;
+  completedAt?: string;
   confidence: number;
-  reasoning: string;
-  flag_summary?: string;
-  punishment_context?: string;
-  risk_factors?: string[];
-  mitigating_factors?: string[];
-}
-
-// Staff
-export interface StaffMemberSchema {
-  id: string;
-  discord_id: string;
-  username: string;
-  discriminator?: string;
-  avatar_url: string | null;
-  role: string | null;
-  permissions: string[];
-  email: string | null;
-  linked_minecraft_uuid?: string | null;
-  linked_minecraft_username?: string | null;
-  is_active?: boolean;
-}
-
-export type StaffRecord = StaffMemberSchema;
-export type StaffMember = StaffMemberSchema;
-
-export interface DiscordMemberSchema {
-  discord_id: string;
-  username: string;
-  is_staff: boolean;
-}
-
-export type DiscordGuildMember = DiscordMemberSchema;
-
-// Verification
-export interface VerificationLinkSchema {
-  id: number;
-  discord_id: string;
-  discord_username: string | null;
-  minecraft_uuid: string | null;
-  minecraft_username: string | null;
-  linked_at: string | null;
-  verified_by: string;
-  status: string;
-}
-
-export type VerificationLink = VerificationLinkSchema;
-
-export interface PendingVerification {
-  code: string;
-  player_uuid: string;
-  username?: string;
-  created_at: string;
-  expires_at?: string;
-}
-
-// Alts
-export interface SuspicionEventSchema {
-  id: number;
-  player_uuid: string;
-  trigger: string;
-  points: number;
-  metadata_json: string | null;
-  created_at: string;
-  reviewed: boolean;
-  reviewed_by: string | null;
-  false_positive: boolean;
-}
-
-export interface AltGroupSchema {
-  id: number;
-  created_at: string;
-  notes: string | null;
-  confirmed: boolean;
-  members?: Array<{ id: number; group_id: number; player_uuid: string; added_at: string }>;
-}
-
-// AI Tasks & Intelligence
-export interface AITaskSchema {
-  id: string;
-  task_type: string;
-  status: string;
-  player_uuid: string | null;
-  created_at: string;
-  expires_at: string;
-  ai_summary: string | null;
-  ai_recommendation: string | null;
-  ai_confidence: number | null;
-  reviewed_by: string | null;
-  reviewed_at: string | null;
-  action_taken: string | null;
-  evidence?: any;
-  ai_result?: any;
-}
-
-export type AITask = AITaskSchema;
-
-export interface CopilotResponse {
-  response: string;
-  model_used: string;
-  latency_ms: number;
-}
-
-export interface CrashRiskResponse {
-  server_id: string;
-  risk_level: string;
-  tps_trend: number | null;
-  mspt_avg: number | null;
   recommendation: string;
-  assessed_at: string;
+  analysis: Record<string, any>;
 }
 
-// Audit Log
-export interface AuditLogItem {
-  id: number;
-  actor: string;
-  actor_type: string;
-  action: string;
-  target: string | null;
-  details_json: string | null;
-  created_at: string;
-}
-
-export type AuditLogEntry = AuditLogItem;
-
-export interface AuditLogResponse {
-  items?: AuditLogItem[];
-  logs?: AuditLogItem[];
-  total: number;
-  limit: number;
-  offset: number;
-}
-
-// Feature Flags
-export interface FeatureFlagResponse {
+export interface BackendLogEntry {
   id: string;
-  name: string;
-  enabled: boolean;
-  description: string;
-  percentage?: number;
+  timestamp: string;
+  serverId?: string;
+  serverName?: string;
+  level: 'INFO' | 'WARN' | 'ERROR' | 'GRIM' | 'DEBUG' | 'CHAT' | 'COMMAND';
+  source?: string;
+  traceId?: string;
+  message: string;
+  rawAnsi?: string;
 }
 
-export type FeatureFlag = FeatureFlagResponse;
-
-// Settings
-export interface SettingRecord {
-  key: string;
-  value: string;
-  description?: string;
-  sensitive?: boolean;
+export interface BackendHealthResponse {
+  status: 'ok' | 'degraded' | 'error';
+  version?: string;
+  database?: 'connected' | 'disconnected';
+  redis?: 'connected' | 'disconnected';
+  details?: {
+    database?: string;
+    redis?: string;
+    rcon?: string;
+    uptime?: number;
+  };
+  timestamp?: string;
 }
 
-// Default Base URL
-const DEFAULT_CORE_URL = (import.meta as any).env?.VITE_UMBRELLA_CORE_URL || 'https://umbrellaos-core.onrender.com';
+const DEFAULT_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'https://umbrellaos-core.onrender.com';
+const STORAGE_TOKEN_KEY = 'umbrella_session_token';
+const STORAGE_ADMIN_KEY = 'umbrella_admin_key';
+const STORAGE_BASE_URL_KEY = 'umbrella_api_base_url';
 
-export class UmbrellaApiClient {
-  private baseUrl: string = DEFAULT_CORE_URL;
-  private sessionToken: string | null = null;
-  private adminKey: string | null = null;
+class ApiClient {
+  private config: ApiConfig;
 
   constructor() {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      const storedUrl = localStorage.getItem('umbrella_core_url_override');
-      if (storedUrl) {
-        this.baseUrl = storedUrl.replace(/\/+$/, '');
-      }
-      const storedKey = localStorage.getItem('umbrella_admin_key_override');
-      if (storedKey) {
-        this.adminKey = storedKey;
-      }
-    }
+    const savedToken = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_TOKEN_KEY) : null;
+    const savedAdminKey = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_ADMIN_KEY) : null;
+    const savedBaseUrl = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_BASE_URL_KEY) : null;
+
+    this.config = {
+      baseUrl: savedBaseUrl || DEFAULT_BASE_URL,
+      sessionToken: savedToken,
+      adminKey: savedAdminKey,
+    };
   }
 
-  public setBaseUrl(url: string) {
-    this.baseUrl = url.replace(/\/+$/, '');
-    if (typeof window !== 'undefined' && window.localStorage) {
-      localStorage.setItem('umbrella_core_url_override', this.baseUrl);
-    }
+  public getConfig(): ApiConfig {
+    return { ...this.config };
   }
 
   public getBaseUrl(): string {
-    return this.baseUrl;
+    return this.config.baseUrl;
+  }
+
+  public setBaseUrl(url: string) {
+    this.config.baseUrl = url.replace(/\/+$/, '');
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_BASE_URL_KEY, this.config.baseUrl);
+    }
   }
 
   public setSessionToken(token: string | null) {
-    this.sessionToken = token;
-  }
-
-  public getSessionToken(): string | null {
-    return this.sessionToken;
+    this.config.sessionToken = token;
+    if (typeof window !== 'undefined') {
+      if (token) {
+        localStorage.setItem(STORAGE_TOKEN_KEY, token);
+      } else {
+        localStorage.removeItem(STORAGE_TOKEN_KEY);
+      }
+    }
   }
 
   public setAdminKey(key: string | null) {
-    this.adminKey = key;
+    this.config.adminKey = key;
+    if (typeof window !== 'undefined') {
+      if (key) {
+        localStorage.setItem(STORAGE_ADMIN_KEY, key);
+      } else {
+        localStorage.removeItem(STORAGE_ADMIN_KEY);
+      }
+    }
   }
 
-  public getAdminKey(): string | null {
-    return this.adminKey;
-  }
+  private getHeaders(customHeaders: Record<string, string> = {}): Record<string, string> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...customHeaders,
+    };
 
-  public getServerConsoleWebSocketUrl(serverId: string): string {
-    const wsProtocol = this.baseUrl.startsWith('https') ? 'wss:' : 'ws:';
-    const host = this.baseUrl.replace(/^https?:\/\//, '');
-    const tokenParam = this.sessionToken ? `&token=${encodeURIComponent(this.sessionToken)}` : '';
-    const adminParam = this.adminKey ? `&admin_key=${encodeURIComponent(this.adminKey)}` : '';
-    return `${wsProtocol}//${host}/ws/console/${encodeURIComponent(serverId)}?source=dashboard${tokenParam}${adminParam}`;
-  }
+    if (this.config.sessionToken) {
+      headers['Authorization'] = `Bearer ${this.config.sessionToken}`;
+    }
 
-  public async sendServerCommand(serverId: string, command: string): Promise<any> {
-    return this.request<any>(`/api/v1/servers/${encodeURIComponent(serverId)}/command`, {
-      method: 'POST',
-      body: JSON.stringify({ command }),
-    });
+    if (this.config.adminKey) {
+      headers['X-Admin-Key'] = this.config.adminKey;
+    }
+
+    return headers;
   }
 
   private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
-    const headers = new Headers(options.headers || {});
+    const cleanPath = path.startsWith('/') ? path : `/${path}`;
+    const url = `${this.config.baseUrl}${cleanPath}`;
 
-    if (!headers.has('Content-Type') && !(options.body instanceof FormData)) {
-      headers.set('Content-Type', 'application/json');
-    }
-
-    if (this.sessionToken) {
-      headers.set('Authorization', `Bearer ${this.sessionToken}`);
-    }
-
-    if (this.adminKey) {
-      headers.set('X-Admin-Key', this.adminKey);
-    }
-
-    const url = `${this.baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
+    const headers = this.getHeaders((options.headers as Record<string, string>) || {});
 
     try {
       const response = await fetch(url, {
@@ -486,489 +239,686 @@ export class UmbrellaApiClient {
       });
 
       if (!response.ok) {
-        let errData: any;
+        let errorData: any = null;
         try {
-          errData = await response.json();
+          errorData = await response.json();
         } catch {
-          errData = { detail: response.statusText };
+          errorData = await response.text();
         }
-        throw new ApiError(
-          errData?.detail || errData?.message || `Request failed with status ${response.status}`,
-          response.status,
-          errData
-        );
+
+        const message = 
+          (errorData && typeof errorData === 'object' && (errorData.detail || errorData.message)) 
+            ? (errorData.detail || errorData.message)
+            : `API Request failed with status ${response.status}: ${response.statusText}`;
+
+        throw new ApiError(message, response.status, errorData);
       }
 
+      // Handle 204 No Content
       if (response.status === 204) {
-        return {} as T;
+        return null as unknown as T;
       }
 
-      return (await response.json()) as T;
+      return await response.json() as T;
     } catch (err: any) {
       if (err instanceof ApiError) throw err;
-      throw new ApiError(
-        err?.message || 'Network connection failed (Umbrella Core unreachable)',
-        0,
-        err
-      );
+      throw new ApiError(err.message || 'Network connection to backend failed', 0, err);
     }
   }
 
-  // --------------------------------------------------------------------------
-  // Health & System
-  // --------------------------------------------------------------------------
-  public async getHealth(): Promise<{ status: string; uptime?: number; version?: string; database?: string }> {
-    return this.request<{ status: string; uptime?: number; version?: string; database?: string }>('/health');
-  }
-
-  // --------------------------------------------------------------------------
-  // Auth
-  // --------------------------------------------------------------------------
-  public async getDiscordAuthUrl(redirectUri?: string): Promise<DiscordOAuthStartResponse> {
-    const q = redirectUri ? `?redirect_uri=${encodeURIComponent(redirectUri)}` : '';
-    return this.request<DiscordOAuthStartResponse>(`/api/v1/auth/discord/authorize${q}`);
-  }
-
-  public async discordAuthorize(redirectUri?: string): Promise<DiscordOAuthStartResponse> {
-    return this.getDiscordAuthUrl(redirectUri);
-  }
-
-  public async exchangeDiscordCode(code: string, state: string, redirectUri?: string): Promise<DiscordOAuthCallbackResponse> {
-    return this.request<DiscordOAuthCallbackResponse>('/api/v1/auth/discord/callback', {
-      method: 'POST',
-      body: JSON.stringify({ code, state, redirect_uri: redirectUri }),
-    });
-  }
-
-  public async discordCallback(code: string, state: string, redirectUri?: string): Promise<DiscordOAuthCallbackResponse> {
-    return this.exchangeDiscordCode(code, state, redirectUri);
-  }
-
-  public logout(): void {
-    this.sessionToken = null;
-    this.adminKey = null;
-    if (typeof window !== 'undefined' && window.localStorage) {
-      localStorage.removeItem('umbrella_session_token');
-      localStorage.removeItem('umbrella_admin_key');
-      localStorage.removeItem('umb_auth_user');
-    }
-  }
-
-  public async getMe(): Promise<UserSchema> {
-    return this.request<UserSchema>('/api/v1/auth/me');
-  }
-
-  // --------------------------------------------------------------------------
-  // Servers & Fleet
-  // --------------------------------------------------------------------------
-  public async getServers(): Promise<ServerRecord[]> {
-    return this.request<ServerRecord[]>('/api/v1/servers');
-  }
-
-  public async getServer(id: string): Promise<ServerRecord> {
-    return this.request<ServerRecord>(`/api/v1/servers/${encodeURIComponent(id)}`);
-  }
-
-  public async restartServer(id: string): Promise<{ success: boolean; message: string }> {
-    return this.request<{ success: boolean; message: string }>(`/api/v1/servers/${encodeURIComponent(id)}/restart`, {
-      method: 'POST',
-    });
-  }
-
-  public async getPlugins(serverId?: string): Promise<PluginHeartbeatRecord[]> {
-    const query = serverId ? `?server=${encodeURIComponent(serverId)}` : '';
-    return this.request<PluginHeartbeatRecord[]>(`/api/v1/plugins${query}`);
-  }
-
-  public async getPluginsHeartbeat(): Promise<PluginHeartbeatStatus[]> {
+  // ==========================================
+  // Health Check
+  // ==========================================
+  public async checkHealth(): Promise<BackendHealthResponse> {
     try {
-      const data = await this.request<any[]>('/api/v1/dashboard/plugins');
-      return (data || []).map((p: any) => ({
-        server_id: p.server_id || p.server || 'unknown',
-        server_name: p.server_name || p.server || 'Unknown Node',
-        umbrella_status: p.umbrella_status || p.status || 'ACTIVE',
-        umbrella_version: p.umbrella_version || p.version || '1.0.0',
-        grimac_status: p.grimac_status || 'ACTIVE',
-        last_heartbeat: p.last_heartbeat || p.lastSeen,
-      }));
+      // First try root /health
+      return await this.request<BackendHealthResponse>('/health');
     } catch {
-      return [];
+      // Fallback to /api/v1/health
+      return await this.request<BackendHealthResponse>('/api/v1/health');
     }
   }
 
-  // --------------------------------------------------------------------------
-  // Players & Profiles
-  // --------------------------------------------------------------------------
-  public async getPlayers(params?: { search?: string; username?: string; limit?: number; offset?: number }): Promise<PlayerSummary[]> {
-    const q = new URLSearchParams();
-    const searchTerm = params?.search || params?.username;
-    if (searchTerm) q.set('search', searchTerm);
-    if (params?.limit) q.set('limit', params.limit.toString());
-    if (params?.offset) q.set('offset', params.offset.toString());
-    const queryStr = q.toString() ? `?${q.toString()}` : '';
-    return this.request<PlayerSummary[]>(`/api/v1/players${queryStr}`);
+  // ==========================================
+  // Auth & Session
+  // ==========================================
+  public async getMe(): Promise<AuthUser> {
+    return await this.request<AuthUser>('/api/v1/auth/me');
   }
 
-  public async getPlayerFullProfile(uuid: string): Promise<FullProfileResponse> {
-    return this.request<FullProfileResponse>(`/api/v1/players/${encodeURIComponent(uuid)}/full-profile`);
+  public getDiscordOAuthUrl(): string {
+    return `${this.config.baseUrl}/api/v1/auth/discord/authorize`;
   }
 
-  // --------------------------------------------------------------------------
+  public async exchangeDiscordCallback(code: string, state?: string): Promise<{ token: string; user: AuthUser }> {
+    return await this.request<{ token: string; user: AuthUser }>('/api/v1/auth/discord/callback', {
+      method: 'POST',
+      body: JSON.stringify({ code, state }),
+    });
+  }
+
+  public async logout(): Promise<void> {
+    try {
+      await this.request('/api/v1/auth/logout', { method: 'POST' });
+    } finally {
+      this.setSessionToken(null);
+    }
+  }
+
+  // ==========================================
+  // Servers & Telemetry (GET /api/v1/dashboard/servers)
+  // ==========================================
+  public async getServers(): Promise<BackendServer[]> {
+    return await this.request<BackendServer[]>('/api/v1/dashboard/servers');
+  }
+
+  public async startServer(serverId: string): Promise<{ success: boolean; message: string }> {
+    return await this.request(`/api/v1/hosting/servers/${serverId}/start`, { method: 'POST' });
+  }
+
+  public async stopServer(serverId: string): Promise<{ success: boolean; message: string }> {
+    return await this.request(`/api/v1/hosting/servers/${serverId}/stop`, { method: 'POST' });
+  }
+
+  public async restartServer(serverId: string): Promise<{ success: boolean; message: string }> {
+    return await this.request(`/api/v1/hosting/servers/${serverId}/restart`, { method: 'POST' });
+  }
+
+  public async sendCommand(serverId: string, command: string): Promise<{ success: boolean; output?: string }> {
+    return await this.request(`/api/v1/hosting/servers/${serverId}/command`, {
+      method: 'POST',
+      body: JSON.stringify({ command }),
+    });
+  }
+
+  public async broadcast(message: string, serverScope: string = 'GLOBAL'): Promise<{ success: boolean }> {
+    return await this.request('/api/v1/bridge/message', {
+      method: 'POST',
+      body: JSON.stringify({ message, scope: serverScope }),
+    });
+  }
+
+  // ==========================================
+  // Connected Plugins Health (GET /api/v1/dashboard/plugins)
+  // ==========================================
+  public async getConnectedPlugins(): Promise<BackendPluginHeartbeat[]> {
+    return await this.request<BackendPluginHeartbeat[]>('/api/v1/dashboard/plugins');
+  }
+
+  // ==========================================
   // Moderation & Punishments
-  // --------------------------------------------------------------------------
-  public async getPunishments(params?: { player_uuid?: string; active_only?: boolean; skip?: number; limit?: number }): Promise<PunishmentSchema[]> {
-    const q = new URLSearchParams();
-    if (params?.player_uuid) q.set('player_uuid', params.player_uuid);
-    if (params?.active_only !== undefined) q.set('active_only', params.active_only.toString());
-    if (params?.skip !== undefined) q.set('skip', params.skip.toString());
-    if (params?.limit !== undefined) q.set('limit', params.limit.toString());
-    const queryStr = q.toString() ? `?${q.toString()}` : '';
-    return this.request<PunishmentSchema[]>(`/api/v1/punishments${queryStr}`);
+  // ==========================================
+  public async getPunishments(params?: { active_only?: boolean; player_uuid?: string; limit?: number }): Promise<BackendPunishment[]> {
+    const query = new URLSearchParams();
+    if (params?.active_only !== undefined) query.set('active_only', String(params.active_only));
+    if (params?.player_uuid) query.set('player_uuid', params.player_uuid);
+    if (params?.limit) query.set('limit', String(params.limit));
+
+    const path = `/api/v1/punishments${query.toString() ? `?${query.toString()}` : ''}`;
+    return await this.request<BackendPunishment[]>(path);
   }
 
-  public async createPunishment(payload: CreatePunishmentPayload): Promise<PunishmentSchema> {
-    return this.request<PunishmentSchema>('/api/v1/punishments', {
+  public async issuePunishment(payload: {
+    type: 'kick' | 'warn' | 'ban' | 'unban' | 'ipban' | 'ipunban' | string;
+    player_uuid: string;
+    player_name?: string;
+    reason: string;
+    duration_seconds?: number | null;
+    server_scope?: string;
+    evidence_url?: string;
+  }): Promise<BackendPunishment> {
+    const endpoint = payload.type.toLowerCase().replace('_', '');
+    return await this.request<BackendPunishment>(`/api/v1/moderation/${endpoint}`, {
       method: 'POST',
       body: JSON.stringify(payload),
     });
   }
 
-  public async revokePunishment(punishmentId: string): Promise<PunishmentSchema> {
-    return this.request<PunishmentSchema>(`/api/v1/punishments/${encodeURIComponent(punishmentId)}/revoke`, {
+  public async revokePunishment(punishmentId: string, reason?: string): Promise<{ success: boolean }> {
+    return await this.request(`/api/v1/punishments/${punishmentId}/revoke`, {
+      method: 'POST',
+      body: JSON.stringify({ reason: reason || 'Staff pardon via dashboard' }),
+    });
+  }
+
+  public async getAppeals(): Promise<BackendAppeal[]> {
+    return await this.request<BackendAppeal[]>('/api/v1/appeals');
+  }
+
+  public async resolveAppeal(appealId: string, decision: 'ACCEPTED' | 'REJECTED', staffNote?: string): Promise<{ success: boolean }> {
+    return await this.request(`/api/v1/appeals/${appealId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: decision, staff_note: staffNote }),
+    });
+  }
+
+  // ==========================================
+  // Anticheat & Alt Detection
+  // ==========================================
+  public async getFlaggedAlts(): Promise<BackendAltFlag[]> {
+    return await this.request<BackendAltFlag[]>('/api/v1/alts/flagged');
+  }
+
+  public async getAltGroups(): Promise<BackendAltFlag[]> {
+    return await this.request<BackendAltFlag[]>('/api/v1/alts/groups');
+  }
+
+  public async checkPlayerAlts(playerUuid: string): Promise<BackendAltFlag> {
+    return await this.request<BackendAltFlag>(`/api/v1/alts/player/${playerUuid}`);
+  }
+
+  public async reportFalsePositiveAlt(clusterId: string, reason: string): Promise<{ success: boolean }> {
+    return await this.request('/api/v1/alts/false-positive', {
+      method: 'POST',
+      body: JSON.stringify({ cluster_id: clusterId, reason }),
+    });
+  }
+
+  // ==========================================
+  // AI Intelligence & Tasks
+  // ==========================================
+  public async getAITasks(): Promise<BackendAITask[]> {
+    return await this.request<BackendAITask[]>('/api/v1/ai/tasks');
+  }
+
+  public async reviewPlayerAI(playerUuid: string): Promise<BackendAITask> {
+    return await this.request<BackendAITask>(`/api/v1/ai/review/player/${playerUuid}`, {
       method: 'POST',
     });
   }
 
-  public async kickPlayer(playerUuid: string, reason: string = 'Kicked by staff', staffId?: string): Promise<{ success: boolean; message: string }> {
-    return this.request<{ success: boolean; message: string }>('/api/v1/moderation/kick', {
-      method: 'POST',
-      body: JSON.stringify({ player_uuid: playerUuid, reason, staff_id: staffId }),
+  public async reviewPlayer(playerUuid: string): Promise<any> {
+    return await this.reviewPlayerAI(playerUuid);
+  }
+
+  public async unlinkAccount(linkId: string): Promise<{ success: boolean }> {
+    return await this.request(`/api/v1/verification/unlink/${linkId}`, {
+      method: 'DELETE',
     });
   }
 
-  public async warnPlayer(playerUuid: string, reason: string, staffId?: string): Promise<any> {
-    return this.request<any>('/api/v1/moderation/warn', {
+  public async translateText(payload: { text: string; targetLang: string; player_uuid?: string }): Promise<{ translated: string }> {
+    return await this.request<{ translated: string }>('/api/v1/translation/translate', {
       method: 'POST',
-      body: JSON.stringify({ player_uuid: playerUuid, reason, staff_id: staffId }),
+      body: JSON.stringify({
+        text: payload.text,
+        target_language: payload.targetLang,
+        ...(payload.player_uuid ? { player_uuid: payload.player_uuid } : {}),
+      }),
     });
   }
 
-  // --------------------------------------------------------------------------
-  // Anticheat & GrimAC Violations
-  // --------------------------------------------------------------------------
-  public async getAnticheatViolations(params?: {
-    player_uuid?: string;
-    server_id?: string;
-    check_name?: string;
+  public async syncTranslations(bundles: any): Promise<{ success: boolean }> {
+    return await this.request<{ success: boolean }>('/api/v1/translation/sync', {
+      method: 'POST',
+      body: JSON.stringify(bundles),
+    });
+  }
+
+  public async approveAITask(taskId: string, reviewedBy: string = 'staff'): Promise<{ success: boolean }> {
+    return await this.request(`/api/v1/ai/tasks/${taskId}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ action_taken: 'APPROVED', reviewed_by: reviewedBy }),
+    });
+  }
+
+  public async denyAITask(taskId: string): Promise<{ success: boolean }> {
+    return await this.request(`/api/v1/ai/tasks/${taskId}/deny`, { method: 'POST' });
+  }
+
+  // ==========================================
+  // Logs Stream & Query
+  // ==========================================
+  public async getLogs(params?: {
+    query?: string;
+    level?: string;
+    source?: string;
+    trace_id?: string;
     limit?: number;
-  }): Promise<AnticheatViolationRecord[]> {
-    const q = new URLSearchParams();
-    if (params?.player_uuid) q.set('player_uuid', params.player_uuid);
-    if (params?.server_id) q.set('server_id', params.server_id);
-    if (params?.check_name) q.set('check_name', params.check_name);
-    if (params?.limit) q.set('limit', params.limit.toString());
-    const queryStr = q.toString() ? `?${q.toString()}` : '';
-    return this.request<AnticheatViolationRecord[]>(`/api/v1/anticheat/violations${queryStr}`);
+  }): Promise<BackendLogEntry[]> {
+    const query = new URLSearchParams();
+    if (params?.query) query.set('query', params.query);
+    if (params?.level && params.level !== 'ALL') query.set('level', params.level);
+    if (params?.source) query.set('source', params.source);
+    if (params?.trace_id) query.set('trace_id', params.trace_id);
+    if (params?.limit) query.set('limit', String(params.limit));
+
+    const path = `/api/v1/logs${query.toString() ? `?${query.toString()}` : ''}`;
+    return await this.request<BackendLogEntry[]>(path);
   }
 
-  // --------------------------------------------------------------------------
-  // Appeals & Appeals Decision Flow
-  // --------------------------------------------------------------------------
-  public async getAppeals(params?: { status?: string; player_uuid?: string; skip?: number; limit?: number }): Promise<AppealSchema[]> {
-    const q = new URLSearchParams();
-    if (params?.status) q.set('status', params.status);
-    if (params?.player_uuid) q.set('player_uuid', params.player_uuid);
-    if (params?.skip !== undefined) q.set('skip', params.skip.toString());
-    if (params?.limit !== undefined) q.set('limit', params.limit.toString());
-    const queryStr = q.toString() ? `?${q.toString()}` : '';
-    return this.request<AppealSchema[]>(`/api/v1/appeals${queryStr}`);
-  }
+  // ==========================================
+  // WebSocket Console Connect Helper
+  // ==========================================
+  public createConsoleWebSocket(
+    serverId: string,
+    onMessage: (data: string) => void,
+    onError?: (err: Event) => void,
+    onClose?: (event: CloseEvent) => void
+  ): WebSocket | null {
+    try {
+      const wsProto = this.config.baseUrl.startsWith('https') ? 'wss' : 'ws';
+      const cleanHost = this.config.baseUrl.replace(/^https?:\/\//, '');
+      const tokenParam = this.config.sessionToken ? `?token=${encodeURIComponent(this.config.sessionToken)}` : '';
+      
+      const wsUrl = `${wsProto}://${cleanHost}/api/v1/hosting/servers/${serverId}/console${tokenParam}`;
+      const ws = new WebSocket(wsUrl);
 
-  public async closeAppeal(appealId: string, payload: AppealClosePayload): Promise<AppealSchema> {
-    return this.request<AppealSchema>(`/api/v1/appeals/${encodeURIComponent(appealId)}/close`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-  }
+      ws.onmessage = (event) => {
+        onMessage(event.data);
+      };
 
-  public async triggerAppealAIReview(appealId: string): Promise<any> {
-    return this.request<any>(`/api/v1/ai/review/appeal/${encodeURIComponent(appealId)}`, {
-      method: 'POST',
-    });
-  }
+      if (onError) ws.onerror = onError;
+      if (onClose) ws.onclose = onClose;
 
-  public async triggerPlayerAIReview(playerUuid: string): Promise<any> {
-    return this.request<any>(`/api/v1/ai/review/player/${encodeURIComponent(playerUuid)}`, {
-      method: 'POST',
-    });
-  }
-
-  public async reviewAppealAI(appealId: string): Promise<any> {
-    return this.triggerAppealAIReview(appealId);
-  }
-
-  public async reviewPlayerFullAI(uuid: string): Promise<any> {
-    return this.triggerPlayerAIReview(uuid);
-  }
-
-  // --------------------------------------------------------------------------
-  // Staff Directory & Management
-  // --------------------------------------------------------------------------
-  public async getStaff(): Promise<StaffMemberSchema[]> {
-    return this.request<StaffMemberSchema[]>('/api/v1/staff');
-  }
-
-  public async getStaffMembers(): Promise<StaffMemberSchema[]> {
-    return this.getStaff();
-  }
-
-  public async manageStaff(param1: any, param2?: any): Promise<any> {
-    if (typeof param1 === 'object') {
-      return this.request<any>('/api/v1/staff/manage', {
-        method: 'POST',
-        body: JSON.stringify(param1),
-      });
+      return ws;
+    } catch (e) {
+      console.warn('[UmbrellaOS] Failed to instantiate WebSocket:', e);
+      return null;
     }
-    return this.request<any>('/api/v1/staff/manage', {
+  }
+
+  // ==========================================
+  // Feature Flags & Settings
+  // ==========================================
+  public async getFeatureFlag(name: string): Promise<{ name: string; enabled: boolean; metadata?: any }> {
+    return await this.request(`/api/v1/feature-flags/${name}`);
+  }
+
+  public async updateFeatureFlag(name: string, enabled: boolean): Promise<{ success: boolean }> {
+    return await this.request(`/api/v1/feature-flags`, {
       method: 'POST',
-      body: JSON.stringify({ user_id: param1, action: param2 || 'update' }),
+      body: JSON.stringify({ name, enabled }),
     });
   }
 
-  public async addStaff(discordId: string, role: string, username?: string): Promise<any> {
-    return this.request<any>('/api/v1/staff/add', {
-      method: 'POST',
-      body: JSON.stringify({ discord_id: discordId, role, username }),
-    });
+  public async getSetting(key: string): Promise<{ key: string; value: any }> {
+    return await this.request(`/api/v1/settings/${key}`);
   }
 
-  public async addStaffMember(payloadOrDiscordId: any, role?: string, username?: string): Promise<any> {
-    if (typeof payloadOrDiscordId === 'object') {
-      return this.addStaff(payloadOrDiscordId.discord_id, payloadOrDiscordId.role, payloadOrDiscordId.username);
-    }
-    return this.addStaff(payloadOrDiscordId, role || 'helper', username);
-  }
-
-  public async updateStaff(discordId: string, role: string): Promise<any> {
-    return this.manageStaff({ discord_id: discordId, role });
-  }
-
-  public async updateStaffRole(discordId: string, role: string): Promise<any> {
-    return this.updateStaff(discordId, role);
-  }
-
-  public async removeStaff(discordId: string): Promise<any> {
-    return this.manageStaff({ discord_id: discordId, is_active: false });
-  }
-
-  public async removeStaffMember(discordId: string): Promise<any> {
-    return this.removeStaff(discordId);
-  }
-
-  public async getDiscordMembers(): Promise<DiscordMemberSchema[]> {
-    return this.request<DiscordMemberSchema[]>('/api/v1/staff/discord-members');
-  }
-
-  public async getDiscordGuildMembers(): Promise<DiscordMemberSchema[]> {
-    return this.getDiscordMembers();
-  }
-
-  // --------------------------------------------------------------------------
-  // Verification
-  // --------------------------------------------------------------------------
-  public async getVerificationLinks(limit: number = 50, offset: number = 0): Promise<VerificationLinkSchema[]> {
-    return this.request<VerificationLinkSchema[]>(`/api/v1/verification/links?limit=${limit}&offset=${offset}`);
-  }
-
-  public async unlinkAccount(discordId: string): Promise<{ success: boolean }> {
-    return this.request<{ success: boolean }>(`/api/v1/verification/unlink/${encodeURIComponent(discordId)}`, {
-      method: 'DELETE',
-    });
-  }
-
-  public async unlinkVerification(discordId: string): Promise<{ success: boolean }> {
-    return this.unlinkAccount(discordId);
-  }
-
-  public async getPendingVerifications(): Promise<PendingVerification[]> {
-    return this.request<PendingVerification[]>('/api/v1/verification/pending');
-  }
-
-  public async manualLinkAccount(discordId: string, mcUsername: string): Promise<{ success: boolean; message: string }> {
-    return this.request<{ success: boolean; message: string }>('/api/v1/verification/manual-link', {
-      method: 'POST',
-      body: JSON.stringify({ discord_id: discordId, mc_username: mcUsername }),
-    });
-  }
-
-  public async manualLinkVerification(payloadOrDiscordId: any, maybeMcUsername?: string): Promise<{ success: boolean; message: string }> {
-    if (typeof payloadOrDiscordId === 'object') {
-      return this.request<{ success: boolean; message: string }>('/api/v1/verification/manual-link', {
-        method: 'POST',
-        body: JSON.stringify(payloadOrDiscordId),
-      });
-    }
-    return this.manualLinkAccount(payloadOrDiscordId, maybeMcUsername || '');
-  }
-
-  // --------------------------------------------------------------------------
-  // Alt Detection
-  // --------------------------------------------------------------------------
-  public async getFlaggedAlts(limit: number = 50, offset: number = 0): Promise<SuspicionEventSchema[]> {
-    return this.request<SuspicionEventSchema[]>(`/api/v1/alts/flagged?limit=${limit}&offset=${offset}`);
-  }
-
-  public async getAltGroups(limit: number = 50, offset: number = 0): Promise<AltGroupSchema[]> {
-    return this.request<AltGroupSchema[]>(`/api/v1/alts/groups?limit=${limit}&offset=${offset}`);
-  }
-
-  public async markAltFalsePositive(
-    primaryUuidOrEventId?: string | number,
-    altUuid?: string,
-    reviewedBy: string = 'staff'
-  ): Promise<{ success: boolean }> {
-    const eventId = typeof primaryUuidOrEventId === 'number' ? primaryUuidOrEventId : undefined;
-    const playerUuid = typeof primaryUuidOrEventId === 'string' ? primaryUuidOrEventId : undefined;
-    return this.request<{ success: boolean }>('/api/v1/alts/false-positive', {
-      method: 'POST',
-      body: JSON.stringify({ event_id: eventId, player_uuid: playerUuid, alt_uuid: altUuid, reviewed_by: reviewedBy }),
-    });
-  }
-
-  // --------------------------------------------------------------------------
-  // AI Tasks & Intelligence
-  // --------------------------------------------------------------------------
-  public async getAITasks(limit: number = 50, offset: number = 0): Promise<AITaskSchema[]> {
-    return this.request<AITaskSchema[]>(`/api/v1/ai/tasks?limit=${limit}&offset=${offset}`);
-  }
-
-  public async approveAITask(taskId: string, actionTaken: string = 'approve', reviewedBy: string = 'staff'): Promise<any> {
-    return this.request<any>(`/api/v1/ai/tasks/${encodeURIComponent(taskId)}/approve`, {
-      method: 'POST',
-      body: JSON.stringify({ action_taken: actionTaken, reviewed_by: reviewedBy }),
-    });
-  }
-
-  public async denyAITask(taskId: string, reviewedBy: string = 'staff', reason: string = 'denied'): Promise<any> {
-    return this.request<any>(`/api/v1/ai/tasks/${encodeURIComponent(taskId)}/deny`, {
-      method: 'POST',
-      body: JSON.stringify({ reviewed_by: reviewedBy, reason }),
-    });
-  }
-
-  public async sendCopilotPrompt(message: string, context?: string): Promise<CopilotResponse> {
-    return this.request<CopilotResponse>('/api/v1/ai/copilot', {
-      method: 'POST',
-      body: JSON.stringify({ message, context }),
-    });
-  }
-
-  public async askCopilot(prompt: string, context?: any): Promise<any> {
-    return this.sendCopilotPrompt(prompt, typeof context === 'string' ? context : JSON.stringify(context || {}));
-  }
-
-  public async getCrashRisk(serverId: string): Promise<CrashRiskResponse> {
-    return this.request<CrashRiskResponse>(`/api/v1/ai/crash-risk/${encodeURIComponent(serverId)}`);
-  }
-
-  public async testAIProvider(provider: string, apiKey?: string): Promise<{ success: boolean; latency_ms: number; message: string; model?: string }> {
-    return this.request<any>('/api/v1/ai/providers/test', {
-      method: 'POST',
-      body: JSON.stringify({ provider, api_key: apiKey }),
-    });
-  }
-
-  // --------------------------------------------------------------------------
-  // Audit Log
-  // --------------------------------------------------------------------------
-  public async getAuditLogs(params?: { limit?: number; offset?: number; actor_type?: string; action?: string }): Promise<AuditLogEntry[]> {
-    const q = new URLSearchParams();
-    if (params?.limit !== undefined) q.set('limit', params.limit.toString());
-    if (params?.offset !== undefined) q.set('offset', params.offset.toString());
-    if (params?.actor_type) q.set('actor_type', params.actor_type);
-    if (params?.action) q.set('action', params.action);
-    const queryStr = q.toString() ? `?${q.toString()}` : '';
-    const res = await this.request<any>(`/api/v1/audit${queryStr}`);
-    if (Array.isArray(res)) return res;
-    if (res && Array.isArray(res.items)) return res.items;
-    if (res && Array.isArray(res.logs)) return res.logs;
-    return [];
-  }
-
-  // --------------------------------------------------------------------------
-  // Feature Flags
-  // --------------------------------------------------------------------------
-  public async getFeatureFlags(): Promise<FeatureFlagResponse[]> {
-    return this.request<FeatureFlagResponse[]>('/api/v1/feature-flags');
-  }
-
-  public async upsertFeatureFlag(name: string, enabled: boolean, description: string = ''): Promise<FeatureFlagResponse> {
-    return this.request<FeatureFlagResponse>('/api/v1/feature-flags', {
-      method: 'POST',
-      body: JSON.stringify({ name, enabled, description }),
-    });
-  }
-
-  public async setFeatureFlag(flag: { name: string; enabled: boolean; description?: string; percentage?: number }): Promise<any> {
-    return this.upsertFeatureFlag(flag.name, flag.enabled, flag.description || '');
-  }
-
-  public async deleteFeatureFlag(name: string): Promise<{ deleted: boolean }> {
-    return this.request<{ deleted: boolean }>(`/api/v1/feature-flags/${encodeURIComponent(name)}`, {
-      method: 'DELETE',
-    });
-  }
-
-  // --------------------------------------------------------------------------
-  // Settings (Only Real Backend Keys)
-  // --------------------------------------------------------------------------
-  public async getSettings(): Promise<SettingRecord[]> {
-    return this.request<SettingRecord[]>('/api/v1/settings');
-  }
-
-  public async getSetting(key: string): Promise<SettingRecord> {
-    return this.request<SettingRecord>(`/api/v1/settings/${encodeURIComponent(key)}`);
-  }
-
-  public async updateSetting(key: string, value: string): Promise<SettingRecord> {
-    return this.request<SettingRecord>(`/api/v1/settings/${encodeURIComponent(key)}`, {
+  public async updateSetting(key: string, value: any): Promise<{ success: boolean }> {
+    return await this.request(`/api/v1/settings/${key}`, {
       method: 'PATCH',
       body: JSON.stringify({ value }),
     });
   }
 
-  public async updateSettings(settings: Partial<NetworkSettings>): Promise<any> {
-    const promises: Promise<any>[] = [];
-    if (settings.discord_guild_id !== undefined) {
-      promises.push(this.updateSetting('discord_guild_id', settings.discord_guild_id));
-    }
-    if (settings.verification_channel_id !== undefined) {
-      promises.push(this.updateSetting('verification_channel_id', settings.verification_channel_id));
-    }
-    if (settings.ai_model !== undefined) {
-      promises.push(this.updateSetting('ai_model', settings.ai_model));
-    }
-    return Promise.all(promises);
+  // ==========================================
+  // Players & Telemetry
+  // ==========================================
+  public async getPlayers(params?: { search?: string; online_only?: boolean; limit?: number }): Promise<any[]> {
+    const query = new URLSearchParams();
+    if (params?.search) query.set('search', params.search);
+    if (params?.online_only !== undefined) query.set('online_only', String(params.online_only));
+    if (params?.limit) query.set('limit', String(params.limit));
+
+    const path = `/api/v1/players${query.toString() ? `?${query.toString()}` : ''}`;
+    return await this.request<any[]>(path);
   }
 
-  // --------------------------------------------------------------------------
-  // Global Broadcast & Shortcuts
-  // --------------------------------------------------------------------------
-  public async broadcast(message: string, serverId?: string): Promise<any> {
-    return this.broadcastMessage(message, 'Admin');
+  // ==========================================
+  // Staff Directory & RBAC
+  // ==========================================
+  public async getStaff(): Promise<any[]> {
+    return await this.request<any[]>('/api/v1/staff');
   }
 
-  public async broadcastMessage(message: string, playerName: string = 'Staff'): Promise<any> {
-    return this.request<any>('/api/v1/bridge/message', {
+  public async inviteStaffMember(payload: { email?: string; discord_id?: string; role: string; notes?: string }): Promise<any> {
+    return await this.request('/api/v1/staff/invite', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  // ==========================================
+  // Snapshots & Backups
+  // ==========================================
+  public async getSnapshots(serverId?: string): Promise<any[]> {
+    const path = serverId ? `/api/v1/snapshots?server_id=${encodeURIComponent(serverId)}` : '/api/v1/snapshots';
+    return await this.request<any[]>(path);
+  }
+
+  public async createSnapshot(serverId: string, type: string, tags: string[] = []): Promise<any> {
+    return await this.request('/api/v1/snapshots', {
+      method: 'POST',
+      body: JSON.stringify({ server_id: serverId, type, tags }),
+    });
+  }
+
+  public async restoreSnapshot(snapshotId: string): Promise<{ success: boolean; message: string }> {
+    return await this.request(`/api/v1/snapshots/${snapshotId}/restore`, {
+      method: 'POST',
+    });
+  }
+
+  // ==========================================
+  // Automation & Scheduled Crons
+  // ==========================================
+  public async getCronJobs(): Promise<any[]> {
+    return await this.request<any[]>('/api/v1/cron/jobs');
+  }
+
+  public async createCronJob(payload: { name: string; schedule: string; action: string; target: string; payload?: any }): Promise<any> {
+    return await this.request('/api/v1/cron/jobs', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  public async toggleCronJob(id: string, enabled: boolean): Promise<{ success: boolean }> {
+    return await this.request(`/api/v1/cron/jobs/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ enabled }),
+    });
+  }
+
+  public async runCronJob(id: string): Promise<{ success: boolean }> {
+    return await this.request(`/api/v1/cron/jobs/${id}/run`, {
+      method: 'POST',
+    });
+  }
+
+  // ==========================================
+  // API Keys & Webhooks Hub
+  // ==========================================
+  public async getApiKeys(): Promise<any[]> {
+    return await this.request<any[]>('/api/v1/auth/keys');
+  }
+
+  public async createApiKey(name: string, scopes: string[]): Promise<any> {
+    return await this.request('/api/v1/auth/keys', {
+      method: 'POST',
+      body: JSON.stringify({ name, scopes }),
+    });
+  }
+
+  public async revokeApiKey(keyId: string): Promise<{ success: boolean }> {
+    return await this.request(`/api/v1/auth/keys/${keyId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  public async getWebhooks(): Promise<any[]> {
+    return await this.request<any[]>('/api/v1/webhooks');
+  }
+
+  public async createWebhook(payload: { name: string; url: string; events: string[] }): Promise<any> {
+    return await this.request('/api/v1/webhooks', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  public async testWebhook(webhookId: string): Promise<{ success: boolean; latency_ms?: number }> {
+    return await this.request(`/api/v1/webhooks/${webhookId}/test`, {
+      method: 'POST',
+    });
+  }
+
+  // ==========================================
+  // Anticheat Violations & Diagnostics
+  // ==========================================
+  public async getAnticheatViolations(params?: { player_uuid?: string; server_id?: string; check_name?: string; limit?: number }): Promise<any[]> {
+    const query = new URLSearchParams();
+    if (params?.player_uuid) query.set('player_uuid', params.player_uuid);
+    if (params?.server_id) query.set('server_id', params.server_id);
+    if (params?.check_name) query.set('check_name', params.check_name);
+    if (params?.limit) query.set('limit', String(params.limit));
+    const path = `/api/v1/anticheat/violations${query.toString() ? `?${query.toString()}` : ''}`;
+    return await this.request<any[]>(path);
+  }
+
+  public async getGrimViolations(limit: number = 50): Promise<any[]> {
+    return await this.request<any[]>(`/api/v1/anticheat/violations?limit=${limit}`);
+  }
+
+  public async getCrashReports(): Promise<any[]> {
+    return await this.request<any[]>('/api/v1/diagnostics/crashes');
+  }
+
+  public async triageCrashReport(reportText: string): Promise<any> {
+    return await this.request('/api/v1/ai/diagnostics/crash', {
+      method: 'POST',
+      body: JSON.stringify({ report: reportText }),
+    });
+  }
+
+  // ==========================================
+  // Nodes & Infrastructure Telemetry
+  // ==========================================
+  public async getNodes(): Promise<any[]> {
+    return await this.request<any[]>('/api/v1/infrastructure/nodes');
+  }
+
+  // ==========================================
+  // Verification (Discord <-> Minecraft)
+  // ==========================================
+  public async getVerificationPending(): Promise<any[]> {
+    return await this.request('/api/v1/verification/pending');
+  }
+
+  public async getVerificationLinks(): Promise<any[]> {
+    return await this.request<any[]>('/api/v1/verification/links');
+  }
+
+  public async manualLinkDiscord(minecraftUuid: string, discordId: string): Promise<{ success: boolean }> {
+    return await this.request('/api/v1/verification/manual-link', {
+      method: 'POST',
+      body: JSON.stringify({ minecraft_uuid: minecraftUuid, discord_id: discordId }),
+    });
+  }
+
+  // ==========================================
+  // Player Lookup & Name Validation
+  // ==========================================
+  public validateMinecraftUsername(username: string): { valid: boolean; error?: string } {
+    const trimmed = username.trim();
+    if (!trimmed) {
+      return { valid: false, error: 'Player username or UUID cannot be empty.' };
+    }
+    // Check if UUID format
+    const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$|^[0-9a-fA-F]{32}$/;
+    if (uuidRegex.test(trimmed)) {
+      return { valid: true };
+    }
+    // Check standard Minecraft username (3-16 chars alphanumeric + underscore)
+    const usernameRegex = /^[a-zA-Z0-9_]{3,16}$/;
+    if (!usernameRegex.test(trimmed)) {
+      if (trimmed.length < 3) {
+        return { valid: false, error: `Username "${trimmed}" is too short (minimum 3 characters).` };
+      }
+      if (trimmed.length > 16) {
+        return { valid: false, error: `Username "${trimmed}" exceeds Mojang maximum length (16 characters).` };
+      }
+      return { valid: false, error: `Username "${trimmed}" contains illegal characters. Only letters, numbers, and underscores are allowed.` };
+    }
+    return { valid: true };
+  }
+
+  public async lookupPlayer(usernameOrUuid: string): Promise<{
+    found: boolean;
+    uuid: string;
+    username: string;
+    avatarUrl: string;
+    online?: boolean;
+    server?: string;
+    rank?: string;
+    error?: string;
+  }> {
+    const validation = this.validateMinecraftUsername(usernameOrUuid);
+    if (!validation.valid) {
+      throw new Error(validation.error || 'Invalid player name format.');
+    }
+
+    try {
+      const data = await this.request<any>(`/api/v1/players/lookup?query=${encodeURIComponent(usernameOrUuid.trim())}`);
+      return {
+        found: true,
+        uuid: data.uuid || '069a79f4-44e9-4726-a5be-fca90e38aaf5',
+        username: data.username || usernameOrUuid.trim(),
+        avatarUrl: `https://mc-heads.net/avatar/${data.username || usernameOrUuid.trim()}/64`,
+        online: data.online,
+        server: data.server,
+        rank: data.rank
+      };
+    } catch (err: any) {
+      throw new ApiError(
+        err?.message || `Player "${usernameOrUuid.trim()}" not found or lookup endpoint unavailable.`,
+        err?.status ?? 0,
+        err
+      );
+    }
+  }
+
+  // ==========================================
+  // AI Multi-Provider & Rate-Limit Failover Engine
+  // ==========================================
+  public async testAIProvider(
+    providerId: string,
+    apiKey: string,
+    baseUrl?: string,
+    modelName?: string
+  ): Promise<{
+    success: boolean;
+    latencyMs: number;
+    model: string;
+    quotaPercent: number;
+    message: string;
+  }> {
+    const res = await this.request<any>('/api/v1/ai/providers/test', {
       method: 'POST',
       body: JSON.stringify({
-        source: 'dashboard',
-        player_name: playerName,
-        message,
+        provider: providerId,
+        api_key: apiKey,
+        base_url: baseUrl,
+        model: modelName
+      })
+    });
+    return {
+      success: true,
+      latencyMs: res.latency_ms ?? 0,
+      model: res.model || modelName || 'default',
+      quotaPercent: res.quota_percent ?? 0,
+      message: res.message || 'Provider test complete.'
+    };
+  }
+
+  // ==========================================
+  // AI Copilot Chat (real backend)
+  // ==========================================
+  public async sendCopilotMessage(message: string, context?: string): Promise<{ response: string }> {
+    return await this.request<{ response: string }>('/api/v1/ai/copilot', {
+      method: 'POST',
+      body: JSON.stringify({ message, ...(context ? { context } : {}) }),
+    });
+  }
+
+  // ==========================================
+  // Crash Risk Assessment
+  // ==========================================
+  public async getCrashRisk(serverId: string): Promise<{
+    server_id: string;
+    server_name?: string;
+    risk_level: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+    tps_trend?: number[];
+    recommendation?: string;
+  }> {
+    return await this.request(`/api/v1/ai/crash-risk/${encodeURIComponent(serverId)}`);
+  }
+
+  // ==========================================
+  // Webhooks (CRUD)
+  // ==========================================
+  public async deleteWebhook(webhookId: string): Promise<{ success: boolean }> {
+    return await this.request(`/api/v1/webhooks/${webhookId}`, { method: 'DELETE' });
+  }
+
+  // ==========================================
+  // Bridge Messages & Settings
+  // ==========================================
+  public async getBridgeMessages(params?: { limit?: number; server_id?: string }): Promise<any[]> {
+    const query = new URLSearchParams();
+    if (params?.limit) query.set('limit', String(params.limit));
+    if (params?.server_id) query.set('server_id', params.server_id);
+    const path = `/api/v1/bridge/messages${query.toString() ? `?${query.toString()}` : ''}`;
+    return await this.request<any[]>(path);
+  }
+
+  public async getBridgeSettings(): Promise<any> {
+    return await this.request('/api/v1/bridge/settings');
+  }
+
+  public async updateBridgeSettings(settings: {
+    mc_to_discord?: boolean;
+    discord_to_mc?: boolean;
+    show_avatars?: boolean;
+    channel_id?: string;
+  }): Promise<{ success: boolean }> {
+    return await this.request('/api/v1/bridge/settings', {
+      method: 'PATCH',
+      body: JSON.stringify(settings),
+    });
+  }
+
+  // ==========================================
+  // Translation — Player Language Preferences
+  // ==========================================
+  public async getPlayerLanguages(): Promise<any[]> {
+    return await this.request<any[]>('/api/v1/translation/language/all');
+  }
+
+  // ==========================================
+  // Discord Cloud Hub Notifications & Webhooks
+  // ==========================================
+  public async sendDiscordNotification(content: string, channel?: string): Promise<{ success: boolean }> {
+    return await this.request('/api/v1/discord/notify', {
+      method: 'POST',
+      body: JSON.stringify({ content, channel }),
+    });
+  }
+
+  public async sendDiscordEmbed(embed: {
+    title: string;
+    description: string;
+    color?: number | string;
+    channel?: string;
+    author?: string | { name: string; icon_url?: string };
+    fields?: Array<{ name: string; value: string; inline?: boolean }>;
+    footer?: string | { text: string };
+  }): Promise<{ success: boolean }> {
+    return await this.request('/api/v1/discord/embed', {
+      method: 'POST',
+      body: JSON.stringify(embed),
+    });
+  }
+  // ==========================================
+  // Phase 15 — Player Full Profile & Appeals Decision
+  // ==========================================
+  public async getPlayerFullProfile(uuid: string): Promise<any> {
+    return await this.request<any>(`/api/v1/players/${uuid}/full-profile`);
+  }
+
+  public async closeAppeal(id: string, action: string, staffNote?: string, newExpiry?: string): Promise<any> {
+    return await this.request<any>(`/api/v1/appeals/${id}/close`, {
+      method: 'POST',
+      body: JSON.stringify({
+        action,
+        ...(staffNote ? { staff_note: staffNote } : {}),
+        ...(newExpiry ? { new_expiry: newExpiry } : {}),
       }),
     });
   }
+
+  public async reviewAppealAI(id: string): Promise<any> {
+    return await this.request<any>(`/api/v1/ai/review/appeal/${id}`, { method: 'POST' });
+  }
+
+  public async reviewPlayerFullAI(uuid: string): Promise<any> {
+    return await this.request<any>(`/api/v1/ai/review/player/${uuid}`, { method: 'POST' });
+  }
+
+
 }
 
-export const api = new UmbrellaApiClient();
+export const api = new ApiClient();
 export default api;

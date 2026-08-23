@@ -65,8 +65,8 @@ export const AccessDeniedView: React.FC = () => {
             <p className="text-xs text-slate-400 leading-relaxed">
               Contact a <span className="text-white font-semibold">superadmin</span> or <span className="text-white font-semibold">admin</span> to have your role elevated. Provide them with your Discord ID:
             </p>
-            {currentUser?.discord_id && (
-              <p className="text-xs font-mono text-cyan-400 mt-1 select-all">{currentUser.discord_id}</p>
+            {currentUser?.discordId && (
+              <p className="text-xs font-mono text-cyan-400 mt-1 select-all">{currentUser.discordId}</p>
             )}
           </div>
 

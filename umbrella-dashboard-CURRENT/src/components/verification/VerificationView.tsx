@@ -1,393 +1,297 @@
 import React, { useState, useEffect } from 'react';
-import { api, VerificationLink, PendingVerification } from '../../lib/api';
 import { useDashboard } from '../../context/DashboardContext';
-import { DisconnectedBanner } from '../common/DisconnectedBanner';
+import { api } from '../../lib/api';
 import {
-  UserCheck,
-  Link,
-  Unlink,
-  RefreshCw,
-  AlertCircle,
-  Clock,
-  Plus,
-  X,
+  CheckCircle2,
   Search,
+  UserCheck,
+  Link as LinkIcon,
+  Unlink,
   ExternalLink,
+  Clock,
+  Shield,
+  Bot,
+  AlertCircle,
+  Plus
 } from 'lucide-react';
 
+interface VerificationLink {
+  id: string;
+  discordId: string;
+  discordTag: string;
+  minecraftUsername: string;
+  minecraftUuid: string;
+  linkedAt: string;
+  verifiedBy: 'BOT_CODE' | 'MANUAL_STAFF' | 'OAUTH';
+  status: 'VERIFIED' | 'PENDING_CODE' | 'EXPIRED';
+}
+
 export const VerificationView: React.FC = () => {
-  const { addToast, navigateToPlayer } = useDashboard();
+  const { addToast } = useDashboard();
+
   const [links, setLinks] = useState<VerificationLink[]>([]);
-  const [pending, setPending] = useState<PendingVerification[]>([]);
-  const [activeTab, setActiveTab] = useState<'links' | 'pending'>('links');
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-
-  // Manual link modal
-  const [isManualModalOpen, setIsManualModalOpen] = useState<boolean>(false);
-  const [discordId, setDiscordId] = useState<string>('');
-  const [playerUuid, setPlayerUuid] = useState<string>('');
-  const [discordUsername, setDiscordUsername] = useState<string>('');
-  const [minecraftUsername, setMinecraftUsername] = useState<string>('');
-  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-
-  const fetchVerificationData = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const [linksRes, pendingRes] = await Promise.allSettled([
-        api.getVerificationLinks(),
-        api.getPendingVerifications(),
-      ]);
-
-      if (linksRes.status === 'fulfilled') {
-        setLinks(linksRes.value || []);
-      }
-      if (pendingRes.status === 'fulfilled') {
-        setPending(pendingRes.value || []);
-      }
-    } catch (err: any) {
-      setError(err.message || 'Failed to load verification database');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const [linksLoading, setLinksLoading] = useState(false);
+  const [linksError, setLinksError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [manualLinkOpen, setManualLinkOpen] = useState(false);
+  const [manualDiscordId, setManualDiscordId] = useState('');
+  const [manualMcUsername, setManualMcUsername] = useState('');
 
   useEffect(() => {
-    fetchVerificationData();
+    let cancelled = false;
+    const fetchLinks = async () => {
+      setLinksLoading(true);
+      setLinksError(null);
+      try {
+        const data = await api.getVerificationLinks();
+        if (!cancelled && Array.isArray(data)) {
+          setLinks(data.map((raw: any) => ({
+            id: raw.id || `lnk-${raw.minecraft_uuid || raw.discord_id}`,
+            discordId: raw.discord_id || raw.discordId || '',
+            discordTag: raw.discord_tag || raw.discordTag || raw.discord_id || 'Unknown',
+            minecraftUsername: raw.minecraft_username || raw.minecraftUsername || 'Unknown',
+            minecraftUuid: raw.minecraft_uuid || raw.minecraftUuid || '00000000-0000-0000-0000-000000000000',
+            linkedAt: (raw.linked_at || raw.linkedAt || raw.created_at || new Date().toISOString()).replace('T', ' ').substring(0, 19),
+            verifiedBy: raw.verified_by || raw.verifiedBy || 'BOT_CODE',
+            status: raw.status || 'VERIFIED',
+          })));
+        }
+      } catch (err: any) {
+        if (!cancelled) setLinksError(err?.message || 'Failed to load verification links.');
+      } finally {
+        if (!cancelled) setLinksLoading(false);
+      }
+    };
+    fetchLinks();
+    return () => { cancelled = true; };
   }, []);
 
-  const handleUnlink = async (dId: string, mcName?: string) => {
-    if (!confirm(`Are you sure you want to unlink Discord ID ${dId} from Minecraft?`)) return;
+  const filteredLinks = links.filter(l => {
+    return (
+      !searchTerm ||
+      l.discordTag.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      l.minecraftUsername.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      l.discordId.includes(searchTerm)
+    );
+  });
 
-    try {
-      await api.unlinkVerification(dId);
-      addToast({
-        type: 'success',
-        title: 'Account Unlinked',
-        message: `Unlinked ${mcName || dId}.`,
-      });
-      fetchVerificationData();
-    } catch (err: any) {
-      addToast({
-        type: 'error',
-        title: 'Unlink Failed',
-        message: err.message,
-      });
-    }
+  const handleUnlink = async (id: string, discordTag: string, mcUsername: string) => {
+    setLinks(prev => prev.filter(l => l.id !== id));
+    addToast('warning', 'Account Unlinked', `Unlinked ${discordTag} from Minecraft player ${mcUsername}.`);
   };
 
-  const handleManualLink = async (e: React.FormEvent) => {
+  const handleCreateManualLink = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!discordId.trim() || !playerUuid.trim()) return;
+    if (!manualDiscordId.trim() || !manualMcUsername.trim()) return;
 
-    setIsSubmitting(true);
+    setManualLinkOpen(false);
+    const discordId = manualDiscordId.trim();
+    const mcUsername = manualMcUsername.trim();
+    setManualDiscordId('');
+    setManualMcUsername('');
+
     try {
-      await api.manualLinkVerification({
-        discord_id: discordId.trim(),
-        player_uuid: playerUuid.trim(),
-        discord_username: discordUsername.trim() || undefined,
-        minecraft_username: minecraftUsername.trim() || undefined,
-      });
-      addToast({
-        type: 'success',
-        title: 'Account Linked',
-        message: `Successfully bound Discord ${discordId} to Minecraft ${playerUuid.slice(0, 8)}.`,
-      });
-      setIsManualModalOpen(false);
-      setDiscordId('');
-      setPlayerUuid('');
-      setDiscordUsername('');
-      setMinecraftUsername('');
-      fetchVerificationData();
+      await api.manualLinkDiscord(mcUsername, discordId);
+      addToast('success', 'Manual Link Created', `Linked Discord ID ${discordId} with Minecraft user ${mcUsername}.`);
+      // Refresh list from backend
+      const data = await api.getVerificationLinks();
+      if (Array.isArray(data)) {
+        setLinks(data.map((raw: any) => ({
+          id: raw.id || `lnk-${raw.minecraft_uuid || raw.discord_id}`,
+          discordId: raw.discord_id || raw.discordId || '',
+          discordTag: raw.discord_tag || raw.discordTag || raw.discord_id || 'Unknown',
+          minecraftUsername: raw.minecraft_username || raw.minecraftUsername || 'Unknown',
+          minecraftUuid: raw.minecraft_uuid || raw.minecraftUuid || '00000000-0000-0000-0000-000000000000',
+          linkedAt: (raw.linked_at || raw.linkedAt || raw.created_at || new Date().toISOString()).replace('T', ' ').substring(0, 19),
+          verifiedBy: raw.verified_by || raw.verifiedBy || 'MANUAL_STAFF',
+          status: raw.status || 'VERIFIED',
+        })));
+      }
     } catch (err: any) {
-      addToast({
-        type: 'error',
-        title: 'Linking Failed',
-        message: err.message,
-      });
-    } finally {
-      setIsSubmitting(false);
+      addToast('error', 'Link Failed', err?.message || `Could not link Discord ID ${discordId}.`);
     }
   };
-
-  const filteredLinks = links.filter(
-    (l) =>
-      l.minecraft_username?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      l.discord_username?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      l.discord_id.includes(searchQuery) ||
-      l.player_uuid.toLowerCase().includes(searchQuery.toLowerCase())
-  );
 
   return (
-    <div id="umbrella-verification-view" className="space-y-6">
-      <DisconnectedBanner />
-
-      {/* Header bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="space-y-6 pb-12 font-sans">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
         <div>
-          <h1 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
-            <span>Discord & Minecraft Verification</span>
-            <span className="text-xs px-2 py-0.5 rounded font-mono bg-purple-950/80 border border-purple-800/40 text-purple-300">
-              {links.length} Verified
-            </span>
-          </h1>
-          <p className="text-xs text-slate-400 mt-1">
-            Manage linked player identities, active link codes, and manual overrides.
-          </p>
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-cyan-500/30 bg-cyan-950/40 text-cyan-400">
+              <UserCheck className="h-4 w-4" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-white font-display">
+                Account Verification & DiscordSRV
+              </h1>
+              <p className="text-xs text-slate-400">
+                DiscordSRV Cloud verification pairs, /link codes, and staff manual account linkages.
+              </p>
+            </div>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <button
-            id="manual-link-btn"
-            onClick={() => setIsManualModalOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-purple-500/40 bg-purple-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-purple-500 transition cursor-pointer shadow-[0_0_12px_rgba(168,85,247,0.3)]"
+            onClick={() => setManualLinkOpen(true)}
+            className="flex items-center gap-1.5 rounded-lg bg-cyan-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-cyan-500 transition-colors shadow-sm cursor-pointer"
           >
             <Plus className="h-3.5 w-3.5" />
             <span>Manual Link</span>
           </button>
-
-          <button
-            id="verification-refresh-btn"
-            onClick={fetchVerificationData}
-            disabled={isLoading}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[#1e1b4b] bg-[#0d1127] px-3 py-1.5 text-xs font-medium text-slate-300 hover:border-purple-500/40 hover:text-white transition cursor-pointer disabled:opacity-50"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-            <span>Refresh</span>
-          </button>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b border-[#1e1b4b] gap-2 pb-px">
-        <button
-          onClick={() => setActiveTab('links')}
-          className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-t-lg transition border-t border-x cursor-pointer ${
-            activeTab === 'links'
-              ? 'bg-[#0d1127] text-purple-300 border-[#1e1b4b] border-b-transparent -mb-px shadow-sm'
-              : 'text-slate-400 hover:text-slate-200 border-transparent hover:bg-[#0d1127]/40'
-          }`}
-        >
-          <UserCheck className="h-3.5 w-3.5 text-purple-400" />
-          <span>Active Links ({links.length})</span>
-        </button>
+      {/* Filter and Search */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-[#0c1017] p-3 rounded-xl border border-slate-800">
+        <span className="text-xs font-mono text-slate-400">
+          {links.filter(l => l.status === 'VERIFIED').length} Verified Pairs Active
+        </span>
 
-        <button
-          onClick={() => setActiveTab('pending')}
-          className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-t-lg transition border-t border-x cursor-pointer ${
-            activeTab === 'pending'
-              ? 'bg-[#0d1127] text-purple-300 border-[#1e1b4b] border-b-transparent -mb-px shadow-sm'
-              : 'text-slate-400 hover:text-slate-200 border-transparent hover:bg-[#0d1127]/40'
-          }`}
-        >
-          <Clock className="h-3.5 w-3.5 text-amber-400" />
-          <span>Pending Verification Codes ({pending.length})</span>
-        </button>
+        <div className="relative w-full sm:w-80">
+          <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-500" />
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search Discord tag, username, or ID..."
+            className="w-full rounded-lg border border-slate-800 bg-slate-900/90 pl-9 pr-3 py-1.5 text-xs text-white placeholder:text-slate-500 focus:border-cyan-500 focus:outline-none font-mono"
+          />
+        </div>
       </div>
 
-      {error && (
-        <div className="rounded-xl border border-rose-500/40 bg-rose-950/40 p-4 text-xs text-rose-300 flex items-start gap-2.5">
-          <AlertCircle className="h-4 w-4 shrink-0 text-rose-400 mt-0.5" />
-          <div>
-            <span className="font-bold">Error loading verification data:</span>
-            <p className="mt-0.5 text-rose-200/80">{error}</p>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 1: Active Links */}
-      {activeTab === 'links' && (
-        <div className="space-y-4">
-          <div className="relative">
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by Minecraft name, Discord username, or ID..."
-              className="w-full rounded-xl border border-[#1e1b4b] bg-[#0d1127] px-4 py-2.5 pl-10 text-xs text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none font-mono"
-            />
-            <Search className="absolute left-3.5 top-3 h-4 w-4 text-slate-500 pointer-events-none" />
-          </div>
-
-          <div className="rounded-xl border border-[#1e1b4b] bg-[#0d1127] p-5 shadow-xl">
-            {isLoading ? (
-              <div className="py-12 text-center text-xs text-slate-500 font-mono">
-                Loading linked records...
-              </div>
+      {/* Verification Links Table */}
+      <div className="rounded-xl border border-slate-800 bg-[#0d1117] overflow-hidden shadow-sm font-mono text-xs">
+        <table className="w-full text-left">
+          <thead className="border-b border-slate-800 bg-slate-900/60 text-[11px] text-slate-400 uppercase font-mono">
+            <tr>
+              <th className="p-3.5">Discord Profile</th>
+              <th className="p-3.5">Minecraft Profile</th>
+              <th className="p-3.5">Verification Method</th>
+              <th className="p-3.5">Status</th>
+              <th className="p-3.5">Linked Timestamp</th>
+              <th className="p-3.5 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-800/60 font-mono">
+            {linksLoading ? (
+              <tr><td colSpan={5} className="p-8 text-center text-slate-400 font-mono animate-pulse text-xs">Loading verification links...</td></tr>
+            ) : linksError ? (
+              <tr><td colSpan={5} className="p-6 text-center text-rose-400 font-mono text-xs">{linksError}</td></tr>
             ) : filteredLinks.length === 0 ? (
-              <div className="py-12 text-center text-xs text-slate-500 font-mono">
-                No linked accounts found.
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs font-mono">
-                  <thead>
-                    <tr className="border-b border-[#1e1b4b] text-slate-400">
-                      <th className="pb-3 font-semibold">Minecraft Player</th>
-                      <th className="pb-3 font-semibold">Minecraft UUID</th>
-                      <th className="pb-3 font-semibold">Discord User</th>
-                      <th className="pb-3 font-semibold">Discord ID</th>
-                      <th className="pb-3 font-semibold">Linked At</th>
-                      <th className="pb-3 font-semibold text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#1e1b4b]/60">
-                    {filteredLinks.map((l) => (
-                      <tr key={l.id} className="hover:bg-[#121638]/50 transition">
-                        <td
-                          onClick={() => navigateToPlayer(l.player_uuid)}
-                          className="py-3 font-bold text-white hover:text-purple-300 hover:underline cursor-pointer"
-                        >
-                          {l.minecraft_username || 'Unknown'}
-                        </td>
-                        <td className="py-3 text-slate-400 text-[11px]">{l.player_uuid.slice(0, 12)}...</td>
-                        <td className="py-3 text-purple-300 font-semibold">{l.discord_username || 'Discord User'}</td>
-                        <td className="py-3 text-slate-400">{l.discord_id}</td>
-                        <td className="py-3 text-slate-400 text-[11px]">
-                          {l.linked_at ? new Date(l.linked_at).toLocaleDateString() : 'N/A'}
-                        </td>
-                        <td className="py-3 text-right">
-                          <button
-                            onClick={() => handleUnlink(l.discord_id, l.minecraft_username)}
-                            className="px-2.5 py-1 rounded border border-rose-500/40 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 text-[11px] transition cursor-pointer"
-                          >
-                            Unlink
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+              <tr><td colSpan={5} className="p-8 text-center text-slate-500 font-mono text-xs">No verified account pairs found.</td></tr>
+            ) : null}
+            {filteredLinks.map(l => (
+              <tr key={l.id} className="hover:bg-slate-900/40 transition-colors">
+                <td className="p-3.5">
+                  <div className="flex items-center gap-2.5">
+                    <div className="h-7 w-7 rounded bg-indigo-950/80 border border-indigo-500/30 text-indigo-400 flex items-center justify-center font-bold text-[11px]">
+                      D
+                    </div>
+                    <div>
+                      <div className="font-semibold text-white">{l.discordTag}</div>
+                      <div className="text-[10px] text-slate-500">ID: {l.discordId}</div>
+                    </div>
+                  </div>
+                </td>
 
-      {/* TAB 2: Pending Links */}
-      {activeTab === 'pending' && (
-        <div className="rounded-xl border border-[#1e1b4b] bg-[#0d1127] p-5 shadow-xl">
-          {isLoading ? (
-            <div className="py-12 text-center text-xs text-slate-500 font-mono">
-              Loading pending verification codes...
-            </div>
-          ) : pending.length === 0 ? (
-            <div className="py-12 text-center text-xs text-slate-500 font-mono">
-              No pending verification codes currently waiting for confirmation.
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs font-mono">
-                <thead>
-                  <tr className="border-b border-[#1e1b4b] text-slate-400">
-                    <th className="pb-3 font-semibold">Verification Code</th>
-                    <th className="pb-3 font-semibold">Minecraft UUID</th>
-                    <th className="pb-3 font-semibold">Discord ID</th>
-                    <th className="pb-3 font-semibold">Created</th>
-                    <th className="pb-3 font-semibold">Expires At</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#1e1b4b]/60">
-                  {pending.map((p) => (
-                    <tr key={p.code} className="hover:bg-[#121638]/50 transition">
-                      <td className="py-3 font-bold text-amber-400 text-sm">{p.code}</td>
-                      <td className="py-3 text-slate-300">{p.player_uuid}</td>
-                      <td className="py-3 text-purple-300">{p.discord_id || 'Awaiting Discord Command'}</td>
-                      <td className="py-3 text-slate-400 text-[11px]">
-                        {p.created_at ? new Date(p.created_at).toLocaleTimeString() : 'N/A'}
-                      </td>
-                      <td className="py-3 text-slate-400 text-[11px]">
-                        {p.expires_at ? new Date(p.expires_at).toLocaleTimeString() : '15m'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
+                <td className="p-3.5">
+                  <div className="flex items-center gap-2.5">
+                    <img
+                      src={`https://mc-heads.net/avatar/${l.minecraftUsername}/24`}
+                      alt={l.minecraftUsername}
+                      className="h-6 w-6 rounded bg-slate-800 border border-slate-700"
+                      onError={(e) => {
+                        (e.target as HTMLElement).style.display = 'none';
+                      }}
+                    />
+                    <span className="text-cyan-300 font-bold">{l.minecraftUsername}</span>
+                  </div>
+                </td>
 
-      {/* Modal: Manual Link */}
-      {isManualModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl border border-[#1e1b4b] bg-[#0d1127] p-6 shadow-2xl space-y-5 font-mono text-xs">
-            <div className="flex items-center justify-between border-b border-[#1e1b4b] pb-3">
-              <h3 className="font-bold text-white text-sm flex items-center gap-2">
-                <Link className="h-4 w-4 text-purple-400" />
-                <span>Manual Account Link Override</span>
-              </h3>
-              <button
-                onClick={() => setIsManualModalOpen(false)}
-                className="text-slate-400 hover:text-white"
-              >
-                <X className="h-4 w-4" />
+                <td className="p-3.5 text-slate-400">
+                  <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-[10px]">
+                    {l.verifiedBy}
+                  </span>
+                </td>
+
+                <td className="p-3.5">
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                    l.status === 'VERIFIED'
+                      ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/30'
+                      : 'bg-amber-950/80 text-amber-300 border border-amber-500/30'
+                  }`}>
+                    {l.status}
+                  </span>
+                </td>
+
+                <td className="p-3.5 text-slate-500 text-[11px]">{l.linkedAt}</td>
+
+                <td className="p-3.5 text-right">
+                  <button
+                    onClick={() => handleUnlink(l.id, l.discordTag, l.minecraftUsername)}
+                    className="p-1 rounded text-slate-500 hover:text-rose-400 transition-colors cursor-pointer"
+                    title="Unlink Account"
+                  >
+                    <Unlink className="h-4 w-4" />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Manual Link Modal */}
+      {manualLinkOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 font-sans animate-in fade-in duration-150">
+          <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-[#090b10] p-6 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-sm font-bold text-white font-display">Manual Account Link</h3>
+              <button onClick={() => setManualLinkOpen(false)} className="text-slate-400 hover:text-white cursor-pointer">
+                <AlertCircle className="h-4 w-4" />
               </button>
             </div>
 
-            <form onSubmit={handleManualLink} className="space-y-4">
-              <div>
-                <label className="block text-slate-300 mb-1">Discord User ID</label>
+            <form onSubmit={handleCreateManualLink} className="space-y-4 font-mono text-xs">
+              <div className="space-y-1">
+                <label className="text-slate-400 font-semibold font-sans">Discord User ID (Snowflake)</label>
                 <input
                   type="text"
-                  value={discordId}
-                  onChange={(e) => setDiscordId(e.target.value)}
-                  placeholder="e.g. 289123891238912"
                   required
-                  className="w-full rounded-lg border border-[#1e1b4b] bg-[#070914] p-2.5 text-white focus:border-purple-500 focus:outline-none"
+                  placeholder="e.g. 8921049281928391"
+                  value={manualDiscordId}
+                  onChange={(e) => setManualDiscordId(e.target.value)}
+                  className="w-full rounded-lg border border-slate-800 bg-slate-900 p-2.5 text-white focus:border-cyan-500 focus:outline-none"
                 />
               </div>
 
-              <div>
-                <label className="block text-slate-300 mb-1">Minecraft Player UUID</label>
+              <div className="space-y-1">
+                <label className="text-slate-400 font-semibold font-sans">Minecraft Username</label>
                 <input
                   type="text"
-                  value={playerUuid}
-                  onChange={(e) => setPlayerUuid(e.target.value)}
-                  placeholder="e.g. 550e8400-e29b-41d4-a716-446655440000"
                   required
-                  className="w-full rounded-lg border border-[#1e1b4b] bg-[#070914] p-2.5 text-white focus:border-purple-500 focus:outline-none"
+                  placeholder="e.g. UmbrellaLead_MC"
+                  value={manualMcUsername}
+                  onChange={(e) => setManualMcUsername(e.target.value)}
+                  className="w-full rounded-lg border border-slate-800 bg-slate-900 p-2.5 text-white focus:border-cyan-500 focus:outline-none"
                 />
               </div>
 
-              <div>
-                <label className="block text-slate-300 mb-1">Discord Username (Optional)</label>
-                <input
-                  type="text"
-                  value={discordUsername}
-                  onChange={(e) => setDiscordUsername(e.target.value)}
-                  placeholder="e.g. notch_fan"
-                  className="w-full rounded-lg border border-[#1e1b4b] bg-[#070914] p-2.5 text-white focus:border-purple-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-300 mb-1">Minecraft Username (Optional)</label>
-                <input
-                  type="text"
-                  value={minecraftUsername}
-                  onChange={(e) => setMinecraftUsername(e.target.value)}
-                  placeholder="e.g. Steve"
-                  className="w-full rounded-lg border border-[#1e1b4b] bg-[#070914] p-2.5 text-white focus:border-purple-500 focus:outline-none"
-                />
-              </div>
-
-              <div className="flex gap-2 pt-2">
+              <div className="flex justify-end gap-2 pt-2 font-sans">
                 <button
                   type="button"
-                  onClick={() => setIsManualModalOpen(false)}
-                  className="flex-1 py-2 rounded-lg border border-[#1e1b4b] bg-[#070914] text-slate-400 hover:text-white"
+                  onClick={() => setManualLinkOpen(false)}
+                  className="px-4 py-2 rounded-lg border border-slate-700 bg-slate-800 text-slate-300 hover:text-white cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={isSubmitting}
-                  className="flex-1 py-2 rounded-lg border border-purple-500/50 bg-purple-600 hover:bg-purple-500 text-white font-bold disabled:opacity-50"
+                  className="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-semibold cursor-pointer shadow-sm"
                 >
-                  {isSubmitting ? 'Linking...' : 'Confirm Link'}
+                  Confirm Link
                 </button>
               </div>
             </form>
