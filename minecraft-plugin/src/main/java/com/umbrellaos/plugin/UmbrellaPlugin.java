@@ -18,6 +18,7 @@ public final class UmbrellaPlugin extends JavaPlugin {
     private CommandPoller commandPoller;
     private BanEnforcer banEnforcer;
     private GrimBridge grimBridge;
+    private MessageTemplateManager messageTemplateManager;
 
     @Override
     public void onEnable() {
@@ -40,6 +41,7 @@ public final class UmbrellaPlugin extends JavaPlugin {
 
         apiClient = new CoreApiClient(baseUrl, pluginKey, getLogger());
         configManager = new ConfigManager(apiClient);
+        messageTemplateManager = new MessageTemplateManager(this, apiClient);
         heartbeatManager = new HeartbeatManager(this, apiClient, configManager, serverId, serverName);
         commandPoller = new CommandPoller(this, apiClient);
         banEnforcer = new BanEnforcer(apiClient);
@@ -48,6 +50,7 @@ public final class UmbrellaPlugin extends JavaPlugin {
         // Off the main thread — this is a blocking HTTP call and must never
         // stall server startup or the main tick loop.
         getServer().getScheduler().runTaskAsynchronously(this, configManager::refresh);
+        messageTemplateManager.start();
 
         getServer().getPluginManager().registerEvents(banEnforcer, this);
 
@@ -74,6 +77,9 @@ public final class UmbrellaPlugin extends JavaPlugin {
         if (commandPoller != null) {
             commandPoller.stop();
         }
+        if (messageTemplateManager != null) {
+            messageTemplateManager.stop();
+        }
         getLogger().info("UmbrellaOS plugin disabled");
     }
 
@@ -96,5 +102,9 @@ public final class UmbrellaPlugin extends JavaPlugin {
 
     GrimBridge getGrimBridge() {
         return grimBridge;
+    }
+
+    MessageTemplateManager getMessageTemplateManager() {
+        return messageTemplateManager;
     }
 }
