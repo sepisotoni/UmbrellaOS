@@ -20,13 +20,14 @@ import { TranslationView } from './components/translation/TranslationView';
 import { AutomationView } from './components/automation/AutomationView';
 import { ApiHubView } from './components/api-hub/ApiHubView';
 import { LoginView } from './components/auth/LoginView';
+import { AccessDeniedView } from './components/auth/AccessDeniedView';
 import { PunishModal } from './components/modals/PunishModal';
 import { BroadcastModal } from './components/modals/BroadcastModal';
 import { AccountModal } from './components/modals/AccountModal';
 import { CheckCircle2, AlertTriangle, Info, X } from 'lucide-react';
 
 const DashboardContent: React.FC = () => {
-  const { activeTab, toasts, removeToast, dashboardTheme } = useDashboard();
+  const { activeTab, toasts, removeToast, dashboardTheme, currentUser } = useDashboard();
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isPunishModalOpen, setIsPunishModalOpen] = useState(false);
   const [isBroadcastModalOpen, setIsBroadcastModalOpen] = useState(false);
@@ -48,6 +49,16 @@ const DashboardContent: React.FC = () => {
     : isObsidian
     ? 'bg-[#0e0e10] text-zinc-100 selection:bg-purple-500/30 selection:text-purple-200'
     : 'bg-[#090b10] text-slate-100 selection:bg-cyan-500/30 selection:text-cyan-200';
+
+  // Insufficient permissions gate — viewer role or no permissions at all
+  const DENIED_ROLES = ['viewer'];
+  if (activeTab !== 'login' && currentUser && DENIED_ROLES.includes(currentUser.role)) {
+    return (
+      <div className={`h-screen w-screen overflow-y-auto font-sans ${themeRootClass}`}>
+        <AccessDeniedView />
+      </div>
+    );
+  }
 
   if (activeTab === 'login') {
     return (
