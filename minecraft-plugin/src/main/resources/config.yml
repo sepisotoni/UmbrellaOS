@@ -36,3 +36,11 @@ server:
   # Leave blank to use "default" — fine for single-server setups.
   id: "default"
   name: "Minecraft Server"
+
+greeter:
+  # Set to false to disable welcome messages entirely.
+  enabled: true
+
+chat_responder:
+  # Set to false to disable AI responses to common chat questions.
+  enabled: true

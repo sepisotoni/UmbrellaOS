@@ -36,16 +36,36 @@ public class MessageTemplateManager {
     public static final String KEY_INGAME_PROMPT   = "verification.ingame_prompt";
     public static final String KEY_INGAME_SUCCESS  = "verification.ingame_success";
 
+    // Greeter templates (P16E)
+    public static final String KEY_GREETER_FIRST_JOIN  = "greeter.first_join_message";
+    public static final String KEY_GREETER_RETURN_JOIN = "greeter.return_join_message";
+    public static final String KEY_DISCORD_INVITE      = "discord.invite_url";
+
+    // Chat responder settings (P16E)
+    public static final String KEY_CHAT_RESPONDER_KEYWORDS = "chat_responder.keywords";
+    public static final String KEY_CHAT_RESPONDER_COOLDOWN = "chat_responder.cooldown_seconds";
+    public static final String KEY_CHAT_RESPONDER_STYLE    = "chat_responder.response_style";
+
     /** Built-in fallbacks used before the first successful fetch. */
     private static final Map<String, String> DEFAULTS;
     static {
         Map<String, String> d = new HashMap<>();
         d.put(KEY_INGAME_PROMPT,  "Check your Discord DMs to complete verification! Code expires in $EXPIRES.");
         d.put(KEY_INGAME_SUCCESS, "\u2705 Your Discord account has been linked successfully!");
+        d.put(KEY_GREETER_FIRST_JOIN,  "Welcome to the server, $PLAYER! Join our Discord: $DISCORD_INVITE");
+        d.put(KEY_GREETER_RETURN_JOIN, "Welcome back, $PLAYER!");
+        d.put(KEY_DISCORD_INVITE,      "https://discord.gg/yourserver");
+        d.put(KEY_CHAT_RESPONDER_KEYWORDS, "[\"how to join\",\"whats the ip\",\"what are the rules\"]");
+        d.put(KEY_CHAT_RESPONDER_COOLDOWN, "60");
+        d.put(KEY_CHAT_RESPONDER_STYLE,    "friendly and brief, 1-2 sentences max");
         DEFAULTS = Collections.unmodifiableMap(d);
     }
 
-    private static final String[] KEYS = { KEY_INGAME_PROMPT, KEY_INGAME_SUCCESS };
+    private static final String[] KEYS = {
+        KEY_INGAME_PROMPT, KEY_INGAME_SUCCESS,
+        KEY_GREETER_FIRST_JOIN, KEY_GREETER_RETURN_JOIN, KEY_DISCORD_INVITE,
+        KEY_CHAT_RESPONDER_KEYWORDS, KEY_CHAT_RESPONDER_COOLDOWN, KEY_CHAT_RESPONDER_STYLE,
+    };
 
     private final Plugin plugin;
     private final CoreApiClient apiClient;

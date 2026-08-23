@@ -19,6 +19,8 @@ public final class UmbrellaPlugin extends JavaPlugin {
     private BanEnforcer banEnforcer;
     private GrimBridge grimBridge;
     private MessageTemplateManager messageTemplateManager;
+    private GreeterListener greeterListener;
+    private ChatResponderListener chatResponderListener;
 
     @Override
     public void onEnable() {
@@ -53,6 +55,14 @@ public final class UmbrellaPlugin extends JavaPlugin {
         messageTemplateManager.start();
 
         getServer().getPluginManager().registerEvents(banEnforcer, this);
+
+        // Greeter — welcomes new and returning players on join (P16E).
+        greeterListener = new GreeterListener(this, apiClient, messageTemplateManager);
+        getServer().getPluginManager().registerEvents(greeterListener, this);
+
+        // Chat keyword responder — AI answers common questions in chat (P16E).
+        chatResponderListener = new ChatResponderListener(this, apiClient, messageTemplateManager, serverName);
+        getServer().getPluginManager().registerEvents(chatResponderListener, this);
 
         // GrimBridge: soft-dependency — register() checks isPluginEnabled("GrimAC")
         // internally and logs the outcome either way. No extra config needed; if
