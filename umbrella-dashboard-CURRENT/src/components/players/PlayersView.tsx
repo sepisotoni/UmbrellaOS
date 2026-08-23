@@ -78,6 +78,7 @@ export const PlayersView: React.FC<PlayersViewProps> = ({ onQuickBan }) => {
   };
 
   return (
+    <>
     <div className="space-y-6 pb-12">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
@@ -461,6 +462,6 @@ export const PlayersView: React.FC<PlayersViewProps> = ({ onQuickBan }) => {
           onOpenBanModal={onQuickBan ? (name) => { onQuickBan(name); setProfileTarget(null); } : undefined}
         />
       )}
-    </div>
+    </>
   );
 };

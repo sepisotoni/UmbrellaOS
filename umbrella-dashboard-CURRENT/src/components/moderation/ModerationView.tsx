@@ -419,7 +419,7 @@ export const ModerationView: React.FC<ModerationViewProps> = ({ onOpenBanModal }
                     </button>
                   </div>
                 </div>
-              )})
+              ))
             )}
           </div>
         </div>
@@ -507,7 +507,7 @@ export const ModerationView: React.FC<ModerationViewProps> = ({ onOpenBanModal }
                     )}
                   </div>
                 </div>
-              )})
+              ))
             )}
           </div>
         </div>
@@ -641,7 +641,8 @@ export const ModerationView: React.FC<ModerationViewProps> = ({ onOpenBanModal }
                     </div>
                   )}
                 </div>
-              )})
+              );
+              })
             )}
           </div>
         </div>
