@@ -14,13 +14,20 @@ where umbrella-core and umbrella-discord were one process sharing Python
 objects directly. They are two separate deployable services here, so this
 client is the actual integration boundary, not an implementation detail.
 
-Authenticates via an API key (services/api_key_service.py on the core
-side) - api/middleware/api_key_auth.py's own docstring already names "the
-Discord bot" as exactly the intended use case for API-key auth, since a
-key can never carry superuser/wildcard access the way an admin key can.
+Auth (Phase 16B Task A): requests are authenticated with a PBKDF2-HMAC-SHA256
+MAC derived from the shared secret. The raw key is never sent on the wire.
+Two headers replace X-Admin-Key:
+  X-Auth-MAC       — hex-encoded 32-byte PBKDF2 output
+  X-Auth-Timestamp — Unix timestamp (int, seconds UTC)
+
+Core verifies by re-deriving the MAC with the same KDF and comparing with
+hmac.compare_digest(). Requests older than 30 seconds are rejected to
+prevent replay attacks.
 """
 from __future__ import annotations
 
+import hashlib
+import time
 from typing import Any
 
 import httpx
@@ -45,6 +52,20 @@ class UmbrellaCoreClient:
         self._api_key = api_key
         self._timeout = timeout
         self._transport = transport
+
+    def _make_auth_headers(self) -> dict[str, str]:
+        """Derive a per-request PBKDF2-HMAC-SHA256 MAC from the shared
+        secret. The raw key is never sent — core re-derives the same MAC
+        server-side and compares with hmac.compare_digest()."""
+        ts = int(time.time())
+        mac = hashlib.pbkdf2_hmac(
+            "sha256",
+            self._api_key.encode(),
+            str(ts).encode(),
+            100_000,
+            dklen=32,
+        ).hex()
+        return {"X-Auth-MAC": mac, "X-Auth-Timestamp": str(ts)}
 
     async def invoke(
         self, capability_name: str, params: dict[str, Any], *, discord_user_id: str | None = None
@@ -71,7 +92,7 @@ class UmbrellaCoreClient:
         exactly, so this is purely additive.
         """
         url = f"{self._base_url}/api/v1/capabilities/{capability_name}/invoke"
-        headers = {"X-Admin-Key": self._api_key}
+        headers = self._make_auth_headers()
         if discord_user_id is not None:
             headers["X-Discord-User-Id"] = discord_user_id
 
@@ -101,7 +122,7 @@ class UmbrellaCoreClient:
         useful for a cog building help text or validating a capability
         name exists before invoking it."""
         url = f"{self._base_url}/api/v1/capabilities"
-        headers = {"X-Admin-Key": self._api_key}
+        headers = self._make_auth_headers()
 
         try:
             async with httpx.AsyncClient(timeout=self._timeout, transport=self._transport) as client:
@@ -113,3 +134,20 @@ class UmbrellaCoreClient:
             raise UmbrellaCoreError(f"umbrella-core returned {response.status_code}", status_code=response.status_code)
 
         return response.json()
+
+    async def register_bot(self, callback_url: str) -> None:
+        """Register this bot's webhook URL with umbrella-core so it can
+        receive push events (Phase 16B Task B). Called once on startup."""
+        url = f"{self._base_url}/api/v1/bot/register"
+        headers = self._make_auth_headers()
+
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout, transport=self._transport) as client:
+                response = await client.post(url, headers=headers, json={"callback_url": callback_url})
+        except httpx.RequestError as exc:
+            raise UmbrellaCoreError(f"Could not reach umbrella-core: {exc}") from exc
+
+        if response.status_code >= 400:
+            raise UmbrellaCoreError(
+                f"Bot registration failed: {response.status_code}", status_code=response.status_code
+            )
