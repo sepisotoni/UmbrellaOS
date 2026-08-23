@@ -51,6 +51,7 @@ EXTENSIONS: tuple[str, ...] = (
     "bot.cogs.verification_cog",
     "bot.cogs.notifications_cog",
     "bot.cogs.marketplace_cog",
+    "bot.cogs.webhook_cog",
 )
 
 

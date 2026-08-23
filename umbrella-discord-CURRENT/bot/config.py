@@ -36,3 +36,13 @@ class Settings(BaseSettings):
     # Role assigned to a player on successful Minecraft account verification.
     # Optional: if 0 or unset, role assignment is skipped silently.
     discord_verified_role_id: int = 0
+
+    # Phase 16B Task B — bidirectional push.
+    # BOT_CALLBACK_URL: public address core will POST events to, e.g.
+    # http://5.x.x.x:8080. Leave unset in dev; webhook_cog.py will log a
+    # warning and skip registration (poll fallback still works).
+    bot_callback_url: str | None = None
+
+    # Port the in-process aiohttp webhook server listens on.
+    # Must match the port in BOT_CALLBACK_URL. Default: 8080.
+    bot_callback_port: int = 8080

@@ -70,7 +70,7 @@ class NotificationsCog(commands.Cog):
     async def cog_unload(self) -> None:
         self.poll_escalations.cancel()
 
-    @tasks.loop(seconds=60)
+    @tasks.loop(minutes=5)  # Phase 16B: push handles real-time; poll is fallback for missed events
     async def poll_escalations(self) -> None:
         # No discord_user_id here, deliberately, unlike every other cog's
         # invoke() calls (Phase 6's slash-command -> REST-permission
@@ -120,6 +120,38 @@ class NotificationsCog(commands.Cog):
     @poll_escalations.before_loop
     async def before_poll_escalations(self) -> None:
         await self.bot.wait_until_ready()
+
+    async def handle_escalation_push(self, payload: dict) -> None:
+        """Called by WebhookCog when core pushes a staff.escalation.new event.
+        Posts the escalation embed immediately without waiting for the poll cycle.
+        Does not call mark_notified because the push fires before the row has
+        been committed in some code paths; the poll loop's next cycle (in ≤5 min)
+        will see notified_at is still None and call mark_notified then.
+        If the channel isn't configured or visible, logs and returns — same
+        behaviour as the poll loop's own channel-missing guard."""
+        channel_id = self.bot.settings.staff_alert_channel_id
+        if channel_id is None:
+            logger.warning(
+                "Push: escalation %s received but staff_alert_channel_id isn't configured.",
+                payload.get("id"),
+            )
+            return
+
+        channel = self.bot.get_channel(channel_id)
+        if channel is None:
+            logger.warning(
+                "Push: staff_alert_channel_id=%s isn't a channel this bot can see.",
+                channel_id,
+            )
+            return
+
+        try:
+            await channel.send(embed=self._format_escalation(payload))
+        except discord.HTTPException:
+            logger.exception(
+                "Push: failed to post escalation %s — poll will retry within 5 min.",
+                payload.get("id"),
+            )
 
     @staticmethod
     def _format_escalation(escalation: dict) -> discord.Embed:

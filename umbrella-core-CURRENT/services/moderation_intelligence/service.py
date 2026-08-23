@@ -57,6 +57,7 @@ from models.moderation_intelligence import (
 from services.ai.constitution_service import ConstitutionService
 from services.ai.orchestrator import Orchestrator
 from services.moderation_intelligence.repository import ModerationIntelRepository
+import services.bot_push_service as bot_push_service
 
 _CODE_FENCE_RE = re.compile(r"```(?:json)?|```")
 
@@ -203,12 +204,27 @@ class ModerationIntelligenceService:
 
         if should_escalate:
             await ModerationIntelRepository.set_report_status(db, report.id, ReportStatus.ESCALATED)
-            await ModerationIntelRepository.create_escalation(
+            escalation = await ModerationIntelRepository.create_escalation(
                 db,
                 source="moderation",
                 summary=evidence_summary,
                 confidence=result.confidence,
                 related_report_id=report.id,
+            )
+            # Phase 16B Task B: push event to bot immediately so the
+            # notification appears in seconds rather than up to 5 minutes.
+            # Fire-and-forget — see bot_push_service.py for failure handling.
+            await db.flush()  # ensure escalation.id is populated
+            await bot_push_service.push_event(
+                "staff.escalation.new",
+                {
+                    "id": escalation.id,
+                    "source": escalation.source,
+                    "summary": escalation.summary,
+                    "confidence": escalation.confidence,
+                    "related_report_id": escalation.related_report_id,
+                    "related_investigation_id": escalation.related_investigation_id,
+                },
             )
         else:
             await ModerationIntelRepository.set_report_status(db, report.id, ReportStatus.AUTO_RESOLVED)

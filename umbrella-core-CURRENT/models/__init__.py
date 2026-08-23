@@ -51,6 +51,7 @@ from .plugin_kv import PluginKvEntry  # noqa: F401
 from .plugin_execution import PluginExecutionRecord  # noqa: F401
 from .feature_flag import FeatureFlag  # noqa: F401
 from .anticheat_violation import AnticheatViolation  # noqa: F401
+from .bot_registration import BotRegistration  # noqa: F401
 
 __all__ = [
     "Base",
@@ -121,4 +122,5 @@ __all__ = [
     "PluginExecutionRecord",
     "FeatureFlag",
     "AnticheatViolation",
+    "BotRegistration",
 ]
