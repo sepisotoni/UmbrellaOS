@@ -526,8 +526,10 @@ export class UmbrellaApiClient {
   // Auth
   // --------------------------------------------------------------------------
   public async getDiscordAuthUrl(redirectUri?: string): Promise<DiscordOAuthStartResponse> {
-    const q = redirectUri ? `?redirect_uri=${encodeURIComponent(redirectUri)}` : '';
-    return this.request<DiscordOAuthStartResponse>(`/api/v1/auth/discord/authorize${q}`);
+    return this.request<DiscordOAuthStartResponse>('/api/v1/auth/discord/authorize', {
+      method: 'POST',
+      body: JSON.stringify({ redirect_uri: redirectUri ?? `${window.location.origin}/` }),
+    });
   }
 
   public async discordAuthorize(redirectUri?: string): Promise<DiscordOAuthStartResponse> {
