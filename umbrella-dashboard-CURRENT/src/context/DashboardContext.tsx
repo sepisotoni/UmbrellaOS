@@ -199,10 +199,10 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     try {
       const data = await api.getHealth();
       setHealthInfo(data);
-      setIsDisconnected(false);
+      setIsDisconnected((prev) => (prev ? false : prev));
       return true;
     } catch {
-      setIsDisconnected(true);
+      setIsDisconnected((prev) => (prev ? prev : true));
       return false;
     }
   }, []);
