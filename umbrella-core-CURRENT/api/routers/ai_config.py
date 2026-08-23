@@ -117,3 +117,96 @@ async def reject_config(
     await db.refresh(config_action)
     
     return AIConfigResponse.model_validate(config_action)
+
+
+# ---------------------------------------------------------------------------
+# Per-task AI model configuration  (P16C Task 1)
+# ---------------------------------------------------------------------------
+
+VALID_PROVIDERS = {"gemini", "anthropic", "openai", "deepseek", "openrouter"}
+
+TASK_DEFAULTS: dict[str, dict] = {
+    "player_review":  {"primary": "gemini",    "failover": "openrouter"},
+    "appeal_review":  {"primary": "anthropic", "failover": "gemini"},
+    "copilot":        {"primary": "gemini",    "failover": "openrouter"},
+    "crash_risk":     {"primary": "gemini",    "failover": None},
+    "chat_responder": {"primary": "openrouter","failover": None},
+}
+
+_SETTINGS_KEY = "ai.task_config"
+
+
+class TaskModelAssignment(BaseModel):
+    primary: str
+    failover: str | None = None
+
+
+class TaskConfigResponse(BaseModel):
+    player_review: TaskModelAssignment
+    appeal_review: TaskModelAssignment
+    copilot: TaskModelAssignment
+    crash_risk: TaskModelAssignment
+    chat_responder: TaskModelAssignment
+
+
+class TaskConfigUpdate(BaseModel):
+    task: str
+    primary: str
+    failover: str | None = None
+
+
+async def _read_task_config(db: AsyncSession) -> dict[str, dict]:
+    """Load task config from settings, falling back to defaults."""
+    from services.settings_service import SettingsService
+    raw = await SettingsService.get_value(db, _SETTINGS_KEY)
+    if raw:
+        try:
+            stored = json.loads(raw)
+            # Merge with defaults so newly-added tasks always have an entry
+            return {**TASK_DEFAULTS, **stored}
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return dict(TASK_DEFAULTS)
+
+
+async def _write_task_config(db: AsyncSession, config: dict[str, dict]) -> None:
+    from services.settings_service import SettingsService
+    await SettingsService.set_value(
+        db, _SETTINGS_KEY, json.dumps(config), category="ai", actor="system"
+    )
+    await db.commit()
+
+
+@router.get("/tasks", response_model=TaskConfigResponse)
+async def get_task_config(
+    db: AsyncSession = Depends(get_db),
+    _auth=Depends(require_permission("settings.manage")),
+) -> TaskConfigResponse:
+    """Return the per-task AI model assignments."""
+    config = await _read_task_config(db)
+    return TaskConfigResponse(
+        **{task: TaskModelAssignment(**vals) for task, vals in config.items()}
+    )
+
+
+@router.post("/tasks", response_model=TaskConfigResponse)
+async def update_task_config(
+    body: TaskConfigUpdate,
+    db: AsyncSession = Depends(get_db),
+    _auth=Depends(require_permission("settings.manage")),
+) -> TaskConfigResponse:
+    """Update the primary/failover provider for a single task."""
+    if body.task not in TASK_DEFAULTS:
+        raise HTTPException(status_code=400, detail=f"Unknown task: {body.task!r}")
+    if body.primary not in VALID_PROVIDERS:
+        raise HTTPException(status_code=400, detail=f"Unknown provider: {body.primary!r}")
+    if body.failover is not None and body.failover not in VALID_PROVIDERS:
+        raise HTTPException(status_code=400, detail=f"Unknown failover provider: {body.failover!r}")
+
+    config = await _read_task_config(db)
+    config[body.task] = {"primary": body.primary, "failover": body.failover}
+    await _write_task_config(db, config)
+
+    return TaskConfigResponse(
+        **{task: TaskModelAssignment(**vals) for task, vals in config.items()}
+    )
