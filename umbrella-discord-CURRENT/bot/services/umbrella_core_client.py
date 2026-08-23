@@ -151,3 +151,32 @@ class UmbrellaCoreClient:
             raise UmbrellaCoreError(
                 f"Bot registration failed: {response.status_code}", status_code=response.status_code
             )
+
+    async def get(self, path: str) -> dict[str, Any]:
+        """Makes an authenticated GET request to umbrella-core at the given
+        path (e.g. '/api/v1/settings/some_key') and returns the parsed JSON
+        response. Uses the same PBKDF2 auth headers as every other method.
+        Raises UmbrellaCoreError on non-2xx responses or network failures."""
+        url = f"{self._base_url}{path}"
+        headers = self._make_auth_headers()
+
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout, transport=self._transport) as client:
+                response = await client.get(url, headers=headers)
+        except httpx.RequestError as exc:
+            raise UmbrellaCoreError(f"Could not reach umbrella-core: {exc}") from exc
+
+        if response.status_code >= 400:
+            try:
+                body = response.json()
+                message = body.get("error", response.text)
+                code = body.get("code")
+            except ValueError:
+                message = response.text
+                code = None
+            raise UmbrellaCoreError(message, status_code=response.status_code, code=code)
+
+        try:
+            return response.json()
+        except ValueError as exc:
+            raise UmbrellaCoreError(f"umbrella-core returned a non-JSON response: {exc}") from exc
