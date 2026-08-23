@@ -42,6 +42,46 @@ async def get_setting(
     return setting
 
 
+@router.post("/{key}")
+async def create_or_update_setting(
+    key: str,
+    body: SettingUpdate,
+    db: AsyncSession = Depends(get_db),
+    auth: User | str = Depends(require_owner),
+) -> dict:
+    """Create a new setting or update an existing one.
+
+    Identical to PATCH but upserts — used when a template key may not
+    yet exist (e.g. during initial seeding from external tools or tests).
+    """
+    actor = auth.username if isinstance(auth, User) else "dashboard"
+    if body.value == "***":
+        raise HTTPException(status_code=400, detail="Cannot save masked secret placeholder")
+    from models.setting import Setting
+    from sqlalchemy import select
+    existing = await db.scalar(select(Setting).where(Setting.key == key))
+    if existing is None:
+        # Derive category from the key prefix (e.g. "verification.dm_prompt" -> "verification")
+        category = key.split(".")[0] if "." in key else "general"
+        new_setting = Setting(
+            key=key,
+            value=body.value,
+            category=category,
+            description=f"Auto-created: {key}",
+            sensitive=False,
+            requires_restart=False,
+        )
+        db.add(new_setting)
+        await db.commit()
+        await db.refresh(new_setting)
+        from services import SettingsService
+        return SettingsService._to_dict(new_setting, unmasked=False)
+    updated = await SettingsService.update(
+        db=db, key=key, new_value=body.value, actor=actor, actor_type="staff",
+    )
+    return updated
+
+
 @router.patch("/{key}")
 async def update_setting(
     key: str,
