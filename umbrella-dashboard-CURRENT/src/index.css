@@ -1,53 +1,76 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@layer base {
+  :root {
+    --bg-black: #02040a;
+    --bg-dark-blue: #060b1c;
+    --bg-panel: #091026;
+    --border-blue: #141d3d;
+    --border-indigo: #242e58;
+    --accent-indigo: #6366f1;
+    --accent-blue-violet: #5865f2;
+  }
 
-:root {
-  color-scheme: dark;
-  --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
-  --font-display: 'Space Grotesk', 'Plus Jakarta Sans', sans-serif;
+  body {
+    background-color: #02040a;
+    color: #f1f5f9;
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  }
+  
+  code, pre, .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+  
+  .font-display {
+    font-family: 'Space Grotesk', 'Plus Jakarta Sans', sans-serif;
+  }
+
+  ::selection {
+    background-color: rgba(99, 102, 241, 0.35);
+    color: #e0e7ff;
+  }
 }
 
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  background-color: #070914;
-  color: #e2e8f0;
-  font-family: var(--font-body);
-  -webkit-font-smoothing: antialiased;
-}
-
-code, pre, .font-mono {
-  font-family: var(--font-mono);
-}
-
-/* Custom scrollbar — spec Section 14 */
+/* Custom Scrollbars in deep black & dark blue */
 ::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: rgba(99, 102, 241, 0.25);
-  border-radius: 9999px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(99, 102, 241, 0.45);
-}
-::-webkit-scrollbar-corner {
-  background: transparent;
+  width: 6px;
+  height: 6px;
 }
 
-/* Firefox */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(99, 102, 241, 0.25) transparent;
+::-webkit-scrollbar-track {
+  background: #02040a;
 }
+
+::-webkit-scrollbar-thumb {
+  background: #192348;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #2b3970;
+}
+
+/* Custom glow and animations */
+@keyframes pulse-subtle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes scanline {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(1000%); }
+}
+
+.scanline-effect::after {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.3), transparent);
+  animation: scanline 8s linear infinite;
+  pointer-events: none;
+}
+

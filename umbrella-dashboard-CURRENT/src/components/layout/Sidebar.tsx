@@ -1,192 +1,170 @@
-import { useState, useEffect, useCallback } from 'react'
+import React from 'react';
+import { useDashboard, NavigationTab } from '../../context/DashboardContext';
 import {
   LayoutDashboard,
   Users,
-  Shield,
-  MessageSquare,
+  ShieldAlert,
+  Scale,
+  ShieldCheck,
+  UserCheck,
+  UserX,
   Server,
   Terminal,
-  Puzzle,
-  Bot,
-  FileText,
+  Cpu,
+  Brain,
+  ScrollText,
   Flag,
   Settings,
-  Link2,
-  AlertOctagon,
   LogOut,
-  Activity,
-} from 'lucide-react'
-import { useAuth } from '../../context/AuthContext'
-import { dashboard, health, ServerRecord, HealthResponse } from '../../lib/api'
-
-export type Page =
-  | 'overview'
-  | 'players'
-  | 'moderation'
-  | 'appeals'
-  | 'staff'
-  | 'verification'
-  | 'alts'
-  | 'servers'
-  | 'console'
-  | 'plugins'
-  | 'ai-tasks'
-  | 'audit'
-  | 'feature-flags'
-  | 'settings'
-
-const NAV_ITEMS: { id: Page; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-  { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-  { id: 'players', label: 'Players', icon: Users },
-  { id: 'moderation', label: 'Moderation', icon: Shield },
-  { id: 'appeals', label: 'Appeals', icon: MessageSquare },
-  { id: 'staff', label: 'Staff', icon: Users },
-  { id: 'verification', label: 'Verification', icon: Link2 },
-  { id: 'alts', label: 'Alt Detection', icon: AlertOctagon },
-  { id: 'servers', label: 'Fleet / Servers', icon: Server },
-  { id: 'console', label: 'Console', icon: Terminal },
-  { id: 'plugins', label: 'Plugins', icon: Puzzle },
-  { id: 'ai-tasks', label: 'AI Tasks', icon: Bot },
-  { id: 'audit', label: 'Audit Log', icon: FileText },
-  { id: 'feature-flags', label: 'Feature Flags', icon: Flag },
-  { id: 'settings', label: 'Settings', icon: Settings },
-]
+  ChevronLeft,
+  ChevronRight,
+  Bot,
+} from 'lucide-react';
+import { UmbrellaLogo } from '../common/UmbrellaLogo';
 
 interface SidebarProps {
-  active: Page
-  onChange: (p: Page) => void
+  onOpenBanModal?: () => void;
 }
 
-function getStatusDot(server: ServerRecord): string {
-  if (server.status === 'offline') return 'bg-rose-500'
-  if (server.tps < 18) return 'bg-amber-400 animate-pulse'
-  return 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]'
+interface NavItem {
+  id: NavigationTab;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  badge?: string;
+  badgeColor?: string;
 }
 
-export function Sidebar({ active, onChange }: SidebarProps) {
-  const { token, user, logout } = useAuth()
-  const [servers, setServers] = useState<ServerRecord[]>([])
-  const [healthData, setHealthData] = useState<HealthResponse | null>(null)
-  const [healthOk, setHealthOk] = useState(true)
+export const Sidebar: React.FC<SidebarProps> = () => {
+  const {
+    activeTab,
+    setActiveTab,
+    sidebarCollapsed,
+    toggleSidebar,
+    logout,
+    currentUser,
+  } = useDashboard();
 
-  const fetchServers = useCallback(() => {
-    if (!token) return
-    dashboard.servers(token).then(setServers).catch(() => {})
-  }, [token])
-
-  const fetchHealth = useCallback(() => {
-    health.get()
-      .then((d) => { setHealthData(d); setHealthOk(true) })
-      .catch(() => { setHealthOk(false) })
-  }, [])
-
-  useEffect(() => {
-    fetchServers()
-    fetchHealth()
-    const serversInterval = setInterval(fetchServers, 30_000)
-    const healthInterval = setInterval(fetchHealth, 30_000)
-    return () => { clearInterval(serversInterval); clearInterval(healthInterval) }
-  }, [fetchServers, fetchHealth])
+  const navigationItems: NavItem[] = [
+    { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+    { id: 'discord', label: 'Discord Server', icon: Bot, badge: 'Hub', badgeColor: 'bg-[#5865F2]/20 text-[#818cf8] border-[#5865F2]/40' },
+    { id: 'players', label: 'Players', icon: Users },
+    { id: 'moderation', label: 'Moderation', icon: ShieldAlert },
+    { id: 'appeals', label: 'Appeals', icon: Scale },
+    { id: 'staff', label: 'Staff', icon: ShieldCheck },
+    { id: 'verification', label: 'Verification', icon: UserCheck },
+    { id: 'alts', label: 'Alt Detection', icon: UserX },
+    { id: 'servers', label: 'Fleet / Servers', icon: Server },
+    { id: 'console', label: 'Console', icon: Terminal },
+    { id: 'plugins', label: 'Plugins', icon: Cpu },
+    { id: 'ai-tasks', label: 'AI Tasks', icon: Brain },
+    { id: 'audit', label: 'Audit Log', icon: ScrollText },
+    { id: 'feature-flags', label: 'Feature Flags', icon: Flag },
+    { id: 'settings', label: 'Settings', icon: Settings },
+  ];
 
   return (
-    <aside className="w-64 shrink-0 flex flex-col border-r border-white/[0.07] bg-[#070914] overflow-hidden">
-      {/* Brand */}
-      <div className="px-4 py-3 border-b border-white/[0.07]">
-        <span className="text-xs font-bold tracking-widest text-violet-400 uppercase">UmbrellaOS</span>
-      </div>
-
-      {/* Nav section */}
-      <div className="px-3 pt-3 pb-1">
-        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 px-1 mb-1.5">Navigation</p>
-      </div>
-      <nav className="flex-none max-h-[52vh] overflow-y-auto py-1">
-        {NAV_ITEMS.map((item) => {
-          const Icon = item.icon
-          const isActive = active === item.id
-          return (
-            <button
-              key={item.id}
-              onClick={() => onChange(item.id)}
-              className={`w-full flex items-center gap-2.5 px-4 py-2 text-xs font-medium transition-colors cursor-pointer ${
-                isActive
-                  ? 'bg-slate-800/90 text-cyan-300 border border-slate-700 shadow-sm'
-                  : 'text-slate-400 hover:bg-slate-900/60 hover:text-slate-100'
-              }`}
-            >
-              <Icon className="h-3.5 w-3.5 shrink-0" />
-              {item.label}
-            </button>
-          )
-        })}
-      </nav>
-
-      {/* Instances section */}
-      {servers.length > 0 && (
-        <div className="flex-1 overflow-hidden flex flex-col mt-2">
-          <div className="flex items-center justify-between px-4 py-1.5">
-            <span className="text-[10px] uppercase tracking-widest text-slate-500">
-              Instances ({servers.length})
-            </span>
-            <Activity className="h-3 w-3 text-emerald-400" />
+    <aside
+      id="umbrella-sidebar"
+      className={`shrink-0 h-full flex flex-col border-r select-none transition-all duration-200 bg-[#02040a]/65 backdrop-blur-2xl border-[#141d3d]/80 shadow-[4px_0_24px_rgba(0,0,0,0.45)] text-slate-300 relative z-20 ${
+        sidebarCollapsed ? 'w-16' : 'w-64'
+      }`}
+    >
+      {/* Navigation Section */}
+      <div className={`flex-1 overflow-y-auto min-h-0 ${sidebarCollapsed ? 'px-2 py-3' : 'p-3'}`}>
+        {!sidebarCollapsed && (
+          <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-indigo-400/90 font-mono">
+            Navigation
           </div>
-          <div className="overflow-y-auto flex-1 px-3 pb-2 space-y-1">
-            {servers.map((server) => (
+        )}
+        <nav className="mt-1 space-y-0.5">
+          {navigationItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.id;
+            return (
               <button
-                key={server.id}
-                onClick={() => onChange('console')}
-                className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left transition-colors hover:bg-slate-800/60 ${
-                  active === 'console' ? 'border border-cyan-500/50 bg-cyan-950/30' : ''
+                key={item.id}
+                id={`sidebar-nav-${item.id}`}
+                onClick={() => setActiveTab(item.id)}
+                title={sidebarCollapsed ? item.label : undefined}
+                className={`w-full flex items-center ${
+                  sidebarCollapsed ? 'justify-center px-0 py-2.5' : 'justify-between px-3 py-2'
+                } text-xs font-medium rounded-lg transition-all cursor-pointer relative group ${
+                  isActive
+                    ? 'bg-[#13173d]/90 text-indigo-200 border border-indigo-500/50 shadow-[0_0_12px_rgba(99,102,241,0.25)] font-semibold'
+                    : 'text-slate-400 hover:bg-[#080f26]/80 hover:text-slate-100 border border-transparent'
                 }`}
               >
-                <span className={`h-2 w-2 shrink-0 rounded-full ${getStatusDot(server)}`} />
-                <span className="flex-1 min-w-0 font-mono text-[11px] text-slate-300 truncate">{server.name}</span>
-                <span className="flex items-center gap-1 shrink-0 font-mono text-[10px]">
-                  <span className={server.tps < 18 ? 'text-amber-400' : 'text-slate-500'}>
-                    {server.tps.toFixed(1)}
+                <div className="flex items-center gap-3 min-w-0">
+                  <Icon
+                    className={`h-4 w-4 shrink-0 ${
+                      isActive ? 'text-[#818cf8]' : 'text-slate-400 group-hover:text-indigo-300'
+                    }`}
+                  />
+                  {!sidebarCollapsed && (
+                    <span className="truncate">{item.label}</span>
+                  )}
+                </div>
+
+                {!sidebarCollapsed && item.badge && (
+                  <span
+                    className={`text-[10px] px-1.5 py-0.5 rounded font-mono border ${
+                      item.badgeColor || 'bg-indigo-950/60 text-indigo-300 border-indigo-700/40'
+                    }`}
+                  >
+                    {item.badge}
                   </span>
-                  <span className="text-slate-600">|</span>
-                  <span className="text-slate-400">{server.players}p</span>
-                </span>
+                )}
               </button>
-            ))}
+            );
+          })}
+        </nav>
+      </div>
+
+      {/* User Info & Toggle Section */}
+      <div className="shrink-0 border-t border-[#141d3d]/80 bg-[#05091a]/70 p-3">
+        {!sidebarCollapsed && currentUser && (
+          <div className="mb-2.5 flex items-center justify-between px-1">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="h-7 w-7 rounded-full bg-indigo-950/90 border border-indigo-500/40 flex items-center justify-center font-bold text-indigo-300 text-xs shrink-0">
+                {currentUser.username ? currentUser.username.charAt(0).toUpperCase() : 'U'}
+              </div>
+              <div className="min-w-0">
+                <div className="text-xs font-semibold text-slate-100 truncate">
+                  {currentUser.username}
+                </div>
+                <div className="text-[10px] text-indigo-400/90 uppercase font-mono truncate">
+                  {currentUser.role || 'Staff'}
+                </div>
+              </div>
+            </div>
+
+            <button
+              id="sidebar-logout-button"
+              onClick={logout}
+              title="Sign Out"
+              className="h-7 w-7 rounded-md hover:bg-rose-950/40 hover:text-rose-300 text-slate-400 border border-transparent hover:border-rose-800/40 flex items-center justify-center transition cursor-pointer"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+            </button>
           </div>
-        </div>
-      )}
-
-      {/* Spacer if no servers */}
-      {servers.length === 0 && <div className="flex-1" />}
-
-      {/* User row */}
-      {user && (
-        <div className="px-4 py-3 flex items-center gap-2.5 border-t border-white/[0.07]">
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-medium text-slate-200 truncate">{user.username}</p>
-            <p className="text-[10px] text-slate-500 truncate">{user.role ?? 'No role'}</p>
-          </div>
-          <button
-            onClick={() => logout()}
-            title="Logout"
-            className="text-slate-500 hover:text-red-400 transition-colors cursor-pointer"
-          >
-            <LogOut className="h-4 w-4" />
-          </button>
-        </div>
-      )}
-
-      {/* Footer — version badge */}
-      <div className="border-t border-slate-800/80 bg-slate-900/40 px-4 py-2.5 flex items-center gap-2">
-        <Server className="h-3.5 w-3.5 text-slate-500 shrink-0" />
-        <span className="text-[11px] text-slate-400 flex-1">Umbrella Core</span>
-        {healthOk && healthData ? (
-          <span className="px-2 py-0.5 rounded border bg-emerald-950/60 text-emerald-400 border-emerald-500/30 font-mono text-[10px]">
-            {healthData.version}
-          </span>
-        ) : (
-          <span className="px-2 py-0.5 rounded border bg-rose-950/60 text-rose-400 border-rose-500/30 font-mono text-[10px]">
-            Offline
-          </span>
         )}
+
+        <button
+          id="sidebar-toggle-button"
+          onClick={toggleSidebar}
+          className="w-full flex items-center justify-center gap-2 py-1.5 rounded-md hover:bg-[#0a122e] text-slate-400 hover:text-indigo-300 text-xs transition border border-[#141d3d] cursor-pointer"
+          title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {sidebarCollapsed ? (
+            <ChevronRight className="h-4 w-4" />
+          ) : (
+            <>
+              <ChevronLeft className="h-4 w-4" />
+              <span className="text-[11px] font-mono">Collapse</span>
+            </>
+          )}
+        </button>
       </div>
     </aside>
-  )
-}
+  );
+};

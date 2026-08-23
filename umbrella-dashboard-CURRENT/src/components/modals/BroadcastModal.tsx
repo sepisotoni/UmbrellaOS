@@ -1,157 +1,178 @@
-import { useState } from 'react'
-import { Megaphone, Send, X } from 'lucide-react'
-import { getBaseUrl } from '../../lib/api'
-import { useAuth } from '../../context/AuthContext'
-import { useToast } from '../ui/Toast'
-
-const PRESET_ANNOUNCEMENTS = [
-  '⚠️ Server maintenance in 15 minutes! Please finish your games and save items.',
-  '🎉 Double XP & Drops event is now active across all game nodes!',
-  '🛡️ Network security update applied. Enjoy smooth 20.0 TPS gameplay.',
-  '⚡ New Anarchy Season 2 raid event starting at the Nether spawn!',
-]
-
-const SCOPES = [
-  { value: 'all', label: 'All Network Nodes' },
-  { value: 'game', label: 'Game Nodes Only (Survival/Skyblock/Bedwars)' },
-  { value: 'proxy', label: 'Proxies Only' },
-]
+import React, { useState, useEffect } from 'react';
+import { useDashboard } from '../../context/DashboardContext';
+import { api, ServerRecord } from '../../lib/api';
+import {
+  Megaphone,
+  X,
+  Send,
+  Radio,
+  Loader2,
+  AlertTriangle,
+  Sparkles,
+} from 'lucide-react';
 
 interface BroadcastModalProps {
-  open: boolean
-  onClose: () => void
+  isOpen: boolean;
+  onClose: () => void;
 }
 
-export function BroadcastModal({ open, onClose }: BroadcastModalProps) {
-  const { token } = useAuth()
-  const { addToast } = useToast()
-  const [message, setMessage] = useState('')
-  const [scope, setScope] = useState('all')
-  const [bigTitle, setBigTitle] = useState(false)
-  const [submitting, setSubmitting] = useState(false)
+export const BroadcastModal: React.FC<BroadcastModalProps> = ({ isOpen, onClose }) => {
+  const { addToast } = useDashboard();
+  const [servers, setServers] = useState<ServerRecord[]>([]);
+  const [message, setMessage] = useState('');
+  const [targetServerId, setTargetServerId] = useState<string>('GLOBAL');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  if (!open) return null
-
-  const handleSubmit = async () => {
-    if (!message.trim()) {
-      addToast('warning', 'Empty Message', 'Please enter a message to broadcast.')
-      return
+  useEffect(() => {
+    if (isOpen) {
+      setErrorMessage(null);
+      api.getServers().then((res) => {
+        if (res) setServers(res);
+      }).catch(() => {});
     }
-    setSubmitting(true)
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  const quickTemplates = [
+    '⚠️ Server maintenance scheduled in 15 minutes. Please complete your current tasks.',
+    '🎉 Double Drop Multiplier and 2x XP is now active on all servers!',
+    '🛡️ Anticheat engine updated to latest GrimAC build. Fair play enforced.',
+    '⚡ New server event starting in 5 minutes! Use /event to join.',
+  ];
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!message.trim()) return;
+
+    setIsSubmitting(true);
+    setErrorMessage(null);
+
     try {
-      const res = await fetch(`${getBaseUrl()}/api/v1/bridge/message`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ message: message.trim(), scope, source: 'DASHBOARD', big_title: bigTitle }),
-      })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error((data as { detail?: string }).detail ?? `HTTP ${res.status}`)
-      }
-      addToast('success', 'Broadcast Sent', 'Message dispatched to network')
-      setMessage('')
-      onClose()
-    } catch (err) {
-      addToast('error', 'Broadcast Failed', err instanceof Error ? err.message : 'Unknown error')
+      await api.broadcast(message.trim(), targetServerId === 'GLOBAL' ? undefined : targetServerId);
+      addToast({
+        type: 'success',
+        title: 'Broadcast Dispatched',
+        message: `Alert transmitted across ${targetServerId === 'GLOBAL' ? 'all nodes' : targetServerId}.`,
+      });
+      onClose();
+      setMessage('');
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Failed to dispatch broadcast.');
     } finally {
-      setSubmitting(false)
+      setIsSubmitting(false);
     }
-  }
+  };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="w-full max-w-lg rounded-xl border border-slate-700 bg-[#0f131a] shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm font-sans">
+      <div className="w-full max-w-xl rounded-2xl border border-[#141d3d] bg-[#060b1c] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="flex items-start gap-3 p-5 border-b border-slate-800">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-cyan-900/60 border border-cyan-500/40">
-            <Megaphone className="h-4 w-4 text-cyan-400" />
+        <div className="flex items-center justify-between border-b border-[#141d3d] bg-[#02040a] px-6 py-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-indigo-500/40 bg-indigo-950/50 text-indigo-400">
+              <Megaphone className="h-4 w-4" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-white font-mono">Broadcast Network Announcement</h2>
+              <p className="text-xs text-slate-400 font-sans">
+                Dispatch alerts to online Minecraft players via MiniMessage bridge
+              </p>
+            </div>
           </div>
-          <div className="flex-1 min-w-0">
-            <h2 className="text-sm font-bold text-white">Global Network Broadcast</h2>
-            <p className="text-[11px] text-slate-400 mt-0.5">Dispatch live titles, chat notices, and audio cues</p>
-          </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-300 transition-colors">
+          <button
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-slate-400 hover:text-white transition cursor-pointer"
+          >
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        {/* Body */}
-        <div className="p-5 space-y-4">
-          {/* Message */}
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 font-mono text-xs overflow-y-auto flex-1">
+          {errorMessage && (
+            <div className="rounded-xl border border-rose-500/40 bg-rose-950/40 p-3 text-xs text-rose-300 flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-rose-400" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
+
+          {/* Scope */}
           <div>
-            <label className="block text-[11px] font-medium text-slate-400 mb-1.5">Broadcast Message</label>
+            <label className="block text-slate-300 mb-1 font-semibold">Target Server Scope</label>
+            <select
+              value={targetServerId}
+              onChange={(e) => setTargetServerId(e.target.value)}
+              className="w-full rounded-xl border border-[#141d3d] bg-[#02040a] px-3.5 py-2.5 text-white focus:border-indigo-500 focus:outline-none cursor-pointer"
+            >
+              <option value="GLOBAL">Global (All Connected Minecraft Nodes)</option>
+              {servers.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} ({s.id})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Message text */}
+          <div>
+            <label className="block text-slate-300 mb-1 font-semibold">Broadcast Message *</label>
             <textarea
-              rows={3}
-              className="w-full rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-cyan-500/50 resize-none"
-              placeholder="Type your message here..."
               value={message}
               onChange={(e) => setMessage(e.target.value)}
+              rows={3}
+              placeholder="Enter announcement text (supports MiniMessage format e.g. <gradient:red:gold>Alert</gradient>)..."
+              required
+              className="w-full rounded-xl border border-[#141d3d] bg-[#02040a] p-3 text-white placeholder-slate-500 focus:border-indigo-500 focus:outline-none font-sans"
             />
           </div>
 
-          {/* Preset announcements */}
+          {/* Preset templates */}
           <div>
-            <p className="text-[11px] font-medium text-slate-400 mb-2">Preset Announcements</p>
+            <label className="block text-slate-400 mb-1 text-[11px]">Quick Templates</label>
             <div className="space-y-1.5">
-              {PRESET_ANNOUNCEMENTS.map((preset) => (
+              {quickTemplates.map((t, idx) => (
                 <button
-                  key={preset}
-                  onClick={() => setMessage(preset)}
-                  className="w-full text-left px-3 py-2 rounded-lg border border-slate-700/60 bg-slate-800/40 text-[11px] text-slate-400 hover:text-slate-200 hover:border-cyan-500/30 hover:bg-cyan-950/20 transition-colors"
+                  key={idx}
+                  type="button"
+                  onClick={() => setMessage(t)}
+                  className="w-full text-left p-2 rounded-lg border border-[#141d3d] bg-[#02040a] text-[11px] text-slate-300 hover:text-indigo-300 hover:border-indigo-500/40 transition truncate cursor-pointer"
                 >
-                  {preset}
+                  {t}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Scope + big title */}
-          <div className="grid grid-cols-2 gap-3 items-end">
-            <div>
-              <label className="block text-[11px] font-medium text-slate-400 mb-1.5">Target Scope</label>
-              <select
-                className="w-full rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500/50"
-                value={scope}
-                onChange={(e) => setScope(e.target.value)}
-              >
-                {SCOPES.map((s) => (
-                  <option key={s.value} value={s.value}>{s.label}</option>
-                ))}
-              </select>
-            </div>
-            <label className="flex items-center gap-2 cursor-pointer pb-2">
-              <input
-                type="checkbox"
-                checked={bigTitle}
-                onChange={(e) => setBigTitle(e.target.checked)}
-                className="rounded border-slate-600 bg-slate-800 text-cyan-500 focus:ring-cyan-500/30"
-              />
-              <span className="text-[11px] text-slate-300">Flash on screen as Big Title</span>
-            </label>
+          {/* Footer actions */}
+          <div className="flex justify-end gap-3 pt-3 border-t border-[#141d3d]">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-xl border border-[#141d3d] bg-[#02040a] text-slate-400 hover:text-white cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting || !message.trim()}
+              className="inline-flex items-center gap-2 px-5 py-2 rounded-xl border border-indigo-500/50 bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition disabled:opacity-50 cursor-pointer shadow-[0_0_12px_rgba(99,102,241,0.3)]"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span>Transmitting...</span>
+                </>
+              ) : (
+                <>
+                  <Send className="h-3.5 w-3.5" />
+                  <span>Send Broadcast</span>
+                </>
+              )}
+            </button>
           </div>
-        </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-end gap-2.5 px-5 py-4 border-t border-slate-800">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-xs rounded-lg border border-slate-700 text-slate-400 hover:text-slate-200 hover:border-slate-600 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={submitting}
-            className="flex items-center gap-2 px-4 py-2 text-xs rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Send className="h-3.5 w-3.5" />
-            {submitting ? 'Sending...' : 'Send Broadcast'}
-          </button>
-        </div>
+        </form>
       </div>
     </div>
-  )
-}
+  );
+};
