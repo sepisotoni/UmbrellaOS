@@ -73,8 +73,14 @@ class UmbrellaBot(commands.Bot):
             except Exception:
                 logger.exception("Failed to load extension: %s", extension)
 
-        await self.tree.sync()
-        logger.info("Slash commands synced globally.")
+        if self.settings.discord_guild_id:
+            guild = discord.Object(id=self.settings.discord_guild_id)
+            self.tree.copy_global_to(guild=guild)
+            await self.tree.sync(guild=guild)
+            logger.info("Slash commands synced to guild %s (instant registration).", self.settings.discord_guild_id)
+        else:
+            await self.tree.sync()
+            logger.info("Slash commands synced globally (up to 1hr propagation — set DISCORD_GUILD_ID for instant registration).")
 
     async def close(self) -> None:
         await super().close()
