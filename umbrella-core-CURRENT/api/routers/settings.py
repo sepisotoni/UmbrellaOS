@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from database import get_db
 from services import SettingsService
 from api.dependencies.permissions import require_owner
+from api.middleware.auth import require_admin_hmac_or_session
 from models import User
 
 router = APIRouter(prefix="/api/v1/settings", tags=["settings"])
@@ -19,9 +20,11 @@ class SettingUpdate(BaseModel):
 @router.get("")
 async def list_settings(
     db: AsyncSession = Depends(get_db),
-    auth: User | str = Depends(require_owner),
+    # GET: accept PBKDF2 MAC (bot) or dashboard session in addition to raw admin key
+    auth: str = Depends(require_admin_hmac_or_session),
 ) -> list[dict]:
-    """Return all settings. Sensitive values are masked unless admin key."""
+    """Return all settings. Bot callers (PBKDF2 MAC) and admin-key callers get
+    unmasked values; dashboard session callers get sensitive values masked."""
     unmasked = isinstance(auth, str)
     return await SettingsService.get_all(db, unmasked=unmasked)
 
@@ -30,9 +33,10 @@ async def list_settings(
 async def get_setting(
     key: str,
     db: AsyncSession = Depends(get_db),
-    auth: User | str = Depends(require_owner),
+    # GET: accept PBKDF2 MAC (bot) or dashboard session in addition to raw admin key
+    auth: str = Depends(require_admin_hmac_or_session),
 ) -> dict:
-    # Admin-key callers (bot, plugin) get the real value; dashboard users get masked
+    # PBKDF2 / admin-key callers (bot, plugin) get the real value; dashboard users get masked
     unmasked = isinstance(auth, str)
     setting = await SettingsService.get_by_key(db, key, unmasked=unmasked)
     if setting is None:
