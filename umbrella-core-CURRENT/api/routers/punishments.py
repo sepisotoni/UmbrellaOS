@@ -38,12 +38,14 @@ class PunishmentUpdateRequest(BaseModel):
 class PunishmentSchema(BaseModel):
     id: str
     player_uuid: str
+    player_name: str | None = None
     staff_id: str | None
     type: str
     reason: str
     created_at: datetime
     expires_at: datetime | None
     active: bool
+    status: str | None = None
 
     class Config:
         from_attributes = True
@@ -59,16 +61,16 @@ async def list_punishments(
     _auth: str = Depends(require_permission("punishments.view")),
 ) -> list[PunishmentSchema]:
     """List all punishments with optional filtering."""
-    query = select(Punishment)
+    from models.player import Player as PlayerModel
+    query = select(Punishment, PlayerModel.username).outerjoin(
+        PlayerModel, Punishment.player_uuid == PlayerModel.uuid
+    )
 
     if player_uuid:
         query = query.where(Punishment.player_uuid == player_uuid)
 
     if active_only:
         query = query.where(Punishment.active == True)
-        # Also exclude punishments that have time-expired but were never
-        # explicitly revoked — expires_at is just stored data otherwise,
-        # it never gets compared anywhere.
         query = query.where(
             (Punishment.expires_at == None) | (Punishment.expires_at > datetime.now(timezone.utc))
         )
@@ -76,9 +78,14 @@ async def list_punishments(
     query = query.offset(skip).limit(limit)
 
     result = await db.execute(query)
-    punishments = result.scalars().all()
+    rows = result.all()
 
-    return [PunishmentSchema.model_validate(p) for p in punishments]
+    out = []
+    for punishment, username in rows:
+        d = PunishmentSchema.model_validate(punishment)
+        d.player_name = username
+        out.append(d)
+    return out
 
 
 @router.post("", response_model=PunishmentSchema, status_code=201)

@@ -149,10 +149,23 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     localStorage.setItem('umbrella_selected_brand', brand);
   }, []);
 
-  // Auth State (Tokens stored ONLY in memory, never in localStorage!)
-  const [sessionToken, setSessionTokenState] = useState<string | null>(null);
+  // Auth State — token persisted to localStorage so session survives browser close
+  const [sessionToken, setSessionTokenState] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('umbrella_session_token') || null;
+    }
+    return null;
+  });
   const [adminKey, setAdminKeyState] = useState<string | null>(() => api.getAdminKey());
   const [currentUser, setCurrentUser] = useState<UserSchema | null>(null);
+
+  // Restore persisted session token into the api client on first mount
+  useEffect(() => {
+    if (sessionToken) {
+      api.setSessionToken(sessionToken);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Health / Connection State
   const [isDisconnected, setIsDisconnected] = useState<boolean>(false);
@@ -188,6 +201,13 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const setSessionToken = useCallback((token: string | null) => {
     setSessionTokenState(token);
     api.setSessionToken(token);
+    if (typeof window !== 'undefined') {
+      if (token) {
+        localStorage.setItem('umbrella_session_token', token);
+      } else {
+        localStorage.removeItem('umbrella_session_token');
+      }
+    }
   }, []);
 
   const setAdminKey = useCallback((key: string | null) => {

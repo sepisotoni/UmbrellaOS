@@ -194,12 +194,14 @@ export interface FullProfileResponse {
 export interface PunishmentSchema {
   id: string;
   player_uuid: string;
+  player_name?: string | null;
   staff_id: string | null;
   type: string;
   reason: string;
   created_at: string;
   expires_at: string | null;
   active: boolean;
+  status?: string | null;
 }
 
 export interface CreatePunishmentPayload {
@@ -605,7 +607,7 @@ export class UmbrellaApiClient {
   public async getPlayers(params?: { search?: string; username?: string; limit?: number; offset?: number }): Promise<PlayerSummary[]> {
     const q = new URLSearchParams();
     const searchTerm = params?.search || params?.username;
-    if (searchTerm) q.set('search', searchTerm);
+    if (searchTerm) q.set('username', searchTerm);
     if (params?.limit) q.set('limit', params.limit.toString());
     if (params?.offset) q.set('offset', params.offset.toString());
     const queryStr = q.toString() ? `?${q.toString()}` : '';
