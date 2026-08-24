@@ -40,6 +40,7 @@ from bot.services.umbrella_core_client import UmbrellaCoreClient
 logger = logging.getLogger(__name__)
 
 EXTENSIONS: tuple[str, ...] = (
+    "bot.cogs.ask_cog",
     "bot.cogs.investigation_cog",
     "bot.cogs.moderation_report_cog",
     "bot.cogs.knowledge_cog",

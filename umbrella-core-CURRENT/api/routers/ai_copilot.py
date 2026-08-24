@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
 from api.dependencies.permissions import require_permission
+from api.middleware.auth import require_admin_hmac_or_session
 from services.ai.orchestrator import Orchestrator
 from services.ai.provider_factory import ProviderFactory
 from services.ai.base import ProviderError
@@ -51,7 +52,10 @@ class CopilotResponse(BaseModel):
 async def copilot_chat(
     body: CopilotRequest,
     db: AsyncSession = Depends(get_db),
-    _auth=Depends(require_permission("operational_intelligence.view")),
+    # Accept PBKDF2 MAC (bot), raw admin key, or dashboard session token.
+    # require_permission() only accepts admin key or session — bot calls
+    # would 401. require_admin_hmac_or_session covers all three callers.
+    _auth=Depends(require_admin_hmac_or_session),
 ) -> CopilotResponse:
     """Route a copilot prompt through the real AI orchestrator.
 

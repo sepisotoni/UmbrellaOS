@@ -180,3 +180,36 @@ class UmbrellaCoreClient:
             return response.json()
         except ValueError as exc:
             raise UmbrellaCoreError(f"umbrella-core returned a non-JSON response: {exc}") from exc
+
+    async def ask_ai(self, message: str, context: str | None = None) -> dict[str, Any]:
+        """POST /api/v1/ai/copilot — send a natural-language question to the
+        AI copilot and return the parsed response dict (keys: response,
+        model_used, latency_ms). Uses the same PBKDF2 auth headers as every
+        other method. Raises UmbrellaCoreError on failure."""
+        url = f"{self._base_url}/api/v1/ai/copilot"
+        headers = self._make_auth_headers()
+        payload: dict[str, Any] = {"message": message}
+        if context is not None:
+            payload["context"] = context
+
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout, transport=self._transport) as client:
+                response = await client.post(url, headers=headers, json=payload)
+        except httpx.RequestError as exc:
+            raise UmbrellaCoreError(f"Could not reach umbrella-core: {exc}") from exc
+
+        if response.status_code >= 400:
+            try:
+                body = response.json()
+                message_text = body.get("detail", body.get("error", response.text))
+                code = body.get("code")
+            except ValueError:
+                message_text = response.text
+                code = None
+            raise UmbrellaCoreError(message_text, status_code=response.status_code, code=code)
+
+        try:
+            return response.json()
+        except ValueError as exc:
+            raise UmbrellaCoreError(f"umbrella-core returned a non-JSON response: {exc}") from exc
+
