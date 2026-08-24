@@ -46,8 +46,12 @@ export function canUserAccessTab(tab: NavigationTab, user: UserSchema | null, ad
   if (tab === 'login' || tab === 'access-denied' || tab === '404') return true;
   if (adminKey && adminKey.trim().length > 0) return true;
   if (!user) return false;
-  
-  const userRole = (user.role || 'viewer').toLowerCase();
+
+  const userRole = (user.role || '').toLowerCase();
+
+  // Users with no role or 'member' role cannot access the dashboard at all
+  if (!userRole || userRole === 'member') return false;
+
   if (userRole === 'superadmin' || userRole === 'owner') return true;
 
   const allowedRoles = TAB_ROLE_CLEARANCE[tab] || [];

@@ -246,7 +246,7 @@ export const ModerationView: React.FC<ModerationViewProps> = ({ onOpenBanModal }
                   <thead>
                     <tr className="border-b border-[#1e1b4b] text-slate-400">
                       <th className="pb-3 font-semibold">Type</th>
-                      <th className="pb-3 font-semibold">Player UUID</th>
+                      <th className="pb-3 font-semibold">Player</th>
                       <th className="pb-3 font-semibold">Reason</th>
                       <th className="pb-3 font-semibold">Staff</th>
                       <th className="pb-3 font-semibold">Issued At</th>
@@ -263,7 +263,7 @@ export const ModerationView: React.FC<ModerationViewProps> = ({ onOpenBanModal }
                           onClick={() => navigateToPlayer(p.player_uuid)}
                           className="py-3 text-slate-300 hover:text-purple-300 hover:underline cursor-pointer"
                         >
-                          {p.player_uuid.slice(0, 12)}...
+                          {p.player_name || p.player_uuid.slice(0, 12) + '...'}
                         </td>
                         <td className="py-3 text-slate-200 max-w-xs truncate">{p.reason}</td>
                         <td className="py-3 text-slate-400">{p.staff_id || 'AutoMod'}</td>

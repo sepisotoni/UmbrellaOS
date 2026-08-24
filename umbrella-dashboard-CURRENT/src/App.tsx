@@ -118,13 +118,34 @@ const DashboardContent: React.FC = () => {
   const hasAccess = canAccessTab(activeTab);
   const isAccessDenied = activeTab === 'access-denied' || !hasAccess;
 
-  const renderActiveView = () => {
-    if (isAccessDenied) {
-      return <AccessDeniedView attemptedTab={activeTab} />;
-    }
+  // Users with no role at all (null/member) — block the entire dashboard, no layout
+  const userRole = (currentUser?.role || '').toLowerCase();
+  const hasNoRole = currentUser && !adminKey && (!userRole || userRole === 'member');
+  if (hasNoRole) {
+    return (
+      <div className="h-screen w-screen overflow-y-auto font-sans bg-[#02040a] text-slate-100 relative">
+        <AtmosphericBackground showDoodles={showDoodles} doodleOpacity={doodleOpacity} />
+        <div className="relative z-10 flex items-center justify-center min-h-screen">
+          <AccessDeniedView attemptedTab="overview" noRole />
+        </div>
+      </div>
+    );
+  }
 
+  // Per-tab access denied — also shown without layout (sidebar/topbar stripped)
+  if (isAccessDenied) {
+    return (
+      <div className="h-screen w-screen overflow-y-auto font-sans bg-[#02040a] text-slate-100 relative">
+        <AtmosphericBackground showDoodles={showDoodles} doodleOpacity={doodleOpacity} />
+        <div className="relative z-10 flex items-center justify-center min-h-screen">
+          <AccessDeniedView attemptedTab={activeTab} />
+        </div>
+      </div>
+    );
+  }
+
+  const renderActiveView = () => {
     switch (activeTab) {
-      case 'overview':
         return (
           <OverviewView
             onOpenBanModal={() => handleOpenBanModalWithTarget('')}

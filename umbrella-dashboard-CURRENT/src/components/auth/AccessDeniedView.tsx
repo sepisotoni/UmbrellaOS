@@ -6,11 +6,13 @@ import { UmbrellaLogo } from '../common/UmbrellaLogo';
 interface AccessDeniedViewProps {
   attemptedTab?: NavigationTab | string;
   requiredRole?: string;
+  noRole?: boolean;
 }
 
 export const AccessDeniedView: React.FC<AccessDeniedViewProps> = ({
   attemptedTab,
   requiredRole,
+  noRole,
 }) => {
   const { currentUser, logout, setActiveTab } = useDashboard();
 
@@ -43,15 +45,27 @@ export const AccessDeniedView: React.FC<AccessDeniedViewProps> = ({
           </h1>
 
           <p className="text-sm text-slate-300 max-w-md mx-auto leading-relaxed font-sans">
-            Your authenticated staff credentials lack the security clearance required to inspect{' '}
-            {attemptedTab ? (
-              <span className="font-mono text-rose-300 bg-rose-950/60 px-2 py-0.5 rounded border border-rose-800/40">
-                "{attemptedTab}"
-              </span>
+            {noRole ? (
+              <>
+                Your Discord account is not authorized to access{' '}
+                <span className="font-mono text-rose-300 bg-rose-950/60 px-2 py-0.5 rounded border border-rose-800/40">
+                  Umbrella Dashboard
+                </span>
+                . You must be assigned a staff role by an administrator before you can log in.
+              </>
             ) : (
-              'this restricted system section'
+              <>
+                Your authenticated staff credentials lack the security clearance required to inspect{' '}
+                {attemptedTab ? (
+                  <span className="font-mono text-rose-300 bg-rose-950/60 px-2 py-0.5 rounded border border-rose-800/40">
+                    "{attemptedTab}"
+                  </span>
+                ) : (
+                  'this restricted system section'
+                )}
+                .
+              </>
             )}
-            .
           </p>
         </div>
 
@@ -64,9 +78,9 @@ export const AccessDeniedView: React.FC<AccessDeniedViewProps> = ({
               </div>
               <div>
                 <div className="text-sm font-bold text-white flex items-center gap-2">
-                  <span>@{currentUser?.username || 'Unknown Staff'}</span>
+                  <span>@{currentUser?.username || 'Unknown'}</span>
                   <span className="px-2 py-0.5 rounded text-[10px] uppercase font-mono font-bold bg-rose-950/80 text-rose-300 border border-rose-800/50">
-                    {currentUser?.role || 'VIEWER'}
+                    {currentUser?.role ? currentUser.role.toUpperCase() : 'NO ROLE'}
                   </span>
                 </div>
                 <div className="text-xs text-slate-400 font-mono mt-0.5">
@@ -89,16 +103,14 @@ export const AccessDeniedView: React.FC<AccessDeniedViewProps> = ({
             <div className="flex justify-between items-center text-slate-400">
               <span>Required Clearance:</span>
               <span className="text-amber-300 font-bold">
-                {requiredRole ? requiredRole.toUpperCase() : 'ADMINISTRATOR / SUPERADMIN'}
+                {noRole ? 'ANY STAFF ROLE' : requiredRole ? requiredRole.toUpperCase() : 'ADMINISTRATOR / SUPERADMIN'}
               </span>
             </div>
 
             <div className="flex justify-between items-center text-slate-400">
-              <span>Assigned Permissions:</span>
+              <span>Assigned Role:</span>
               <span className="text-slate-300">
-                {currentUser?.permissions && currentUser.permissions.length > 0
-                  ? currentUser.permissions.join(', ')
-                  : 'Basic Viewer (Read-only)'}
+                {currentUser?.role ? currentUser.role : 'None — contact an administrator'}
               </span>
             </div>
           </div>
@@ -107,27 +119,32 @@ export const AccessDeniedView: React.FC<AccessDeniedViewProps> = ({
           <div className="rounded-xl border border-indigo-500/20 bg-indigo-950/20 p-3 text-xs text-slate-300 leading-relaxed font-sans flex items-start gap-2.5">
             <HelpCircle className="h-4 w-4 text-indigo-400 shrink-0 mt-0.5" />
             <div>
-              To request a role elevation or permission update, contact a Superadmin on Discord with your Discord ID (<span className="text-indigo-300 font-mono select-all">{currentUser?.discord_id || 'N/A'}</span>).
+              {noRole
+                ? <>To request dashboard access, contact the server owner on Discord with your Discord ID: <span className="text-indigo-300 font-mono select-all">{currentUser?.discord_id || 'N/A'}</span>.</>
+                : <>To request a role elevation or permission update, contact a Superadmin on Discord with your Discord ID (<span className="text-indigo-300 font-mono select-all">{currentUser?.discord_id || 'N/A'}</span>).</>
+              }
             </div>
           </div>
         </div>
 
         {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row justify-center items-center gap-3 pt-2">
-          <button
-            onClick={() => setActiveTab('overview')}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl border border-indigo-500/50 bg-indigo-600 hover:bg-indigo-500 px-6 py-2.5 text-xs font-bold text-white transition shadow-[0_0_15px_rgba(99,102,241,0.3)] cursor-pointer"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            <span>Return to Permitted Overview</span>
-          </button>
+          {!noRole && (
+            <button
+              onClick={() => setActiveTab('overview')}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl border border-indigo-500/50 bg-indigo-600 hover:bg-indigo-500 px-6 py-2.5 text-xs font-bold text-white transition shadow-[0_0_15px_rgba(99,102,241,0.3)] cursor-pointer"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              <span>Return to Permitted Overview</span>
+            </button>
+          )}
 
           <button
             onClick={logout}
             className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl border border-rose-500/40 bg-rose-950/40 hover:bg-rose-900/60 px-5 py-2.5 text-xs font-bold text-rose-300 hover:text-white transition cursor-pointer"
           >
             <LogOut className="h-4 w-4" />
-            <span>Switch Staff Account</span>
+            <span>{noRole ? 'Sign Out' : 'Switch Staff Account'}</span>
           </button>
         </div>
       </div>
