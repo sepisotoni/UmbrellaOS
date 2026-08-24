@@ -202,9 +202,17 @@ export const StaffView: React.FC = () => {
                 {staffList.map((member) => (
                   <tr key={member.id} className="hover:bg-[#121638]/50 transition">
                     <td className="py-3 font-bold text-white flex items-center gap-2">
-                      <div className="h-6 w-6 rounded-full bg-purple-900/60 border border-purple-500/40 flex items-center justify-center text-[10px] text-purple-300">
-                        {member.username ? member.username.charAt(0).toUpperCase() : 'S'}
-                      </div>
+                      {member.avatar_url ? (
+                        <img
+                          src={member.avatar_url}
+                          alt={member.username}
+                          className="h-6 w-6 rounded-full border border-purple-500/40 object-cover"
+                        />
+                      ) : (
+                        <div className="h-6 w-6 rounded-full bg-purple-900/60 border border-purple-500/40 flex items-center justify-center text-[10px] text-purple-300">
+                          {member.username ? member.username.charAt(0).toUpperCase() : 'S'}
+                        </div>
+                      )}
                       <span>{member.username || 'Staff'}</span>
                     </td>
                     <td className="py-3 text-purple-300 font-mono">{member.discord_id}</td>
@@ -298,17 +306,6 @@ export const StaffView: React.FC = () => {
                   onChange={(e) => setNewDiscordId(e.target.value)}
                   placeholder="Or enter Discord ID manually (e.g. 123456789012345678)"
                   required
-                  className="w-full rounded-lg border border-[#1e1b4b] bg-[#070914] p-2.5 text-white focus:border-purple-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-300 mb-1">Username (Optional Display)</label>
-                <input
-                  type="text"
-                  value={newUsername}
-                  onChange={(e) => setNewUsername(e.target.value)}
-                  placeholder="Staff username"
                   className="w-full rounded-lg border border-[#1e1b4b] bg-[#070914] p-2.5 text-white focus:border-purple-500 focus:outline-none"
                 />
               </div>

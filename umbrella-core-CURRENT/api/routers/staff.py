@@ -185,12 +185,19 @@ async def list_staff(
             )
 
         da = discord_map.get(user.discord_id)
+        # Build Discord CDN avatar URL if we have it stored; fall back to default avatar
+        avatar_hash = getattr(da, 'avatar_hash', None) if da else None
+        if avatar_hash:
+            avatar_url = f"https://cdn.discordapp.com/avatars/{user.discord_id}/{avatar_hash}.png?size=64"
+        else:
+            # Discord default avatar based on user id discriminator
+            avatar_url = f"https://cdn.discordapp.com/embed/avatars/{int(user.discord_id) % 5}.png"
         staff_members.append(StaffMemberSchema(
             id=user.id,
             discord_id=user.discord_id,
             username=user.username,
-            discriminator="0",  # Modern Discord accounts have no discriminator
-            avatar_url=None,
+            discriminator="0",
+            avatar_url=avatar_url,
             role=role_name,
             permissions=permissions,
             email=user.email,
