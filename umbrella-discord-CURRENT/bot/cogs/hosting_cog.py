@@ -62,6 +62,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from bot.services.umbrella_core_client import UmbrellaCoreError
+from bot.utils.checks import require_owner_role
 
 logger = logging.getLogger(__name__)
 
@@ -178,6 +179,7 @@ class HostingCog(commands.Cog):
 
     @app_commands.command(name="server_start", description="Start a server.")
     @app_commands.describe(server_id="The server's ID")
+    @require_owner_role()
     async def server_start(self, interaction: discord.Interaction, server_id: str) -> None:
         await interaction.response.defer(thinking=True, ephemeral=True)
 
@@ -193,6 +195,7 @@ class HostingCog(commands.Cog):
 
     @app_commands.command(name="server_stop", description="Gracefully stop a server.")
     @app_commands.describe(server_id="The server's ID", grace_period_seconds="Seconds to wait before force-stopping (optional)")
+    @require_owner_role()
     async def server_stop(
         self, interaction: discord.Interaction, server_id: str, grace_period_seconds: int | None = None
     ) -> None:
@@ -213,6 +216,7 @@ class HostingCog(commands.Cog):
     @app_commands.command(name="server_restart", description="[Staff] Restart a server. Irreversible — requires confirmation.")
     @app_commands.describe(server_id="The server's ID")
     @app_commands.default_permissions(administrator=True)
+    @require_owner_role()
     async def server_restart(self, interaction: discord.Interaction, server_id: str) -> None:
         confirmed = await self._confirm(interaction, f"⚠️ Restart server `{server_id}`? This is not reversible.")
         if not confirmed:
@@ -232,6 +236,7 @@ class HostingCog(commands.Cog):
     @app_commands.command(name="server_kill", description="[Staff] Forcibly kill a server with no grace period. Irreversible — requires confirmation.")
     @app_commands.describe(server_id="The server's ID")
     @app_commands.default_permissions(administrator=True)
+    @require_owner_role()
     async def server_kill(self, interaction: discord.Interaction, server_id: str) -> None:
         confirmed = await self._confirm(
             interaction, f"⚠️ **Force-kill** server `{server_id}` with no grace period? This is not reversible."
@@ -253,6 +258,7 @@ class HostingCog(commands.Cog):
     @app_commands.command(name="server_delete", description="[Staff] Permanently delete a server and release its allocations. Requires confirmation.")
     @app_commands.describe(server_id="The server's ID")
     @app_commands.default_permissions(administrator=True)
+    @require_owner_role()
     async def server_delete(self, interaction: discord.Interaction, server_id: str) -> None:
         confirmed = await self._confirm(
             interaction, f"🛑 **Permanently delete** server `{server_id}` and release its allocations? This is not reversible."

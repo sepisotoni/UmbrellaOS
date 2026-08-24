@@ -35,6 +35,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from bot.services.umbrella_core_client import UmbrellaCoreError
+from bot.utils.checks import require_owner_role
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,7 @@ class PlayerRiskCog(commands.Cog):
         self.bot = bot
 
     @app_commands.command(name="player_risk", description="Compute a unified risk score for a player (anticheat, alts, moderation, investigations).")
+    @require_owner_role()
     @app_commands.describe(player_uuid="The Minecraft player's UUID")
     async def player_risk(self, interaction: discord.Interaction, player_uuid: str) -> None:
         await interaction.response.defer(thinking=True, ephemeral=True)
@@ -59,6 +61,7 @@ class PlayerRiskCog(commands.Cog):
         await interaction.followup.send(embed=self._format_risk_score(result), ephemeral=True)
 
     @app_commands.command(name="player_risk_by_discord", description="Compute a unified risk score for a linked Discord member.")
+    @require_owner_role()
     @app_commands.describe(member="The Discord member to look up")
     async def player_risk_by_discord(self, interaction: discord.Interaction, member: discord.Member) -> None:
         await interaction.response.defer(thinking=True, ephemeral=True)

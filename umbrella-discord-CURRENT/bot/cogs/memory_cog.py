@@ -32,6 +32,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from bot.services.umbrella_core_client import UmbrellaCoreError
+from bot.utils.checks import require_owner_role
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,7 @@ class MemoryCog(commands.Cog):
         self.bot = bot
 
     @app_commands.command(name="memory_set", description="Set a durable server fact (server IP, store URL, etc).")
+    @require_owner_role()
     @app_commands.describe(fact_key="The fact's key, e.g. 'server_ip'", value="The fact's value")
     async def memory_set(self, interaction: discord.Interaction, fact_key: str, value: str) -> None:
         await interaction.response.defer(thinking=True, ephemeral=True)
@@ -74,6 +76,7 @@ class MemoryCog(commands.Cog):
 
     @app_commands.command(name="memory_purge", description="[Staff] Remove expired short-term memory entries (never touches server facts or recurring topics).")
     @app_commands.default_permissions(manage_guild=True)
+    @require_owner_role()
     async def memory_purge(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(thinking=True, ephemeral=True)
 

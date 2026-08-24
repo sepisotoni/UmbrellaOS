@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     # Optional: if 0 or unset, role assignment is skipped silently.
     discord_verified_role_id: int = 0
 
+    # Discord role ID for the "Owner" role on the MOON server.
+    # Members with this role can run all staff/destructive commands.
+    # Fallback: administrator permission bit when this is 0 / unset.
+    owner_role_id: int = 0
+
+
     # Phase 16B Task B — bidirectional push.
     # BOT_CALLBACK_URL: public address core will POST events to, e.g.
     # http://5.x.x.x:8080. Leave unset in dev; webhook_cog.py will log a

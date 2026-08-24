@@ -15,6 +15,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from bot.services.umbrella_core_client import UmbrellaCoreError
+from bot.utils.checks import require_owner_role
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ class InvestigationCog(commands.Cog):
         self.bot = bot
 
     @app_commands.command(name="investigate", description="Run every investigation tool against a question and optional user.")
+    @require_owner_role()
     @app_commands.describe(question="What you want to investigate", user="The user this concerns, if any")
     async def investigate(
         self, interaction: discord.Interaction, question: str, user: discord.Member | None = None

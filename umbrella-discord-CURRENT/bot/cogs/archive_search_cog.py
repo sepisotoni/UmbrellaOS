@@ -48,6 +48,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from bot.services.umbrella_core_client import UmbrellaCoreError
+from bot.utils.checks import require_owner_role
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,7 @@ class ArchiveSearchCog(commands.Cog):
     @app_commands.command(name="archive_search", description="[Staff] Search archived chat history (Minecraft and Discord, unfiltered).")
     @app_commands.describe(query="Text to search for", source="Restrict to 'minecraft' or 'discord' (optional)")
     @app_commands.default_permissions(manage_messages=True)
+    @require_owner_role()
     async def archive_search(
         self, interaction: discord.Interaction, query: str, source: str | None = None
     ) -> None:

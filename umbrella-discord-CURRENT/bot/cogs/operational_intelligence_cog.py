@@ -38,6 +38,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from bot.services.umbrella_core_client import UmbrellaCoreError
+from bot.utils.checks import require_owner_role
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,7 @@ class OperationalIntelligenceCog(commands.Cog):
         self.bot = bot
 
     @app_commands.command(name="crash_risk", description="Assess a server's predictive crash risk from its recent TPS trend.")
+    @require_owner_role()
     @app_commands.describe(server_id="The server's PluginHeartbeat identity")
     async def crash_risk(self, interaction: discord.Interaction, server_id: str) -> None:
         await interaction.response.defer(thinking=True, ephemeral=True)
@@ -69,6 +71,7 @@ class OperationalIntelligenceCog(commands.Cog):
         await interaction.followup.send(embed=self._format_crash_risk(result), ephemeral=True)
 
     @app_commands.command(name="ops_query", description="Ask a natural-language question about server operations.")
+    @require_owner_role()
     @app_commands.describe(
         server_id="The server's PluginHeartbeat identity",
         question="e.g. 'Why did the server lag at 3pm?'",
@@ -100,6 +103,7 @@ class OperationalIntelligenceCog(commands.Cog):
         await interaction.followup.send(embed=self._format_query_result(question, result), ephemeral=True)
 
     @app_commands.command(name="postmortem", description="Draft an AI-authored incident postmortem for staff review.")
+    @require_owner_role()
     @app_commands.describe(server_id="The server's PluginHeartbeat identity")
     async def postmortem(self, interaction: discord.Interaction, server_id: str) -> None:
         await interaction.response.defer(thinking=True, ephemeral=True)
