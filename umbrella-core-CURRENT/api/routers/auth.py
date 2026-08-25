@@ -388,6 +388,9 @@ async def discord_callback(
     await db.delete(pending)
     await db.flush()
 
+    # Explicitly refresh user so attributes aren't expired when _user_to_schema reads them
+    await db.refresh(user)
+
     return DiscordOAuthCallbackResponse(
         token=session_token,
         user=await _user_to_schema(user, db),
