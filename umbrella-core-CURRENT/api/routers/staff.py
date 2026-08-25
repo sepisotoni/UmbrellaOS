@@ -190,8 +190,11 @@ async def list_staff(
         if avatar_hash:
             avatar_url = f"https://cdn.discordapp.com/avatars/{user.discord_id}/{avatar_hash}.png?size=64"
         else:
-            # Discord default avatar based on user id discriminator
-            avatar_url = f"https://cdn.discordapp.com/embed/avatars/{int(user.discord_id) % 5}.png"
+            try:
+                avatar_index = int(user.discord_id) % 5
+            except (ValueError, TypeError):
+                avatar_index = 0
+            avatar_url = f"https://cdn.discordapp.com/embed/avatars/{avatar_index}.png"
         staff_members.append(StaffMemberSchema(
             id=user.id,
             discord_id=user.discord_id,
