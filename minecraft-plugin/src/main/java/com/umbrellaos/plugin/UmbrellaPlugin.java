@@ -21,6 +21,10 @@ public final class UmbrellaPlugin extends JavaPlugin {
     private MessageTemplateManager messageTemplateManager;
     private GreeterListener greeterListener;
     private ChatResponderListener chatResponderListener;
+    private VerificationCommand verificationCommand;
+    private PlayerTelemetryListener telemetryListener;
+    private ConsoleStreamManager consoleStreamManager;
+    private MaintenanceEnforcer maintenanceEnforcer;
 
     @Override
     public void onEnable() {
@@ -47,6 +51,9 @@ public final class UmbrellaPlugin extends JavaPlugin {
         heartbeatManager = new HeartbeatManager(this, apiClient, configManager, serverId, serverName);
         commandPoller = new CommandPoller(this, apiClient);
         banEnforcer = new BanEnforcer(apiClient);
+        maintenanceEnforcer = new MaintenanceEnforcer(this, configManager, messageTemplateManager);
+        telemetryListener = new PlayerTelemetryListener(this, apiClient);
+        consoleStreamManager = new ConsoleStreamManager();
 
         // Startup config pull (per scope: "on startup and on reconnect").
         // Off the main thread — this is a blocking HTTP call and must never
@@ -54,7 +61,10 @@ public final class UmbrellaPlugin extends JavaPlugin {
         getServer().getScheduler().runTaskAsynchronously(this, configManager::refresh);
         messageTemplateManager.start();
 
+        // Register event listeners
         getServer().getPluginManager().registerEvents(banEnforcer, this);
+        getServer().getPluginManager().registerEvents(maintenanceEnforcer, this);
+        getServer().getPluginManager().registerEvents(telemetryListener, this);
 
         // Greeter — welcomes new and returning players on join (P16E).
         greeterListener = new GreeterListener(this, apiClient, messageTemplateManager);
@@ -64,11 +74,20 @@ public final class UmbrellaPlugin extends JavaPlugin {
         chatResponderListener = new ChatResponderListener(this, apiClient, messageTemplateManager, serverName);
         getServer().getPluginManager().registerEvents(chatResponderListener, this);
 
+        // Console stream manager — starts capturing console log records
+        consoleStreamManager.startCapture();
+
         // GrimBridge: soft-dependency — register() checks isPluginEnabled("GrimAC")
         // internally and logs the outcome either way. No extra config needed; if
         // GrimAC is absent the bridge stays inactive and everything else runs normally.
         grimBridge = new GrimBridge(this, apiClient, serverId);
         grimBridge.register();
+
+        // Player UX commands: /verify, /umbrella, /appeal
+        verificationCommand = new VerificationCommand(this, apiClient, messageTemplateManager, grimBridge);
+        registerCommand("verify", verificationCommand);
+        registerCommand("umbrella", verificationCommand);
+        registerCommand("appeal", verificationCommand);
 
         heartbeatManager.start(heartbeatIntervalSeconds);
         commandPoller.start(commandPollIntervalSeconds);
@@ -77,6 +96,16 @@ public final class UmbrellaPlugin extends JavaPlugin {
                 + ", heartbeat every " + heartbeatIntervalSeconds + "s"
                 + ", command poll every " + commandPollIntervalSeconds + "s"
                 + (grimBridge.isRegistered() ? ", GrimAC bridge: ACTIVE" : ", GrimAC bridge: inactive"));
+    }
+
+    private void registerCommand(String name, VerificationCommand executor) {
+        org.bukkit.command.PluginCommand cmd = getCommand(name);
+        if (cmd != null) {
+            cmd.setExecutor(executor);
+            cmd.setTabCompleter(executor);
+        } else {
+            getLogger().warning("Failed to register command /" + name + " — check plugin.yml");
+        }
     }
 
     @Override
@@ -89,6 +118,9 @@ public final class UmbrellaPlugin extends JavaPlugin {
         }
         if (messageTemplateManager != null) {
             messageTemplateManager.stop();
+        }
+        if (consoleStreamManager != null) {
+            consoleStreamManager.stopCapture();
         }
         getLogger().info("UmbrellaOS plugin disabled");
     }
@@ -116,5 +148,21 @@ public final class UmbrellaPlugin extends JavaPlugin {
 
     MessageTemplateManager getMessageTemplateManager() {
         return messageTemplateManager;
+    }
+
+    VerificationCommand getVerificationCommand() {
+        return verificationCommand;
+    }
+
+    public PlayerTelemetryListener getTelemetryListener() {
+        return telemetryListener;
+    }
+
+    public ConsoleStreamManager getConsoleStreamManager() {
+        return consoleStreamManager;
+    }
+
+    public MaintenanceEnforcer getMaintenanceEnforcer() {
+        return maintenanceEnforcer;
     }
 }

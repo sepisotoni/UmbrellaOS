@@ -52,6 +52,10 @@ public final class GrimBridge {
 
     private boolean registered = false;
 
+    public GrimBridge(Plugin owningPlugin, CoreApiClient apiClient) {
+        this(owningPlugin, apiClient, DEFAULT_SERVER_ID);
+    }
+
     public GrimBridge(Plugin owningPlugin, CoreApiClient apiClient, String serverId) {
         this.owningPlugin = owningPlugin;
         this.apiClient = apiClient;
@@ -75,20 +79,32 @@ public final class GrimBridge {
             return;
         }
 
-        GrimAPIProvider.get().getEventBus().get(FlagEvent.class).onFlag(
-                owningPlugin,
-                (grimPlayer, check, verbose, cancelled) -> {
-                    UUID uuid = grimPlayer.getUniqueId();
-                    String name = grimPlayer.getName();
-                    String checkName = check.getCheckName();
-                    int vl = (int) Math.round(check.getViolations());
+        ac.grim.grimac.api.plugin.GrimPlugin grimPlugin = new ac.grim.grimac.api.plugin.GrimPlugin() {
+            @Override
+            public ac.grim.grimac.api.plugin.GrimPluginDescription getDescription() {
+                return null;
+            }
 
-                    reportFlag(uuid, name, checkName, verbose, vl);
+            @Override
+            public Logger getLogger() {
+                return owningPlugin.getLogger();
+            }
 
-                    // Return cancelled unchanged — we observe only, never
-                    // override GrimAC's own enforcement decision.
-                    return cancelled;
-                });
+            @Override
+            public java.io.File getDataFolder() {
+                return owningPlugin.getDataFolder();
+            }
+        };
+
+        GrimAPIProvider.get().getEventBus().subscribe(grimPlugin, FlagEvent.class, event -> {
+            UUID uuid = event.getUser().getUniqueId();
+            String name = event.getUser().getName();
+            String checkName = event.getCheck().getCheckName();
+            int vl = (int) Math.round(event.getCheck().getViolations());
+            String verbose = event.getVerbose();
+
+            reportFlag(uuid, name, checkName, verbose, vl);
+        });
 
         registered = true;
         logger.info("[GrimBridge] Registered against GrimAC EventBus — "
@@ -142,6 +158,15 @@ public final class GrimBridge {
     }
 
     /**
+     * Constructs the JSON body for {@code POST /api/v1/anticheat/flag} using
+     * default server ID.
+     */
+    static String buildFlagPayload(UUID playerUuid, String playerName,
+                                   String checkName, String verbose, int vl) {
+        return buildFlagPayload(playerUuid, playerName, checkName, verbose, vl, DEFAULT_SERVER_ID);
+    }
+
+    /**
      * Constructs the JSON body for {@code POST /api/v1/anticheat/flag}.
      * Package-private so tests can assert on it without making network calls.
      *
@@ -155,6 +180,7 @@ public final class GrimBridge {
      * versions (pre-P15) will simply ignore the unknown field — Pydantic
      * silently discards extra keys by default.
      */
+
     static String buildFlagPayload(UUID playerUuid, String playerName,
                                    String checkName, String verbose, int vl,
                                    String serverId) {

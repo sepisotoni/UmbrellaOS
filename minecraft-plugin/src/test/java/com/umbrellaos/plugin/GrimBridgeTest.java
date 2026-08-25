@@ -179,6 +179,46 @@ class GrimBridgeTest {
                 any(HttpResponse.BodyHandler.class));
     }
 
+    @Test
+    void buildFlagPayload_withCustomServerId() {
+        UUID uuid = UUID.randomUUID();
+        String json = GrimBridge.buildFlagPayload(uuid, "Player", "Fly", "dy=1.2", 4, "lobby-1");
+
+        assertTrue(json.contains("\"server_id\":\"lobby-1\""), "Missing custom server_id: " + json);
+    }
+
+    @Test
+    void buildFlagPayload_defaultServerId_whenNullOrOmitted() {
+        UUID uuid = UUID.randomUUID();
+        String jsonNull = GrimBridge.buildFlagPayload(uuid, "Player", "Fly", "dy=1.2", 4, null);
+        assertTrue(jsonNull.contains("\"server_id\":\"default\""), "Expected default server_id: " + jsonNull);
+
+        String json5Arg = GrimBridge.buildFlagPayload(uuid, "Player", "Fly", "dy=1.2", 4);
+        assertTrue(json5Arg.contains("\"server_id\":\"default\""), "Expected default server_id: " + json5Arg);
+    }
+
+    // -----------------------------------------------------------------------
+    // Constructor & serverId
+    // -----------------------------------------------------------------------
+
+    @Test
+    void constructor_customServerId() {
+        GrimBridge customBridge = new GrimBridge(null, apiClient, "survival-1");
+        assertEquals("survival-1", customBridge.getServerId());
+    }
+
+    @Test
+    void constructor_defaultServerId_whenNullOrBlank() {
+        GrimBridge defaultBridge = new GrimBridge(null, apiClient);
+        assertEquals("default", defaultBridge.getServerId());
+
+        GrimBridge nullBridge = new GrimBridge(null, apiClient, null);
+        assertEquals("default", nullBridge.getServerId());
+
+        GrimBridge blankBridge = new GrimBridge(null, apiClient, "   ");
+        assertEquals("default", blankBridge.getServerId());
+    }
+
     // -----------------------------------------------------------------------
     // isRegistered starts false (register() not called — needs Bukkit)
     // -----------------------------------------------------------------------

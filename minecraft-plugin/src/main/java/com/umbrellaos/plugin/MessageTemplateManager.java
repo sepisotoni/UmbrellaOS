@@ -46,6 +46,9 @@ public class MessageTemplateManager {
     public static final String KEY_CHAT_RESPONDER_COOLDOWN = "chat_responder.cooldown_seconds";
     public static final String KEY_CHAT_RESPONDER_STYLE    = "chat_responder.response_style";
 
+    // Maintenance kick message
+    public static final String KEY_MAINTENANCE_KICK = "maintenance.kick_message";
+
     /** Built-in fallbacks used before the first successful fetch. */
     private static final Map<String, String> DEFAULTS;
     static {
@@ -58,6 +61,7 @@ public class MessageTemplateManager {
         d.put(KEY_CHAT_RESPONDER_KEYWORDS, "[\"how to join\",\"whats the ip\",\"what are the rules\"]");
         d.put(KEY_CHAT_RESPONDER_COOLDOWN, "60");
         d.put(KEY_CHAT_RESPONDER_STYLE,    "friendly and brief, 1-2 sentences max");
+        d.put(KEY_MAINTENANCE_KICK,        "The server is currently under maintenance. Please try again later.");
         DEFAULTS = Collections.unmodifiableMap(d);
     }
 
@@ -65,6 +69,7 @@ public class MessageTemplateManager {
         KEY_INGAME_PROMPT, KEY_INGAME_SUCCESS,
         KEY_GREETER_FIRST_JOIN, KEY_GREETER_RETURN_JOIN, KEY_DISCORD_INVITE,
         KEY_CHAT_RESPONDER_KEYWORDS, KEY_CHAT_RESPONDER_COOLDOWN, KEY_CHAT_RESPONDER_STYLE,
+        KEY_MAINTENANCE_KICK,
     };
 
     private final Plugin plugin;

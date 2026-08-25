@@ -14,3 +14,32 @@ website: https://github.com/sepisotoni/UmbrellaOS
 # which is required for our compile-time import of GrimAC's EventBus API.
 softdepend:
   - GrimAC
+
+commands:
+  verify:
+    description: Link your Minecraft account to Discord using a verification code.
+    usage: /verify <code>
+    permission: umbrellaos.verify
+    permission-message: §cYou do not have permission to use this command.
+  umbrella:
+    description: UmbrellaOS plugin status and help commands.
+    usage: /umbrella <status|help>
+    aliases: [uos]
+    permission: umbrellaos.umbrella
+    permission-message: §cYou do not have permission to use this command.
+  appeal:
+    description: Get information on appealing a server punishment.
+    usage: /appeal
+    permission: umbrellaos.appeal
+    permission-message: §cYou do not have permission to use this command.
+
+permissions:
+  umbrellaos.verify:
+    description: Allows players to verify their account with Discord.
+    default: true
+  umbrellaos.umbrella:
+    description: Allows players to view UmbrellaOS status and help.
+    default: true
+  umbrellaos.appeal:
+    description: Allows players to view appeal information.
+    default: true
