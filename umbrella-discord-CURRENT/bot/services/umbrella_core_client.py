@@ -26,6 +26,7 @@ prevent replay attacks.
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import time
 from typing import Any
@@ -54,9 +55,8 @@ class UmbrellaCoreClient:
         self._transport = transport
 
     def _make_auth_headers(self) -> dict[str, str]:
-        """Derive a per-request PBKDF2-HMAC-SHA256 MAC from the shared
-        secret. The raw key is never sent — core re-derives the same MAC
-        server-side and compares with hmac.compare_digest()."""
+        """Synchronous MAC derivation — only call from _make_auth_headers_async.
+        Kept separate so asyncio.to_thread can run it without capturing self."""
         ts = int(time.time())
         mac = hashlib.pbkdf2_hmac(
             "sha256",
@@ -66,6 +66,13 @@ class UmbrellaCoreClient:
             dklen=32,
         ).hex()
         return {"X-Auth-MAC": mac, "X-Auth-Timestamp": str(ts)}
+
+    async def _make_auth_headers_async(self) -> dict[str, str]:
+        """Offload the blocking PBKDF2 computation to a thread so it cannot
+        stall the event loop and block Discord heartbeats (100k iterations
+        takes ~500ms on low-power containers — long enough to trigger
+        'heartbeat blocked' warnings and gateway disconnects)."""
+        return await asyncio.to_thread(self._make_auth_headers)
 
     async def invoke(
         self, capability_name: str, params: dict[str, Any], *, discord_user_id: str | None = None
@@ -92,7 +99,7 @@ class UmbrellaCoreClient:
         exactly, so this is purely additive.
         """
         url = f"{self._base_url}/api/v1/capabilities/{capability_name}/invoke"
-        headers = self._make_auth_headers()
+        headers = await self._make_auth_headers_async()
         if discord_user_id is not None:
             headers["X-Discord-User-Id"] = discord_user_id
 
@@ -122,7 +129,7 @@ class UmbrellaCoreClient:
         useful for a cog building help text or validating a capability
         name exists before invoking it."""
         url = f"{self._base_url}/api/v1/capabilities"
-        headers = self._make_auth_headers()
+        headers = await self._make_auth_headers_async()
 
         try:
             async with httpx.AsyncClient(timeout=self._timeout, transport=self._transport) as client:
@@ -139,7 +146,7 @@ class UmbrellaCoreClient:
         """Register this bot's webhook URL with umbrella-core so it can
         receive push events (Phase 16B Task B). Called once on startup."""
         url = f"{self._base_url}/api/v1/bot/register"
-        headers = self._make_auth_headers()
+        headers = await self._make_auth_headers_async()
 
         try:
             async with httpx.AsyncClient(timeout=self._timeout, transport=self._transport) as client:
@@ -158,7 +165,7 @@ class UmbrellaCoreClient:
         response. Uses the same PBKDF2 auth headers as every other method.
         Raises UmbrellaCoreError on non-2xx responses or network failures."""
         url = f"{self._base_url}{path}"
-        headers = self._make_auth_headers()
+        headers = await self._make_auth_headers_async()
 
         try:
             async with httpx.AsyncClient(timeout=self._timeout, transport=self._transport) as client:
@@ -187,7 +194,7 @@ class UmbrellaCoreClient:
         model_used, latency_ms). Uses the same PBKDF2 auth headers as every
         other method. Raises UmbrellaCoreError on failure."""
         url = f"{self._base_url}/api/v1/ai/copilot"
-        headers = self._make_auth_headers()
+        headers = await self._make_auth_headers_async()
         payload: dict[str, Any] = {"message": message}
         if context is not None:
             payload["context"] = context
