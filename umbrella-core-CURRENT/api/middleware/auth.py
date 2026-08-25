@@ -66,23 +66,10 @@ async def require_admin_hmac_or_session(
     x_auth_mac: str | None = Header(default=None),
     x_auth_timestamp: str | None = Header(default=None),
     x_admin_key: str | None = Security(admin_key_header),
+    x_plugin_key: str | None = Security(plugin_key_header),
     authorization: str | None = Header(None),
     db: AsyncSession = Depends(get_db),
 ) -> str:
-    """
-    Authentication dependency for bot-facing routes (Phase 16B Task A).
-
-    Accepts either:
-    1. PBKDF2-HMAC-SHA256 MAC (X-Auth-MAC + X-Auth-Timestamp) — the bot
-       derives the MAC from the shared secret; core re-derives and compares
-       with hmac.compare_digest(). Requests outside a ±30-second window are
-       rejected to prevent replay attacks.
-    2. Raw admin key or Bearer session token — falls through to the existing
-       require_admin_key() path for non-bot callers that haven't migrated.
-
-    The raw-key path (require_admin_key) is NOT removed — dashboard and
-    other callers continue using it unmodified.
-    """
     if x_auth_mac and x_auth_timestamp:
         try:
             ts = int(x_auth_timestamp)
@@ -100,7 +87,11 @@ async def require_admin_hmac_or_session(
         if not hmac.compare_digest(expected, x_auth_mac):
             raise HTTPException(status_code=401, detail="Invalid MAC")
         return "hmac"
-    # Fall through to existing key/session logic
+    # Accept plugin key — matches secret_key or admin_key
+    key = x_plugin_key or x_admin_key
+    if key and (key == settings.secret_key or key == settings.admin_key):
+        return "plugin"
+    # Fall through to session token
     return await require_admin_key(x_admin_key, authorization, db)
 
 
