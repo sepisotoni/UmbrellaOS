@@ -14,17 +14,18 @@ Phase 8 will expand with:
     POST /api/v1/events/player-join  — join check (verification, bans)
     POST /api/v1/events/batch        — bulk event ingestion for replay buffer
 """
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text, select
+from sqlalchemy import text, select, delete, func
 from datetime import datetime, timezone
 from database import get_db
 from models.setting import Setting
 from models.plugin_heartbeat import PluginHeartbeat
 from models.plugin_command import PluginCommand
 from models.player import Punishment
-from api.middleware.auth import require_plugin_key
+from models.plugin_console_line import PluginConsoleLine
+from api.middleware.auth import require_plugin_key, require_admin_hmac_or_session
 from api.schemas.plugin_control import PluginControlRequest
 
 router = APIRouter(prefix="/api/v1/plugin", tags=["plugin"])
@@ -237,3 +238,109 @@ async def plugin_control(
     db.add(command)
     await db.flush()
     return {"ok": True, "command_id": command.id}
+
+
+# ---------------------------------------------------------------------------
+# Console line push/pull — plugin pushes batches, dashboard polls to read.
+# ---------------------------------------------------------------------------
+
+_CONSOLE_CAP = 500  # max lines kept per server_id
+
+
+class ConsoleLinesPayload(BaseModel):
+    lines: list[str]
+
+
+class ConsoleLineRecord(BaseModel):
+    ts: str  # ISO 8601 of captured_at
+    line: str
+
+
+class RecentConsoleResponse(BaseModel):
+    server_id: str
+    lines: list[ConsoleLineRecord]
+
+
+@router.post("/servers/{server_id}/console/lines")
+async def push_console_lines(
+    server_id: str,
+    payload: ConsoleLinesPayload,
+    _auth: str = Depends(require_plugin_key),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """
+    Plugin pushes batches of console lines here.  Core stores them, capped
+    at 500 per server_id — oldest rows are deleted when over the cap.
+    """
+    now = datetime.now(timezone.utc)
+
+    # Bulk-insert new lines
+    new_rows = [
+        PluginConsoleLine(server_id=server_id, line=line, captured_at=now)
+        for line in payload.lines
+        if line  # skip empty strings
+    ]
+    if new_rows:
+        db.add_all(new_rows)
+        await db.flush()
+
+        # Trim to cap: keep the newest _CONSOLE_CAP rows, delete the rest.
+        count_result = await db.execute(
+            select(func.count(PluginConsoleLine.id)).where(
+                PluginConsoleLine.server_id == server_id
+            )
+        )
+        total = count_result.scalar_one()
+
+        if total > _CONSOLE_CAP:
+            # Find the id of the (_CONSOLE_CAP + 1)-th newest row — everything
+            # older than that gets deleted.
+            cutoff_result = await db.execute(
+                select(PluginConsoleLine.id)
+                .where(PluginConsoleLine.server_id == server_id)
+                .order_by(PluginConsoleLine.captured_at.desc())
+                .offset(_CONSOLE_CAP)
+                .limit(1)
+            )
+            cutoff_id = cutoff_result.scalar_one_or_none()
+            if cutoff_id is not None:
+                await db.execute(
+                    delete(PluginConsoleLine).where(
+                        PluginConsoleLine.server_id == server_id,
+                        PluginConsoleLine.id <= cutoff_id,
+                    )
+                )
+
+    return {"ok": True, "stored": len(new_rows)}
+
+
+@router.get("/servers/{server_id}/console/recent", response_model=RecentConsoleResponse)
+async def get_recent_console(
+    server_id: str,
+    n: int = Query(default=100, ge=1, le=500),
+    _auth: str = Depends(require_admin_hmac_or_session),
+    db: AsyncSession = Depends(get_db),
+) -> RecentConsoleResponse:
+    """
+    Return the N most recent console lines for this server.
+    Accepts plugin key, admin key, HMAC, or a valid dashboard session token
+    so both the dashboard and the plugin can call it.
+    Lines are returned in chronological order (oldest first within the N).
+    """
+    result = await db.execute(
+        select(PluginConsoleLine)
+        .where(PluginConsoleLine.server_id == server_id)
+        .order_by(PluginConsoleLine.captured_at.desc())
+        .limit(n)
+    )
+    rows = result.scalars().all()
+    # rows are newest-first; reverse for chronological output
+    rows = list(reversed(rows))
+
+    return RecentConsoleResponse(
+        server_id=server_id,
+        lines=[
+            ConsoleLineRecord(ts=row.captured_at.isoformat(), line=row.line)
+            for row in rows
+        ],
+    )
