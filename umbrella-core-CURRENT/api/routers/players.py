@@ -389,6 +389,81 @@ async def get_player_full_profile(
     )
 
 
+class PlayerSnapshotRequest(BaseModel):
+    uuid: str
+    name: str
+    ip: str | None = None
+    brand: str | None = None
+    ping: int | None = None
+    protocol_version: int | None = None
+    event: str | None = None  # "join" | "quit" | "snapshot"
+    action: str | None = None
+
+
+from api.middleware.auth import require_plugin_key
+
+@router.post("/{uuid}/snapshot", status_code=200)
+async def player_snapshot(
+    uuid: str,
+    body: PlayerSnapshotRequest,
+    db: AsyncSession = Depends(get_db),
+    _auth: str = Depends(require_plugin_key),
+) -> dict:
+    """
+    Called by the Minecraft plugin on every player join/quit.
+    Upserts the player record and logs the IP address.
+    """
+    from models.player import IPAddress
+    import uuid as uuid_lib
+
+    now = datetime.now(timezone.utc)
+    event = body.event or body.action or "snapshot"
+
+    # Upsert player
+    result = await db.execute(select(Player).where(Player.uuid == uuid))
+    player = result.scalar_one_or_none()
+
+    if player is None:
+        player = Player(
+            uuid=uuid,
+            username=body.name,
+            first_seen=now,
+            last_seen=now,
+            joins=1 if event == "join" else 0,
+        )
+        db.add(player)
+    else:
+        player.username = body.name
+        player.last_seen = now
+        if event == "join":
+            player.joins = (player.joins or 0) + 1
+
+    await db.flush()
+
+    # Upsert IP address if provided
+    if body.ip and body.ip not in ("127.0.0.1", "0.0.0.0"):
+        ip_result = await db.execute(
+            select(IPAddress).where(
+                IPAddress.player_uuid == uuid,
+                IPAddress.ip_address == body.ip,
+            )
+        )
+        ip_row = ip_result.scalar_one_or_none()
+        if ip_row is None:
+            db.add(IPAddress(
+                id=str(uuid_lib.uuid4()),
+                player_uuid=uuid,
+                ip_address=body.ip,
+                first_seen=now,
+                last_seen=now,
+            ))
+        else:
+            ip_row.last_seen = now
+
+    await db.commit()
+    return {"status": "ok", "uuid": uuid, "event": event}
+
+
 @router.get("/{uuid}", response_model=PlayerDetailSchema)
 async def get_player(
     uuid: str,
