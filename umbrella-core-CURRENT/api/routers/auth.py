@@ -46,12 +46,24 @@ class UserSchema(BaseModel):
     role_id: str | None
     role: str | None = None
     permissions: list[str] = []
+    avatar_url: str | None = None
     is_active: bool
     created_at: datetime
     updated_at: datetime
 
     class Config:
         from_attributes = True
+
+
+def _compute_avatar_url(discord_id: str, avatar_hash: str | None) -> str:
+    """Compute Discord CDN avatar URL from avatar hash or discriminator/ID fallback."""
+    if avatar_hash:
+        return f"https://cdn.discordapp.com/avatars/{discord_id}/{avatar_hash}.png?size=128"
+    try:
+        disc_num = int(discord_id) % 5
+    except (ValueError, TypeError):
+        disc_num = 0
+    return f"https://cdn.discordapp.com/embed/avatars/{disc_num}.png"
 
 
 async def _user_to_schema(user: User, db: AsyncSession) -> UserSchema:
@@ -78,6 +90,7 @@ async def _user_to_schema(user: User, db: AsyncSession) -> UserSchema:
         role_id=user.role_id,
         role=role_name,
         permissions=permissions,
+        avatar_url=_compute_avatar_url(user.discord_id, getattr(user, "discord_avatar_hash", None)),
         is_active=user.is_active,
         created_at=user.created_at,
         updated_at=user.updated_at,
@@ -321,6 +334,7 @@ async def discord_callback(
     discord_id = discord_user["id"]
     username = discord_user.get("global_name") or discord_user.get("username", "unknown")
     email = discord_user.get("email")
+    avatar_hash = discord_user.get("avatar")
 
     user_result = await db.execute(select(User).where(User.discord_id == discord_id))
     user = user_result.scalar_one_or_none()
@@ -349,6 +363,7 @@ async def discord_callback(
             username=username,
             email=email,
             role_id=role_id,
+            discord_avatar_hash=avatar_hash,
         )
         db.add(user)
         await db.flush()
@@ -357,6 +372,7 @@ async def discord_callback(
             raise HTTPException(status_code=403, detail="Account is deactivated")
 
         user.username = username
+        user.discord_avatar_hash = avatar_hash
         if email:
             user.email = email
         await db.flush()

@@ -27,6 +27,7 @@ class User(Base):
     role_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("roles.id", ondelete="SET NULL"), nullable=True
     )
+    discord_avatar_hash: Mapped[str | None] = mapped_column(String(32), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     # Per-user nav/feature exceptions — grants access to specific gated
