@@ -80,8 +80,12 @@ public final class UmbrellaPlugin extends JavaPlugin {
         // GrimBridge: soft-dependency — register() checks isPluginEnabled("GrimAC")
         // internally and logs the outcome either way. No extra config needed; if
         // GrimAC is absent the bridge stays inactive and everything else runs normally.
-        grimBridge = new GrimBridge(this, apiClient, serverId);
-        grimBridge.register();
+        try {
+            grimBridge = new GrimBridge(this, apiClient, serverId);
+            grimBridge.register();
+        } catch (Throwable t) {
+            getLogger().info("GrimAC not found or incompatible — anticheat bridge inactive.");
+        }
 
         // Player UX commands: /verify, /umbrella, /appeal
         verificationCommand = new VerificationCommand(this, apiClient, messageTemplateManager, grimBridge);
@@ -95,7 +99,7 @@ public final class UmbrellaPlugin extends JavaPlugin {
         getLogger().info("UmbrellaOS plugin enabled — core: " + baseUrl
                 + ", heartbeat every " + heartbeatIntervalSeconds + "s"
                 + ", command poll every " + commandPollIntervalSeconds + "s"
-                + (grimBridge.isRegistered() ? ", GrimAC bridge: ACTIVE" : ", GrimAC bridge: inactive"));
+                + ((grimBridge != null && grimBridge.isRegistered()) ? ", GrimAC bridge: ACTIVE" : ", GrimAC bridge: inactive"));
     }
 
     private void registerCommand(String name, VerificationCommand executor) {
