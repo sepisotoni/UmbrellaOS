@@ -6,6 +6,10 @@ Discord bot, CLI, external integrations — are the intended users of API
 keys; see services/api_key_service.py for why a key can never carry
 superuser/wildcard access).
 """
+import hashlib
+import hmac
+import time
+
 from fastapi import Depends, Header, Security
 from fastapi.exceptions import HTTPException
 from starlette.requests import Request
@@ -13,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.middleware.errors import AppException
 from api.middleware.session import admin_key_header, require_admin_key_or_session
+from config import settings
 from database import get_db
 from models import User
 from models.api_key import ApiKey
@@ -24,6 +29,8 @@ async def require_capability_auth(
     request: Request,
     x_api_key: str | None = Header(default=None),
     x_admin_key: str | None = Security(admin_key_header),
+    x_auth_mac: str | None = Header(default=None),
+    x_auth_timestamp: str | None = Header(default=None),
     authorization: str | None = Header(default=None),
     db: AsyncSession = Depends(get_db),
 ) -> User | str | ApiKey:
@@ -52,6 +59,25 @@ async def require_capability_auth(
     """
     client_ip = request.client.host if request.client else None
     try:
+        # PBKDF2 MAC from the Discord bot (Phase 16B) — checked first so the
+        # bot never needs an API key or session token to call capabilities.
+        if x_auth_mac and x_auth_timestamp:
+            try:
+                ts = int(x_auth_timestamp)
+            except ValueError:
+                raise HTTPException(status_code=401, detail="Invalid timestamp")
+            if abs(time.time() - ts) > 30:
+                raise HTTPException(status_code=401, detail="Timestamp out of window")
+            expected = hashlib.pbkdf2_hmac(
+                "sha256",
+                settings.admin_key.encode(),
+                str(ts).encode(),
+                100_000,
+                dklen=32,
+            ).hex()
+            if not hmac.compare_digest(expected, x_auth_mac):
+                raise HTTPException(status_code=401, detail="Invalid MAC")
+            return "hmac"
         if x_api_key is not None:
             return await ApiKeyService.verify_api_key(db, x_api_key)
         return await require_admin_key_or_session(x_admin_key, authorization, db)
