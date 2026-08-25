@@ -38,11 +38,11 @@ async def require_plugin_key(
     x_plugin_key: str | None = Security(plugin_key_header),
     x_admin_key: str | None = Security(admin_key_header),
 ) -> str:
-    """Accept X-Plugin-Key or X-Admin-Key (same secret)."""
+    """Accept X-Plugin-Key or X-Admin-Key (plugin key matches SECRET_KEY or ADMIN_KEY)."""
     key = x_plugin_key or x_admin_key
-    if not key or key != settings.secret_key:
-        raise HTTPException(status_code=401, detail="Invalid or missing plugin key")
-    return key
+    if key and (key == settings.secret_key or key == settings.admin_key):
+        return key
+    raise HTTPException(status_code=401, detail="Invalid or missing plugin key")
 
 
 async def require_admin_key(
