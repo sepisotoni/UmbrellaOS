@@ -20,8 +20,11 @@ export const ConsoleView: React.FC = () => {
   const [commandInput, setCommandInput] = useState<string>('');
   const [logs, setLogs] = useState<string[]>([]);
   const [wsStatus, setWsStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error'>('connecting');
+  const [streamMode, setStreamMode] = useState<'live' | 'plugin' | 'none'>('none');
   const wsRef = useRef<WebSocket | null>(null);
   const terminalEndRef = useRef<HTMLDivElement | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const seenLinesRef = useRef<Set<string>>(new Set());
 
   // Sync selectedServerId if passed from navigation
   useEffect(() => {
@@ -42,15 +45,53 @@ export const ConsoleView: React.FC = () => {
     }).catch(() => {});
   }, []);
 
+  // Start plugin-log polling fallback (called when WS is error/disconnected)
+  const startPolling = (serverId: string) => {
+    if (pollRef.current) return; // already polling
+    setStreamMode('plugin');
+    pollRef.current = setInterval(async () => {
+      try {
+        const data = await api.getPluginConsoleLogs(serverId, 100);
+        if (data && data.lines) {
+          setLogs((prev) => {
+            const newLines: string[] = [];
+            data.lines.forEach(({ ts, line }) => {
+              const key = `${ts}::${line}`;
+              if (!seenLinesRef.current.has(key)) {
+                seenLinesRef.current.add(key);
+                newLines.push(`[${ts.slice(11, 19)}] ${line}`);
+              }
+            });
+            return newLines.length > 0 ? [...prev, ...newLines] : prev;
+          });
+        }
+      } catch {
+        // silently ignore poll errors — WS is already down
+      }
+    }, 3000);
+  };
+
+  const stopPolling = () => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    setStreamMode('none');
+  };
+
   // Connect WebSocket on mount & when activeServerId changes; disconnect on unmount
   useEffect(() => {
     if (!activeServerId) return;
+
+    stopPolling();
+    seenLinesRef.current = new Set();
 
     setLogs((prev) => [
       ...prev,
       `[UmbrellaOS Console] Initializing real-time telemetry stream for ${activeServerId}...`,
     ]);
     setWsStatus('connecting');
+    setStreamMode('none');
 
     const wsUrl = api.getServerConsoleWebSocketUrl(activeServerId);
     let ws: WebSocket;
@@ -60,6 +101,8 @@ export const ConsoleView: React.FC = () => {
 
       ws.onopen = () => {
         setWsStatus('connected');
+        setStreamMode('live');
+        stopPolling();
         setLogs((prev) => [
           ...prev,
           `[UmbrellaOS Console] Connected to ${activeServerId} terminal stream.`,
@@ -74,23 +117,26 @@ export const ConsoleView: React.FC = () => {
         setWsStatus('error');
         setLogs((prev) => [
           ...prev,
-          `[UmbrellaOS Console] WebSocket error connecting to ${activeServerId}. Ready for fallback command dispatcher.`,
+          `[UmbrellaOS Console] WebSocket unavailable — switching to plugin log polling.`,
         ]);
+        startPolling(activeServerId);
       };
 
       ws.onclose = () => {
         setWsStatus('disconnected');
         setLogs((prev) => [
           ...prev,
-          `[UmbrellaOS Console] Stream disconnected from ${activeServerId}.`,
+          `[UmbrellaOS Console] Stream disconnected — switching to plugin log polling.`,
         ]);
+        startPolling(activeServerId);
       };
     } catch (err: any) {
       setWsStatus('error');
       setLogs((prev) => [
         ...prev,
-        `[UmbrellaOS Console] Failed to instantiate WebSocket: ${err.message}`,
+        `[UmbrellaOS Console] WebSocket unavailable — switching to plugin log polling.`,
       ]);
+      startPolling(activeServerId);
     }
 
     return () => {
@@ -98,6 +144,7 @@ export const ConsoleView: React.FC = () => {
         wsRef.current.close();
         wsRef.current = null;
       }
+      stopPolling();
     };
   }, [activeServerId]);
 
@@ -155,6 +202,16 @@ export const ConsoleView: React.FC = () => {
             >
               {wsStatus.toUpperCase()}
             </span>
+            {streamMode === 'live' && (
+              <span className="text-xs px-2 py-0.5 rounded font-mono border bg-emerald-950/60 text-emerald-300 border-emerald-800/40">
+                ⚡ Live stream
+              </span>
+            )}
+            {streamMode === 'plugin' && (
+              <span className="text-xs px-2 py-0.5 rounded font-mono border bg-purple-950/60 text-purple-300 border-purple-800/40">
+                🔌 Plugin stream
+              </span>
+            )}
           </h1>
           <p className="text-xs text-slate-400 mt-1">
             Real-time live logs, standard output, and interactive administrative command execution.

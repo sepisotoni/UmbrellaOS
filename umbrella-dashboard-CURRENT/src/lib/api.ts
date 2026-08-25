@@ -474,6 +474,15 @@ export class UmbrellaApiClient {
     });
   }
 
+  public async getPluginConsoleLogs(
+    serverId: string,
+    n = 100,
+  ): Promise<{ server_id: string; lines: { ts: string; line: string }[] }> {
+    return this.request(
+      `/api/v1/plugin/servers/${encodeURIComponent(serverId)}/console/recent?n=${n}`,
+    );
+  }
+
   private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const headers = new Headers(options.headers || {});
 
