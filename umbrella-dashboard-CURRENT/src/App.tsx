@@ -146,6 +146,7 @@ const DashboardContent: React.FC = () => {
 
   const renderActiveView = () => {
     switch (activeTab) {
+      case 'overview':
         return (
           <OverviewView
             onOpenBanModal={() => handleOpenBanModalWithTarget('')}
