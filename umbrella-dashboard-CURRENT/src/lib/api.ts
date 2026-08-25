@@ -568,11 +568,11 @@ export class UmbrellaApiClient {
   // Servers & Fleet
   // --------------------------------------------------------------------------
   public async getServers(): Promise<ServerRecord[]> {
-    return this.request<ServerRecord[]>('/api/v1/servers');
+    return this.request<ServerRecord[]>('/api/v1/dashboard/servers');
   }
 
   public async getServer(id: string): Promise<ServerRecord> {
-    return this.request<ServerRecord>(`/api/v1/servers/${encodeURIComponent(id)}`);
+    return this.request<ServerRecord>(`/api/v1/dashboard/servers/${encodeURIComponent(id)}`);
   }
 
   public async restartServer(id: string): Promise<{ success: boolean; message: string }> {
