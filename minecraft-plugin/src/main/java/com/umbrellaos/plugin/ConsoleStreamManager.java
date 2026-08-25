@@ -1,5 +1,9 @@
 package com.umbrellaos.plugin;
 
+import org.bukkit.plugin.java.JavaPlugin;
+
+import java.io.IOException;
+import java.net.http.HttpResponse;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -10,6 +14,7 @@ import java.util.logging.Handler;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 import java.util.logging.SimpleFormatter;
+import java.util.stream.Collectors;
 
 /**
  * Thread-safe manager for capturing and buffering server console log lines.
@@ -136,6 +141,44 @@ public class ConsoleStreamManager {
         try {
             Logger.getLogger("").addHandler(logHandler);
         } catch (Exception ignored) {}
+    }
+
+    /**
+     * Schedules a repeating Bukkit task that pushes the most recent console
+     * lines to umbrella-core every {@code intervalTicks} ticks (100 ticks = 5s).
+     *
+     * <p>The task sends the last {@code batchSize} lines each cycle. Core
+     * stores them capped at 500 per server and the dashboard polls the GET
+     * endpoint to display them when WebSocket is unavailable.
+     *
+     * @param plugin        owning plugin (needed for scheduler)
+     * @param client        authenticated core API client
+     * @param serverId      the server's umbrella-core server_id
+     * @param intervalTicks ticks between pushes (100 = 5s at 20 TPS)
+     */
+    public void startPushing(JavaPlugin plugin, CoreApiClient client, String serverId, long intervalTicks) {
+        plugin.getServer().getScheduler().runTaskTimerAsynchronously(plugin, () -> {
+            List<String> lines = getRecentLines(50);
+            if (lines.isEmpty()) return;
+
+            // Build JSON array of line strings
+            String jsonArray = lines.stream()
+                    .map(l -> "\"" + l.replace("\\", "\\\\").replace("\"", "\\\"")
+                            .replace("\n", "\\n").replace("\r", "\\r") + "\"")
+                    .collect(Collectors.joining(",", "[", "]"));
+            String body = "{\"lines\": " + jsonArray + "}";
+
+            try {
+                HttpResponse<String> resp = client.post(
+                        "/api/v1/plugin/servers/" + serverId + "/console/lines", body);
+                if (resp.statusCode() != 200) {
+                    client.logger().warning("[ConsoleStreamManager] Push returned HTTP "
+                            + resp.statusCode() + " — " + resp.body());
+                }
+            } catch (IOException | InterruptedException e) {
+                client.logger().warning("[ConsoleStreamManager] Push failed: " + e.getMessage());
+            }
+        }, intervalTicks, intervalTicks);
     }
 
     /**

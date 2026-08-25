@@ -75,8 +75,10 @@ public final class UmbrellaPlugin extends JavaPlugin {
         chatResponderListener = new ChatResponderListener(this, apiClient, messageTemplateManager, serverName);
         getServer().getPluginManager().registerEvents(chatResponderListener, this);
 
-        // Console stream manager — starts capturing console log records
+        // Console stream manager — starts capturing console log records, then
+        // schedules periodic pushes to core so the dashboard can poll them.
         consoleStreamManager.startCapture();
+        consoleStreamManager.startPushing(this, apiClient, serverId, 100L);
 
         // GrimBridge: soft-dependency — register() checks isPluginEnabled("GrimAC")
         // internally and logs the outcome either way. No extra config needed; if
