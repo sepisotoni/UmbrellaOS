@@ -146,7 +146,7 @@ DEFAULT_SETTINGS: list[tuple] = [
      "true",
      "chat_responder", "Enable or disable the AI chat keyword responder", False, False),
     ("chat_responder.keywords",
-     '["how to join","whats the ip","what's the ip","how do i rank up","discord link","how do i appeal","how do i verify","what are the rules"]',
+     '["how to join","whats the ip","what\'s the ip","how do i rank up","discord link","how do i appeal","how do i verify","what are the rules"]',
      "chat_responder", "JSON array of keyword phrases that trigger an AI response", False, False),
     ("chat_responder.cooldown_seconds",
      "60",
