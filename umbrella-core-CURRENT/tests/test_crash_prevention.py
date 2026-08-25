@@ -33,7 +33,7 @@ async def test_no_risk_for_stable_healthy_tps(db_session):
     async with db_session() as db:
         await _add_snapshots(db, "srv-2", [20.0, 19.8, 20.0, 19.9, 20.0])
         result = await assess_crash_risk(db, "srv-2")
-        assert result.risk_level == CrashRiskLevel.NONE
+        assert result.risk_level == CrashRiskLevel.LOW
 
 
 @pytest.mark.asyncio
@@ -55,7 +55,7 @@ async def test_watch_when_trending_down_and_below_watch_threshold(db_session, mo
         # first half avg ~20, second half avg ~16 -> trending down by ~4, current 15 < watch(18)
         await _add_snapshots(db, "srv-4", [20.0, 20.0, 17.0, 16.0, 15.0])
         result = await assess_crash_risk(db, "srv-4")
-        assert result.risk_level == CrashRiskLevel.WATCH
+        assert result.risk_level == CrashRiskLevel.MEDIUM
 
 
 @pytest.mark.asyncio
@@ -67,7 +67,7 @@ async def test_no_watch_if_trending_down_but_still_above_watch_threshold(db_sess
     async with db_session() as db:
         await _add_snapshots(db, "srv-5", [20.0, 20.0, 19.0, 18.5, 18.0])
         result = await assess_crash_risk(db, "srv-5")
-        assert result.risk_level == CrashRiskLevel.NONE
+        assert result.risk_level == CrashRiskLevel.LOW
 
 
 @pytest.mark.asyncio

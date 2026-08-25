@@ -198,8 +198,8 @@ class CrashRiskResponse(BaseModel):
 
 _RISK_RECOMMENDATIONS: dict[str, str] = {
     CrashRiskLevel.INSUFFICIENT_DATA.value: "Not enough data to assess risk. Continue monitoring.",
-    CrashRiskLevel.NONE.value: "Server is healthy. No action required.",
-    CrashRiskLevel.WATCH.value: "TPS is declining. Consider investigating chunk loading, entities, or player activity.",
+    CrashRiskLevel.LOW.value: "Server is healthy. No action required.",
+    CrashRiskLevel.MEDIUM.value: "TPS is declining. Consider investigating chunk loading, entities, or player activity.",
     CrashRiskLevel.CRITICAL.value: "Server is at risk of becoming unresponsive. Immediate action recommended.",
 }
 
