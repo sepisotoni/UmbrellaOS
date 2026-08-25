@@ -398,6 +398,7 @@ export type FeatureFlag = FeatureFlagResponse;
 export interface SettingRecord {
   key: string;
   value: string;
+  category?: string;
   description?: string;
   sensitive?: boolean;
 }
