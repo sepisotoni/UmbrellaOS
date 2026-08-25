@@ -244,10 +244,22 @@ export const AITasksView: React.FC = () => {
                   >
                     <div className="flex items-center justify-between border-b border-[#1e1b4b] pb-2">
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-white uppercase">{task.action_type || 'PROPOSED ACTION'}</span>
-                        <span className="px-2 py-0.5 rounded bg-purple-950/80 text-purple-300 text-[10px]">
-                          Target: {task.target_id}
-                        </span>
+                        <span className="font-bold text-white uppercase">{task.task_type || 'PROPOSED ACTION'}</span>
+                        {task.player_uuid && (
+                          <span className="px-2 py-0.5 rounded bg-purple-950/80 text-purple-300 text-[10px]">
+                            Target: {task.player_uuid.slice(0, 12)}…
+                          </span>
+                        )}
+                        {task.ai_recommendation && (
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            task.ai_recommendation === 'REJECT'
+                              ? 'bg-rose-950/80 text-rose-300'
+                              : 'bg-emerald-950/80 text-emerald-300'
+                          }`}>
+                            AI: {task.ai_recommendation}
+                            {task.ai_confidence ? ` (${Math.round(task.ai_confidence * 100)}%)` : ''}
+                          </span>
+                        )}
                       </div>
                       <span className="text-slate-500 text-[10px]">
                         {task.created_at ? new Date(task.created_at).toLocaleString() : 'Recent'}
@@ -255,7 +267,7 @@ export const AITasksView: React.FC = () => {
                     </div>
 
                     <div className="text-slate-300 font-sans text-xs bg-[#0b0f24] p-3 rounded-lg border border-[#1e1b4b]">
-                      {task.reasoning || task.description}
+                      {task.ai_summary || 'No summary available.'}
                     </div>
 
                     <div className="flex justify-end gap-2 pt-1">
