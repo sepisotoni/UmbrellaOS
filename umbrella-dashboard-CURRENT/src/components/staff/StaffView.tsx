@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { api, StaffMember, DiscordGuildMember } from '../../lib/api';
+import React, { useState, useEffect, useMemo } from 'react';
+import { api, StaffMember, DiscordGuildMember, RoleSchema } from '../../lib/api';
 import { useDashboard } from '../../context/DashboardContext';
 import { DisconnectedBanner } from '../common/DisconnectedBanner';
 import {
@@ -7,25 +7,20 @@ import {
   UserPlus,
   RefreshCw,
   AlertCircle,
-  Shield,
-  Trash2,
-  CheckCircle2,
   X,
-  User,
-  ExternalLink,
 } from 'lucide-react';
 
 export const StaffView: React.FC = () => {
   const { addToast } = useDashboard();
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
   const [discordMembers, setDiscordMembers] = useState<DiscordGuildMember[]>([]);
+  const [roles, setRoles] = useState<RoleSchema[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
   // Add staff modal state
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
   const [newDiscordId, setNewDiscordId] = useState<string>('');
-  const [newUsername, setNewUsername] = useState<string>('');
   const [newRole, setNewRole] = useState<string>('moderator');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
@@ -33,9 +28,10 @@ export const StaffView: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const [staffRes, discordRes] = await Promise.allSettled([
+      const [staffRes, discordRes, rolesRes] = await Promise.allSettled([
         api.getStaffMembers(),
         api.getDiscordGuildMembers(),
+        api.getRoles(),
       ]);
 
       if (staffRes.status === 'fulfilled') {
@@ -46,6 +42,14 @@ export const StaffView: React.FC = () => {
 
       if (discordRes.status === 'fulfilled') {
         setDiscordMembers(discordRes.value || []);
+      }
+
+      if (rolesRes.status === 'fulfilled') {
+        const sorted = (rolesRes.value || []).sort((a, b) => {
+          const order = ['owner', 'admin', 'moderator', 'helper', 'member'];
+          return order.indexOf(a.name) - order.indexOf(b.name);
+        });
+        setRoles(sorted);
       }
     } catch (err: any) {
       setError(err.message || 'Failed to fetch staff roster');
@@ -102,7 +106,6 @@ export const StaffView: React.FC = () => {
     try {
       await api.addStaffMember({
         discord_id: newDiscordId.trim(),
-        username: newUsername.trim() || undefined,
         role: newRole,
       });
       addToast({
@@ -112,7 +115,6 @@ export const StaffView: React.FC = () => {
       });
       setIsAddModalOpen(false);
       setNewDiscordId('');
-      setNewUsername('');
       fetchStaffData();
     } catch (err: any) {
       addToast({
@@ -123,6 +125,30 @@ export const StaffView: React.FC = () => {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  // Group permissions for the currently selected role in the appoint modal
+  const selectedRoleObj = useMemo(() => {
+    return roles.find((r) => r.name.toLowerCase() === newRole.toLowerCase());
+  }, [roles, newRole]);
+
+  const groupedPerms = useMemo(() => {
+    if (!selectedRoleObj?.permissions) return {};
+    const groups: Record<string, string[]> = {};
+    for (const p of selectedRoleObj.permissions) {
+      const parts = p.split('.');
+      const prefix = parts.length > 1 ? parts[0] : 'general';
+      if (!groups[prefix]) groups[prefix] = [];
+      groups[prefix].push(p);
+    }
+    return groups;
+  }, [selectedRoleObj]);
+
+  const getStaffAvatar = (member: StaffMember) => {
+    if (member.avatar_url) return member.avatar_url;
+    const discordIdInt = Math.abs(parseInt(member.discord_id, 10) || 0);
+    const avatarIndex = discordIdInt % 5;
+    return `https://cdn.discordapp.com/embed/avatars/${avatarIndex}.png`;
   };
 
   return (
@@ -202,18 +228,13 @@ export const StaffView: React.FC = () => {
                 {staffList.map((member) => (
                   <tr key={member.id} className="hover:bg-[#121638]/50 transition">
                     <td className="py-3 font-bold text-white flex items-center gap-2">
-                      {member.avatar_url ? (
-                        <img
-                          src={member.avatar_url}
-                          alt={member.username}
-                          className="h-6 w-6 rounded-full border border-purple-500/40 object-cover"
-                        />
-                      ) : (
-                        <div className="h-6 w-6 rounded-full bg-purple-900/60 border border-purple-500/40 flex items-center justify-center text-[10px] text-purple-300">
-                          {member.username ? member.username.charAt(0).toUpperCase() : 'S'}
-                        </div>
-                      )}
-                      <span>{member.username || 'Staff'}</span>
+                      <img
+                        src={getStaffAvatar(member)}
+                        alt={member.username || 'Staff'}
+                        className="h-6 w-6 rounded-full border border-purple-500/40 object-cover bg-purple-950/80"
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).src = 'https://cdn.discordapp.com/embed/avatars/0.png'; }}
+                      />
+                      <span>{member.username || member.discord_id}</span>
                     </td>
                     <td className="py-3 text-purple-300 font-mono">{member.discord_id}</td>
                     <td className="py-3">
@@ -222,10 +243,13 @@ export const StaffView: React.FC = () => {
                         onChange={(e) => handlePromoteDemote(member.id, e.target.value)}
                         className="rounded border border-[#1e1b4b] bg-[#070914] px-2 py-1 text-xs text-white focus:border-purple-500 focus:outline-none"
                       >
-                        <option value="moderator">Moderator</option>
-                        <option value="senior_mod">Senior Mod</option>
-                        <option value="admin">Admin</option>
-                        <option value="owner">Owner</option>
+                        {roles.length > 0 ? (
+                          roles.map((r) => (
+                            <option key={r.id} value={r.name}>{r.name.toUpperCase()}</option>
+                          ))
+                        ) : (
+                          <option value="moderator">MODERATOR</option>
+                        )}
                       </select>
                     </td>
                     <td className="py-3 text-slate-400">
@@ -286,8 +310,6 @@ export const StaffView: React.FC = () => {
                     value={newDiscordId}
                     onChange={(e) => {
                       setNewDiscordId(e.target.value);
-                      const selected = discordMembers.find((m) => m.id === e.target.value);
-                      if (selected) setNewUsername(selected.username);
                     }}
                     className="w-full rounded-lg border border-[#1e1b4b] bg-[#070914] p-2.5 text-white focus:border-purple-500 focus:outline-none mb-2"
                   >
@@ -317,12 +339,46 @@ export const StaffView: React.FC = () => {
                   onChange={(e) => setNewRole(e.target.value)}
                   className="w-full rounded-lg border border-[#1e1b4b] bg-[#070914] p-2.5 text-white focus:border-purple-500 focus:outline-none"
                 >
-                  <option value="moderator">Moderator</option>
-                  <option value="senior_mod">Senior Mod</option>
-                  <option value="admin">Administrator</option>
-                  <option value="owner">Network Owner</option>
+                  {roles.length > 0 ? (
+                    roles.map((r) => (
+                      <option key={r.id} value={r.name}>
+                        {r.name.toUpperCase()}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="moderator">MODERATOR</option>
+                  )}
                 </select>
+                {selectedRoleObj?.description && (
+                  <p className="text-[11px] text-slate-400 mt-1 italic">
+                    {selectedRoleObj.description}
+                  </p>
+                )}
               </div>
+
+              {/* Resolved Permissions Preview */}
+              {selectedRoleObj && (
+                <div className="rounded-lg border border-[#1e1b4b] bg-[#070914] p-3 space-y-2 max-h-36 overflow-y-auto">
+                  <div className="text-[10px] font-mono uppercase text-slate-400 font-semibold">
+                    Granted Permissions ({selectedRoleObj.permissions?.length || 0})
+                  </div>
+                  {Object.entries(groupedPerms).map(([ns, perms]) => (
+                    <div key={ns} className="space-y-1">
+                      <span className="text-[9px] uppercase font-mono text-slate-500 font-bold block">{ns}</span>
+                      <div className="flex flex-wrap gap-1">
+                        {perms.map((p) => (
+                          <span
+                            key={p}
+                            className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-purple-950/60 text-purple-300 border border-purple-800/40"
+                          >
+                            {p}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               <div className="flex gap-2 pt-2">
                 <button

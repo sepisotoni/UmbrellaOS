@@ -31,6 +31,7 @@ export interface UserSchema {
   role_id: string | null;
   role: string | null;
   permissions: string[];
+  avatar_url: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -283,6 +284,13 @@ export interface DiscordMemberSchema {
 }
 
 export type DiscordGuildMember = DiscordMemberSchema;
+
+export interface RoleSchema {
+  id: string;
+  name: string;
+  description: string;
+  permissions: string[];
+}
 
 // Verification
 export interface VerificationLinkSchema {
@@ -562,6 +570,10 @@ export class UmbrellaApiClient {
 
   public async getMe(): Promise<UserSchema> {
     return this.request<UserSchema>('/api/v1/auth/me');
+  }
+
+  public async getRoles(): Promise<RoleSchema[]> {
+    return this.request<RoleSchema[]>('/api/v1/roles');
   }
 
   // --------------------------------------------------------------------------
