@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useDashboard } from '../../context/DashboardContext';
 import { UmbrellaLogo } from '../common/UmbrellaLogo';
+import { ProfileModal } from '../auth/ProfileModal';
 import {
   Megaphone,
   Radio,
@@ -27,6 +28,8 @@ export const Header: React.FC<HeaderProps> = ({
     currentUser,
     setActiveTab,
   } = useDashboard();
+
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   return (
     <header
@@ -102,14 +105,23 @@ export const Header: React.FC<HeaderProps> = ({
         {currentUser ? (
           <div
             id="header-user-badge"
-            className="flex items-center gap-2 rounded-lg border border-[#141d3d] bg-[#060b1c] px-3 py-1.5 text-xs cursor-pointer hover:border-indigo-500/40"
-            onClick={() => setActiveTab('settings')}
+            className="flex items-center gap-2 rounded-lg border border-[#141d3d] bg-[#060b1c] px-3 py-1.5 text-xs cursor-pointer hover:border-indigo-500/40 transition"
+            onClick={() => setIsProfileOpen(true)}
           >
-            <div className="h-5 w-5 rounded-full bg-indigo-950/80 border border-indigo-400/50 flex items-center justify-center font-bold text-indigo-200 text-[10px]">
-              {currentUser.username ? currentUser.username.charAt(0).toUpperCase() : 'U'}
-            </div>
+            {currentUser.avatar_url ? (
+              <img
+                src={currentUser.avatar_url}
+                alt={currentUser.username}
+                className="h-5 w-5 rounded-full object-cover border border-indigo-400/50"
+                onError={(e) => { (e.currentTarget as HTMLImageElement).src = `https://cdn.discordapp.com/embed/avatars/${Math.abs(parseInt(currentUser.discord_id, 10) || 0) % 5}.png`; }}
+              />
+            ) : (
+              <div className="h-5 w-5 rounded-full bg-indigo-950/80 border border-indigo-400/50 flex items-center justify-center font-bold text-indigo-200 text-[10px]">
+                {currentUser.username ? currentUser.username.charAt(0).toUpperCase() : 'U'}
+              </div>
+            )}
             <span className="font-medium text-slate-200">{currentUser.username}</span>
-            <span className="text-[10px] uppercase font-mono px-1.5 py-0.2 rounded bg-indigo-950/80 text-indigo-300 border border-indigo-800/40">
+            <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-indigo-950/80 text-indigo-300 border border-indigo-800/40">
               {currentUser.role || 'Staff'}
             </span>
           </div>
@@ -124,6 +136,11 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         )}
       </div>
+
+      <ProfileModal
+        isOpen={isProfileOpen}
+        onClose={() => setIsProfileOpen(false)}
+      />
     </header>
   );
 };
