@@ -406,6 +406,7 @@ async def _do_appeal_review(appeal: Appeal, db: AsyncSession) -> AITask:
 
     punishment_id = appeal.punishment_id
     player_uuid = appeal.player_uuid
+    appeal_id = appeal.id
 
     async def _fetch_punishment():
         return await db.scalar(
