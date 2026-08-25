@@ -165,6 +165,7 @@ async def revoke_punishment(
         raise HTTPException(status_code=404, detail=f"Punishment '{punishment_id}' not found")
 
     punishment.active = False
+    punishment.status = "REVOKED"  # BUG-2 fix: status was left as "ACTIVE" after revoke
     await db.flush()
 
     return PunishmentSchema.model_validate(punishment)

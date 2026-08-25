@@ -42,12 +42,6 @@ public class VerificationCommand implements CommandExecutor, TabCompleter {
 
     public VerificationCommand(Plugin plugin,
                                CoreApiClient apiClient,
-                               MessageTemplateManager templateManager) {
-        this(plugin, apiClient, templateManager, null);
-    }
-
-    public VerificationCommand(Plugin plugin,
-                               CoreApiClient apiClient,
                                MessageTemplateManager templateManager,
                                @Nullable GrimBridge grimBridge) {
         this.plugin = plugin;
@@ -432,14 +426,9 @@ public class VerificationCommand implements CommandExecutor, TabCompleter {
             }
         } else if ("verify".equals(cmdName)) {
             return Collections.emptyList();
-        } else if ("appeal".equals(cmdName)) {
-            if (args.length == 1) {
-                List<String> subcommands = List.of("status");
-                return subcommands.stream()
-                        .filter(s -> s.startsWith(args[0].toLowerCase()))
-                        .collect(Collectors.toList());
-            }
-        }
+        // /appeal has no subcommands — tab-completing "status" was dead code
+        // (PLUGIN-BUG-3 fix): handleAppealCommand never handled args[0]=="status",
+        // so the tab-complete suggestion produced a no-op subcommand.
         return Collections.emptyList();
     }
 }

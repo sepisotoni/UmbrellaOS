@@ -221,8 +221,17 @@ async def close_appeal(
     punishment_reason = punishment.reason if punishment else "unknown"
 
     # Determine the staff username from auth context.
-    # require_permission returns the actor identifier (username or key id).
-    staff_username = str(_auth) if _auth else "system"
+    # require_permission returns either a User ORM object (session auth) or
+    # a raw string (admin key hash) when the admin key is used directly.
+    # SEC-2 fix: never store the raw key hash in handled_by — it leaks the
+    # credential to anyone with appeals.view. Use the User's username when
+    # available; fall back to the generic label "admin-key" for key-auth callers.
+    if isinstance(_auth, str):
+        staff_username = "admin-key"
+    elif _auth and hasattr(_auth, "username"):
+        staff_username = _auth.username or "unknown-user"
+    else:
+        staff_username = "system"
 
     # Execute the action
     now = datetime.now(tz=timezone.utc)

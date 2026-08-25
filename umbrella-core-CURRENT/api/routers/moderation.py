@@ -179,17 +179,24 @@ async def unban_player(
             (Punishment.active == True)
         )
     )
-    ban = ban_result.scalar_one_or_none()
+    bans = ban_result.scalars().all()
 
-    if ban is None:
+    if not bans:
         raise HTTPException(
             status_code=404, detail=f"No active ban found for player '{body.player_uuid}'"
         )
 
-    ban.active = False
+    # Deactivate ALL active bans — a player may have >1 if an admin issued
+    # multiple bans without unbanning first, or if a bug created duplicates.
+    # scalar_one_or_none() would raise MultipleResultsFound in that case (BUG-1 fix).
+    for ban in bans:
+        ban.active = False
+        ban.status = "REVOKED"
     await db.flush()
 
-    return ModerationResponseSchema.model_validate(ban)
+    # Return the most recent ban as the canonical response
+    most_recent = sorted(bans, key=lambda b: b.created_at, reverse=True)[0]
+    return ModerationResponseSchema.model_validate(most_recent)
 
 
 @router.post("/ipban", response_model=dict, status_code=201)

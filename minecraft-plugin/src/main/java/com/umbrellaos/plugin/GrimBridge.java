@@ -158,15 +158,6 @@ public final class GrimBridge {
     }
 
     /**
-     * Constructs the JSON body for {@code POST /api/v1/anticheat/flag} using
-     * default server ID.
-     */
-    static String buildFlagPayload(UUID playerUuid, String playerName,
-                                   String checkName, String verbose, int vl) {
-        return buildFlagPayload(playerUuid, playerName, checkName, verbose, vl, DEFAULT_SERVER_ID);
-    }
-
-    /**
      * Constructs the JSON body for {@code POST /api/v1/anticheat/flag}.
      * Package-private so tests can assert on it without making network calls.
      *

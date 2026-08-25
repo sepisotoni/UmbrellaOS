@@ -21,6 +21,19 @@ METRIC_MAPPING = {
     "chat": "chat_volume",
 }
 
+# Aliases the Minecraft plugin sends that differ from canonical event type names.
+# Normalised before validation so the plugin doesn't need updating every time
+# a canonical name changes (audit field-mismatch fix).
+_EVENT_TYPE_ALIASES = {
+    "player_join": "join",
+    "player_quit": "quit",
+    "player_death": "death",
+    "player_kill": "kill",
+    "player_chat": "chat",
+    "player_command": "command",
+    "snapshot": "join",   # PlayerTelemetryListener sends "snapshot" on some paths
+}
+
 
 async def record_event(
     db: AsyncSession,
@@ -33,6 +46,9 @@ async def record_event(
     
     Returns the created AnalyticsEvent row.
     """
+    # Normalise plugin aliases (e.g. "player_join" → "join") before validation
+    event_type = _EVENT_TYPE_ALIASES.get(event_type, event_type)
+
     if event_type not in ALLOWED_EVENT_TYPES:
         raise ValueError(f"Invalid event_type: {event_type}. Must be one of {ALLOWED_EVENT_TYPES}")
     
