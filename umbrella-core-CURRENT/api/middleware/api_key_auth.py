@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.middleware.errors import AppException
 from api.middleware.session import admin_key_header, require_admin_key_or_session
-from config import settings
+from config import get_settings
 from database import get_db
 from models import User
 from models.api_key import ApiKey
@@ -70,7 +70,7 @@ async def require_capability_auth(
                 raise HTTPException(status_code=401, detail="Timestamp out of window")
             expected = hashlib.pbkdf2_hmac(
                 "sha256",
-                settings.admin_key.encode(),
+                get_settings().admin_key.encode(),
                 str(ts).encode(),
                 100_000,
                 dklen=32,
