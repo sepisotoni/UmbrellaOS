@@ -120,6 +120,14 @@ DEFAULT_PERMISSIONS = [
     # yet — there is no write side to this domain at all, a plugin's
     # execution records are platform-authored, not admin-editable.
     ("plugin.sandbox.view", "View plugin sandbox execution history, telemetry, and resource limits"),
+    # Feature flag management — deliberately its own namespace, not folded
+    # into "settings.view"/"settings.manage": feature flags are a distinct
+    # operational concept (runtime A/B / kill-switch toggles) that may be
+    # read by non-settings-admin roles (e.g. moderator) for transparency
+    # without granting full settings edit access. Were seeded directly to
+    # the live DB; now codified here so a fresh deploy doesn't lose them.
+    ("feature_flags.view",   "View feature flags"),
+    ("feature_flags.manage", "Create, update, and delete feature flags"),
 ]
 
 ALL_PERMISSION_KEYS = [p[0] for p in DEFAULT_PERMISSIONS]
@@ -138,7 +146,8 @@ DEFAULT_ROLES = [
       "investigation.run", "investigation.view",
       "knowledge.entry.manage", "knowledge.entry.search", "knowledge.correction.review",
       "archive.search", "memory.manage", "operational_intelligence.view", "player_risk.view",
-      "verification.link.view", "verification.link.manage"]),
+      "verification.link.view", "verification.link.manage",
+      "feature_flags.view"]),
     ("helper", "Basic helper access",
      ["players.view", "punishments.view", "appeals.view", "investigation.run", "investigation.view",
       "knowledge.entry.search", "verification.link.view"]),

@@ -5,50 +5,99 @@ config, no knowledge-channel constants - all of that lives in
 umbrella-core now (config/settings.py + the dashboard-configurable
 SettingsService values), reached over UmbrellaCoreClient rather than
 constructed here in-process.
+
+Only three values are kept as hard env vars (see Settings below);
+everything else is fetched from core's settings API at startup and
+stored in a RemoteConfig instance on the bot (self.remote).
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+if TYPE_CHECKING:
+    from bot.services.umbrella_core_client import UmbrellaCoreClient
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    # The three env vars that must be present in the environment — they
+    # cannot live in the DB because they are needed to connect to core in
+    # the first place (chicken-and-egg), or are the bot's own identity.
     discord_bot_token: str
-    command_prefix: str = "!"
-
-    # Discord guild/server this bot operates in (used for verified role assignment)
-    discord_guild_id: int | None = None
-
-    # The one integration boundary this service has (see
-    # bot/services/umbrella_core_client.py) - everything else is reached
-    # through it, never constructed locally.
     umbrella_core_url: str = "https://umbrellaos-core.onrender.com"
     umbrella_core_api_key: str
 
-    # Where notifications_cog.py posts newly-surfaced staff escalations.
-    # Optional and unset by default: the poller keeps running either way,
-    # but if this is None it skips posting AND skips mark_notified (see
-    # notifications_cog.py) - an unconfigured channel must never cause
-    # escalations to silently disappear from the queue unseen.
-    staff_alert_channel_id: int | None = None
 
-    # Role assigned to a player on successful Minecraft account verification.
-    # Optional: if 0 or unset, role assignment is skipped silently.
-    discord_verified_role_id: int = 0
+@dataclass
+class RemoteConfig:
+    """
+    Configuration values fetched from umbrella-core's settings API at
+    startup. All fields that used to be read from .env now live here so
+    they can be updated via the dashboard without a bot redeploy.
+    """
+    guild_id: int | None
+    staff_alert_channel_id: int | None
+    verified_role_id: int
+    owner_role_id: int
+    callback_url: str | None
+    callback_port: int
+    command_prefix: str
 
-    # Discord role ID for the "Owner" role on the MOON server.
-    # Members with this role can run all staff/destructive commands.
-    # Fallback: administrator permission bit when this is 0 / unset.
-    owner_role_id: int = 0
 
+async def fetch_bot_config(core: "UmbrellaCoreClient") -> RemoteConfig:
+    """
+    Fetch all RemoteConfig values from core's settings API in a single
+    batch GET. Falls back to safe defaults for each key that is missing
+    or empty, so a partially-configured core never prevents the bot from
+    starting.
 
-    # Phase 16B Task B — bidirectional push.
-    # BOT_CALLBACK_URL: public address core will POST events to, e.g.
-    # http://5.x.x.x:8080. Leave unset in dev; webhook_cog.py will log a
-    # warning and skip registration (poll fallback still works).
-    bot_callback_url: str | None = None
+    Called once from UmbrellaBot.setup_hook; the result is stored as
+    self.remote so cogs can read it without making their own API calls.
+    """
+    # Fetch all discord.* settings in one call via the /api/v1/settings
+    # list endpoint filtered to the discord category. We use individual
+    # GETs to avoid coupling to endpoint shape — each is one DB read
+    # that is Redis-cached for 60 s anyway.
+    keys = [
+        "discord.guild_id",
+        "discord.staff_alert_channel_id",
+        "discord.verified_role_id",
+        "discord.owner_role_id",
+        "discord.callback_url",
+        "discord.callback_port",
+        "discord.command_prefix",
+    ]
 
-    # Port the in-process aiohttp webhook server listens on.
-    # Must match the port in BOT_CALLBACK_URL. Default: 8080.
-    bot_callback_port: int = 8080
+    def _int_or_none(val: str) -> int | None:
+        try:
+            return int(val) if val else None
+        except (ValueError, TypeError):
+            return None
+
+    def _int_default(val: str, default: int) -> int:
+        try:
+            return int(val) if val else default
+        except (ValueError, TypeError):
+            return default
+
+    values: dict[str, str] = {}
+    for key in keys:
+        try:
+            data = await core.get(f"/api/v1/settings/{key}")
+            values[key] = data.get("value") or ""
+        except Exception:
+            values[key] = ""
+
+    return RemoteConfig(
+        guild_id=_int_or_none(values.get("discord.guild_id", "")),
+        staff_alert_channel_id=_int_or_none(values.get("discord.staff_alert_channel_id", "")),
+        verified_role_id=_int_default(values.get("discord.verified_role_id", ""), 0),
+        owner_role_id=_int_default(values.get("discord.owner_role_id", ""), 0),
+        callback_url=values.get("discord.callback_url") or None,
+        callback_port=_int_default(values.get("discord.callback_port", ""), 8080),
+        command_prefix=values.get("discord.command_prefix") or "!",
+    )

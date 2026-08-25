@@ -34,7 +34,7 @@ import logging
 import discord
 from discord.ext import commands
 
-from bot.config import Settings
+from bot.config import Settings, RemoteConfig, fetch_bot_config
 from bot.services.umbrella_core_client import UmbrellaCoreClient
 
 logger = logging.getLogger(__name__)
@@ -63,11 +63,43 @@ class UmbrellaBot(commands.Bot):
         intents.members = True
         intents.guilds = True
 
-        super().__init__(command_prefix=settings.command_prefix, intents=intents)
+        # command_prefix defaults to "!" here; the actual value from core's
+        # settings API is stored in self.remote after setup_hook runs. The
+        # prefix cannot be changed after construction without subclassing
+        # get_prefix(), and "!" matches the RemoteConfig default anyway.
+        super().__init__(command_prefix="!", intents=intents)
         self.settings = settings
         self.core = UmbrellaCoreClient(settings.umbrella_core_url, settings.umbrella_core_api_key)
+        # Populated by setup_hook after fetching from core's settings API.
+        self.remote: RemoteConfig | None = None
 
     async def setup_hook(self) -> None:
+        # Fetch remote config from core before loading extensions so cogs
+        # can access self.bot.remote (via self.bot) from their __init__.
+        try:
+            self.remote = await fetch_bot_config(self.core)
+            logger.info(
+                "RemoteConfig loaded — guild_id=%s staff_alert_channel_id=%s",
+                self.remote.guild_id,
+                self.remote.staff_alert_channel_id,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to fetch RemoteConfig from core — bot will start with defaults. "
+                "Check UMBRELLA_CORE_URL and UMBRELLA_CORE_API_KEY."
+            )
+            # Construct a safe all-defaults RemoteConfig so cogs don't have
+            # to guard against self.bot.remote being None.
+            self.remote = RemoteConfig(
+                guild_id=None,
+                staff_alert_channel_id=None,
+                verified_role_id=0,
+                owner_role_id=0,
+                callback_url=None,
+                callback_port=8080,
+                command_prefix="!",
+            )
+
         for extension in EXTENSIONS:
             try:
                 await self.load_extension(extension)
@@ -75,8 +107,9 @@ class UmbrellaBot(commands.Bot):
             except Exception:
                 logger.exception("Failed to load extension: %s", extension)
 
-        if self.settings.discord_guild_id:
-            guild = discord.Object(id=self.settings.discord_guild_id)
+        guild_id = self.remote.guild_id
+        if guild_id:
+            guild = discord.Object(id=guild_id)
             # Sync guild-scoped commands only. Do NOT call copy_global_to() —
             # that copies every command into the guild tree AND leaves the
             # global registrations intact, producing visible duplicates in the
@@ -86,10 +119,10 @@ class UmbrellaBot(commands.Bot):
             self.tree.clear_commands(guild=None)
             await self.tree.sync(guild=None)  # wipe stale global registrations
             await self.tree.sync(guild=guild)
-            logger.info("Slash commands synced to guild %s (guild-only, global tree cleared).", self.settings.discord_guild_id)
+            logger.info("Slash commands synced to guild %s (guild-only, global tree cleared).", guild_id)
         else:
             await self.tree.sync()
-            logger.info("Slash commands synced globally (up to 1hr propagation — set DISCORD_GUILD_ID for instant registration).")
+            logger.info("Slash commands synced globally (up to 1hr propagation — set discord.guild_id in core settings for instant registration).")
 
     async def close(self) -> None:
         await super().close()

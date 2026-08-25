@@ -157,6 +157,23 @@ DEFAULT_SETTINGS: list[tuple] = [
     ("chat_responder.response_style",
      "friendly and brief, 1-2 sentences max",
      "chat_responder", "Tone style hint passed to AI for chat responses", False, False),
+    # Bot RemoteConfig keys — values the Discord bot fetches from the
+    # settings API at startup instead of reading from .env. The bot only
+    # keeps three hard env vars (DISCORD_BOT_TOKEN, UMBRELLA_CORE_URL,
+    # UMBRELLA_CORE_API_KEY); everything else lives here so it can be
+    # updated via the dashboard without a redeploy.
+    ("discord.staff_alert_channel_id", "1503076452994650323", "discord",
+     "Channel ID where the bot posts staff escalation alerts", False, False),
+    ("discord.verified_role_id", "1540853515201544282", "discord",
+     "Role assigned to a player on successful Minecraft account verification", False, False),
+    ("discord.owner_role_id", "1503074796702011582", "discord",
+     "Discord role ID for the Owner role; members can run all staff/destructive commands", False, False),
+    ("discord.callback_url", "http://free-bots.heavencloud.in:3607", "discord",
+     "Public URL core will POST webhook events to (must be reachable from core)", False, False),
+    ("discord.callback_port", "3607", "discord",
+     "Port the in-process aiohttp webhook server listens on (must match discord.callback_url)", False, False),
+    ("discord.command_prefix", "!", "discord",
+     "Prefix character for legacy text commands", False, False),
 ]
 
 
