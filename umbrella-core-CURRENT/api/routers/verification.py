@@ -16,7 +16,7 @@ from pydantic import BaseModel
 
 from database import get_db
 from models import VerificationCode, DiscordAccount, AuditLog
-from api.middleware.auth import require_admin_key
+from api.middleware.auth import require_admin_key, require_plugin_key
 from api.dependencies.permissions import require_permission
 
 router = APIRouter(prefix="/api/v1/verification", tags=["verification"])
@@ -238,9 +238,14 @@ async def confirm_verification(
 async def verification_status(
     body: VerificationStatusRequest,
     db: AsyncSession = Depends(get_db),
-    _auth: str = Depends(require_admin_key),
+    _auth: str = Depends(require_plugin_key),
 ) -> VerificationStatusResponse:
-    """Check if a player is verified."""
+    """Check if a player is verified.
+
+    Auth changed from require_admin_key to require_plugin_key (BUG-3 fix):
+    the Minecraft plugin calls this via /umbrella status using X-Plugin-Key.
+    The old admin-key requirement made this permanently return 401 for the plugin.
+    """
     result = await db.execute(
         select(DiscordAccount).where(
             and_(
@@ -505,3 +510,153 @@ async def list_verification_links(
         ))
 
     return links
+
+
+# ---------------------------------------------------------------------------
+# Plugin-facing verify-code endpoint (BUG-2 fix)
+# ---------------------------------------------------------------------------
+
+class PluginVerifyCodeRequest(BaseModel):
+    code: str
+    minecraft_uuid: str
+    minecraft_username: str
+    # Plugin also sends player_uuid / player_username as aliases — accept both
+    player_uuid: str | None = None
+    player_username: str | None = None
+
+
+class PluginVerifyCodeResponse(BaseModel):
+    success: bool
+    message: str
+    already_verified: bool = False
+    discord_username: str | None = None
+
+
+@router.post("/verify-code", response_model=PluginVerifyCodeResponse)
+async def plugin_verify_code(
+    body: PluginVerifyCodeRequest,
+    db: AsyncSession = Depends(get_db),
+    _auth: str = Depends(require_plugin_key),
+) -> PluginVerifyCodeResponse:
+    """
+    In-game /verify <code> handler — called by the Minecraft plugin when a
+    player runs the command.
+
+    Auth: X-Plugin-Key (the plugin has no admin-key credential).
+
+    Flow:
+      1. Player runs /verify <code> in-game.
+      2. Plugin POSTs here with {code, minecraft_uuid, minecraft_username}.
+      3. Core looks up the pending VerificationCode, validates it, then
+         finds or creates the DiscordAccount linked to the code's discord_id
+         (set when the Discord bot originally called POST /request and the
+         player got their code via DM).
+      4. Returns success/failure with a user-facing message.
+
+    The existing POST /confirm endpoint does equivalent work but requires
+    X-Admin-Key and expects {discord_id, discord_username, code} — fields
+    the plugin doesn't have at command-execution time. This endpoint accepts
+    the plugin's natural schema instead.
+    """
+    player_uuid = body.minecraft_uuid or body.player_uuid
+    player_username = body.minecraft_username or body.player_username or "Unknown"
+
+    if not player_uuid:
+        return PluginVerifyCodeResponse(success=False, message="Missing player UUID.")
+
+    # Check if already verified
+    existing = await db.scalar(
+        select(DiscordAccount).where(
+            and_(
+                DiscordAccount.player_uuid == player_uuid,
+                DiscordAccount.verified == True,
+            )
+        )
+    )
+    if existing:
+        return PluginVerifyCodeResponse(
+            success=True,
+            already_verified=True,
+            message="Your account is already linked to Discord.",
+            discord_username=existing.discord_username,
+        )
+
+    # Look up the pending verification code
+    now = datetime.utcnow()
+    vc_result = await db.execute(
+        select(VerificationCode).where(
+            and_(
+                VerificationCode.code == body.code,
+                VerificationCode.used == False,
+                VerificationCode.expires_at > now,
+            )
+        )
+    )
+    vc = vc_result.scalar_one_or_none()
+
+    if vc is None:
+        # Check if code exists but is expired or used
+        stale = await db.scalar(
+            select(VerificationCode).where(VerificationCode.code == body.code)
+        )
+        if stale and stale.used:
+            return PluginVerifyCodeResponse(
+                success=False,
+                message="That code has already been used. Generate a new one in Discord.",
+            )
+        if stale and stale.expires_at <= now:
+            return PluginVerifyCodeResponse(
+                success=False,
+                message="That code has expired. Generate a new one in Discord.",
+            )
+        return PluginVerifyCodeResponse(
+            success=False,
+            message="Code not found. Please generate a verification code in Discord first.",
+        )
+
+    # Mark code used
+    vc.used = True
+
+    # Find or create the DiscordAccount for the discord_id that was set when
+    # the bot called POST /request. VerificationCode stores player_uuid set
+    # at request time; we need to look up the DiscordAccount that was waiting
+    # for this player (if the bot pre-created one) or create a placeholder.
+    discord_acct = await db.scalar(
+        select(DiscordAccount).where(
+            DiscordAccount.player_uuid == vc.player_uuid
+        )
+    )
+
+    if discord_acct:
+        # Update with confirmed minecraft identity
+        discord_acct.verified = True
+        discord_acct.linked_at = datetime.utcnow()
+        # Overwrite player_uuid with the joining player's real UUID if it changed
+        discord_acct.player_uuid = player_uuid
+    else:
+        # No pre-existing account — create one. discord_id unknown here; use
+        # a placeholder that the bot can fill in on next interaction.
+        discord_acct = DiscordAccount(
+            discord_id=f"pending_mc:{player_uuid}",
+            player_uuid=player_uuid,
+            verified=True,
+            linked_at=datetime.utcnow(),
+            discord_username=None,
+        )
+        db.add(discord_acct)
+
+    audit = AuditLog(
+        actor=player_username,
+        actor_type="plugin",
+        action="verification.completed_via_plugin",
+        target=player_uuid,
+        details_json="{}",
+    )
+    db.add(audit)
+    await db.flush()
+
+    return PluginVerifyCodeResponse(
+        success=True,
+        message=f"Your account has been linked successfully! Welcome, {player_username}.",
+        discord_username=discord_acct.discord_username,
+    )

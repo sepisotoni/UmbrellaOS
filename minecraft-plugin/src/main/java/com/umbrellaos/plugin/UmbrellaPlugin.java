@@ -48,6 +48,7 @@ public final class UmbrellaPlugin extends JavaPlugin {
         apiClient = new CoreApiClient(baseUrl, pluginKey, getLogger());
         configManager = new ConfigManager(apiClient);
         messageTemplateManager = new MessageTemplateManager(this, apiClient);
+        // GrimBridge reference set after grimBridge is created below (DEAD-4 fix).
         heartbeatManager = new HeartbeatManager(this, apiClient, configManager, serverId, serverName);
         commandPoller = new CommandPoller(this, apiClient);
         banEnforcer = new BanEnforcer(apiClient);
@@ -86,6 +87,10 @@ public final class UmbrellaPlugin extends JavaPlugin {
         } catch (Throwable t) {
             getLogger().info("GrimAC not found or incompatible — anticheat bridge inactive.");
         }
+        // Wire the (possibly null) bridge into HeartbeatManager now that it's
+        // initialised — grim_connected in heartbeat payloads will reflect reality
+        // instead of being hardcoded false (DEAD-4 fix).
+        heartbeatManager.setGrimBridge(grimBridge);
 
         // Player UX commands: /verify, /umbrella, /appeal
         verificationCommand = new VerificationCommand(this, apiClient, messageTemplateManager, grimBridge);

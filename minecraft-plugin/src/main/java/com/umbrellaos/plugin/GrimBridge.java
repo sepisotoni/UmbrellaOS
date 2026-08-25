@@ -191,9 +191,13 @@ public final class GrimBridge {
         String safeVerbose = verbose != null ? escapeJson(verbose) : "";
         String safeServerId = serverId != null ? escapeJson(serverId) : DEFAULT_SERVER_ID;
 
+        // Field name is "username" (not "player_name") — matches AnticheatFlagRequest
+        // in umbrella-core's api/routers/anticheat.py. Using "player_name" caused
+        // Pydantic to silently drop the field, storing the UUID as the player name
+        // in every anticheat_violations row (MM-1 fix).
         return "{"
                 + "\"player_uuid\":\"" + playerUuid + "\","
-                + "\"player_name\":\"" + safeName + "\","
+                + "\"username\":\"" + safeName + "\","
                 + "\"check_name\":\"" + safeCheck + "\","
                 + "\"verbose\":\"" + safeVerbose + "\","
                 + "\"vl\":" + vl + ","

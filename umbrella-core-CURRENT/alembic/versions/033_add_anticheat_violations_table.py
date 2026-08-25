@@ -25,8 +25,8 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision = "030_add_anticheat_violations_table"
-down_revision = "029_feature_flags"
+revision = "033_add_anticheat_violations_table"
+down_revision = "032_add_discord_avatar_hash"
 branch_labels = None
 depends_on = None
 

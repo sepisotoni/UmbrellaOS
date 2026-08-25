@@ -31,17 +31,36 @@ public class HeartbeatManager {
     private final ConfigManager configManager;
     private final String serverId;
     private final String serverName;
+    /** Nullable — GrimAC is a soft-dependency; bridge may not be active. */
+    private GrimBridge grimBridge;
 
     private BukkitTask task;
     private volatile boolean lastHeartbeatSucceeded = true;
 
+    /** Legacy constructor — grim_connected will always report false. */
     public HeartbeatManager(Plugin plugin, CoreApiClient apiClient, ConfigManager configManager,
                              String serverId, String serverName) {
+        this(plugin, apiClient, configManager, serverId, serverName, null);
+    }
+
+    /**
+     * Full constructor — pass the GrimBridge so that {@code grim_connected}
+     * in the heartbeat payload reflects the real runtime state of the GrimAC
+     * integration (DEAD-4 fix). Pass {@code null} if GrimAC is not present.
+     */
+    public HeartbeatManager(Plugin plugin, CoreApiClient apiClient, ConfigManager configManager,
+                             String serverId, String serverName, GrimBridge grimBridge) {
         this.plugin = plugin;
         this.apiClient = apiClient;
         this.configManager = configManager;
         this.serverId = (serverId == null || serverId.isBlank()) ? null : serverId;
         this.serverName = serverName;
+        this.grimBridge = grimBridge;
+    }
+
+    /** Update the GrimBridge reference after construction (e.g. if GrimAC loads late). */
+    public void setGrimBridge(GrimBridge grimBridge) {
+        this.grimBridge = grimBridge;
     }
 
     /** Starts the periodic async heartbeat task. Safe to call once from onEnable. */
@@ -80,8 +99,11 @@ public class HeartbeatManager {
         body.put("tps", realTps());
         body.put("version", Bukkit.getVersion());
         body.put("plugin_version", plugin.getDescription().getVersion());
-        // Step 3's job — see class javadoc.
-        body.put("grim_connected", false);
+        // Reflects real GrimAC bridge state (DEAD-4 fix). False when GrimBridge is
+        // null (GrimAC absent) or not yet registered (GrimAC present but bridge
+        // registration failed). True only when GrimAC is running and the EventBus
+        // subscription succeeded.
+        body.put("grim_connected", grimBridge != null && grimBridge.isRegistered());
 
         HttpResponse<String> response = apiClient.post("/api/v1/plugin/heartbeat", body.toString());
 

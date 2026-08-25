@@ -1,6 +1,6 @@
+"""Anticheat flag handling — Grim integration via Umbrella plugin."""
 import asyncio
 import os
-"""Anticheat flag handling — Grim integration via Umbrella plugin."""
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -153,15 +153,29 @@ async def handle_cheat_flag(
     db.add(violation)
     await db.flush()
 
+    # Count prior punishments for AI context
+    prior_punishments_result = await db.execute(
+        select(Punishment).where(Punishment.player_uuid == player_uuid)
+    )
+    prior_count = len(prior_punishments_result.scalars().all())
+
+    # AI confidence review — calls Claude to assess real-cheat likelihood.
+    # Falls back to VL-math if the API key is absent or the call fails.
+    # Run before the AITask write so the confidence is stored immediately
+    # rather than being overwritten by a background job later (DEAD-1 fix).
+    ai_confidence, ai_reason = await _ai_confidence_review(
+        check_name, verbose, vl, username or player_uuid, prior_count
+    )
+
     # --- Retain AITask write for audit history and tempban context ---
     task = AITask(
         task_type="anticheat_review",
-        status="pending",
+        status="completed",
         player_uuid=player_uuid,
         expires_at=datetime.now(timezone.utc) + timedelta(days=7),
-        ai_summary=f"Grim flagged {username or player_uuid} for {check_name} (VL {vl}) — action: {action}",
+        ai_summary=f"Grim flagged {username or player_uuid} for {check_name} (VL {vl}) — action: {action}. AI: {ai_reason}",
         ai_recommendation="warn" if action == "warn" else ("kick" if action == "kick" else "confirm_tempban"),
-        ai_confidence=min(0.95, 0.5 + vl * 0.05),
+        ai_confidence=ai_confidence,
         evidence=verbose[:2000],
     )
     db.add(task)

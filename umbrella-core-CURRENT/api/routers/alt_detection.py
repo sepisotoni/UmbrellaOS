@@ -15,7 +15,7 @@ from pydantic import BaseModel
 
 from database import get_db
 from models import SuspicionEvent, AltGroup, AltGroupMember, Player
-from api.middleware.auth import require_admin_key
+from api.middleware.auth import require_admin_key, require_plugin_key
 from api.dependencies.permissions import require_permission
 from services.alt_detection_service import calculate_suspicion, flag_player
 
@@ -315,3 +315,47 @@ async def list_alt_groups(
     groups = result.scalars().all()
     
     return [AltGroupSchema.from_orm(g) for g in groups]
+
+
+class AltTrackRequest(BaseModel):
+    uuid: str
+    name: str
+    ip: str | None = None
+    brand: str | None = None
+
+
+@router.post("/track", status_code=200)
+async def track_player_alt(
+    body: AltTrackRequest,
+    db: AsyncSession = Depends(get_db),
+    _auth: str = Depends(require_plugin_key),
+) -> dict:
+    """
+    Called by the Minecraft plugin on every player join/quit via PlayerTelemetryListener.
+    Runs alt-detection suspicion scoring for the player and flags if threshold exceeded.
+
+    Auth: X-Plugin-Key — the plugin has no admin-key credential; this mirrors
+    the same auth pattern as every other plugin-facing endpoint (plugin.py,
+    anticheat.py, players.py snapshot).
+
+    The existing POST /check endpoint does the same work but requires X-Admin-Key,
+    making it permanently unreachable by the plugin. This endpoint is the
+    plugin-key-auth equivalent.
+    """
+    ip = body.ip or "127.0.0.1"
+
+    if ip in ("127.0.0.1", "0.0.0.0"):
+        # Loopback IPs carry no alt-detection signal — skip scoring to avoid
+        # false positives when the plugin runs on localhost (e.g. dev servers).
+        return {"processed": False, "reason": "loopback_ip_skipped"}
+
+    result = await calculate_suspicion(body.uuid, ip, body.name, db)
+    flag_result = await flag_player(body.uuid, result["score"], result["triggers"], db)
+
+    return {
+        "processed": True,
+        "score": result["score"],
+        "risk_level": flag_result["risk_level"],
+        "flagged": flag_result["flagged"],
+        "triggers": result["triggers"],
+    }

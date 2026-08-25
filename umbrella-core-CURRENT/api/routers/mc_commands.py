@@ -19,7 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timezone
 
 from database import get_db
 from models import MCCommand, AuditLog
@@ -74,7 +74,7 @@ async def create_mc_command(
         requested_by_discord_id=body.requested_by_discord_id,
         requested_by_username=body.requested_by_username,
         status="pending",
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
     )
     db.add(mc_command)
     await db.flush()
@@ -158,7 +158,7 @@ async def complete_mc_command(
     mc_command.status = "completed" if body.success else "failed"
     mc_command.output = body.output
     mc_command.success = body.success
-    mc_command.completed_at = datetime.utcnow()
+    mc_command.completed_at = datetime.now(timezone.utc)
     
     # Create audit log entry
     await create_audit_log(
