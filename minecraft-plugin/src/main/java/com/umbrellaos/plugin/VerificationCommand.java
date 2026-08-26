@@ -31,7 +31,6 @@ import java.util.stream.Collectors;
 public class VerificationCommand implements CommandExecutor, TabCompleter {
 
     private static final String VERIFY_CODE_PATH = "/api/v1/verification/verify-code";
-    private static final String VERIFY_FALLBACK_PATH = "/api/v1/verification/verify";
     private static final String VERIFY_STATUS_PATH = "/api/v1/verification/status";
     private static final String PUNISHMENTS_ACTIVE_PATH = "/api/v1/plugin/punishments/%s/active";
 
@@ -149,17 +148,6 @@ public class VerificationCommand implements CommandExecutor, TabCompleter {
 
         try {
             HttpResponse<String> response = apiClient.post(VERIFY_CODE_PATH, payload);
-            if (response.statusCode() == 404) {
-                // If primary endpoint not found, attempt fallback endpoint
-                try {
-                    HttpResponse<String> fallbackResp = apiClient.post(VERIFY_FALLBACK_PATH, payload);
-                    if (fallbackResp.statusCode() != 404) {
-                        return parseVerificationResponse(fallbackResp.statusCode(), fallbackResp.body(), playerName, code, templateManager);
-                    }
-                } catch (Exception ignored) {
-                    // Fall back to original 404 response
-                }
-            }
             return parseVerificationResponse(response.statusCode(), response.body(), playerName, code, templateManager);
         } catch (Exception e) {
             if (e instanceof InterruptedException) {
@@ -417,18 +405,11 @@ public class VerificationCommand implements CommandExecutor, TabCompleter {
                                       @NotNull String alias,
                                       @NotNull String[] args) {
         String cmdName = command.getName().toLowerCase();
-        if ("umbrella".equals(cmdName)) {
-            if (args.length == 1) {
-                List<String> subcommands = List.of("status", "help");
-                return subcommands.stream()
-                        .filter(s -> s.startsWith(args[0].toLowerCase()))
-                        .collect(Collectors.toList());
-            }
-        } else if ("verify".equals(cmdName)) {
-            return Collections.emptyList();
-        // /appeal has no subcommands — tab-completing "status" was dead code
-        // (PLUGIN-BUG-3 fix): handleAppealCommand never handled args[0]=="status",
-        // so the tab-complete suggestion produced a no-op subcommand.
+        if ("umbrella".equals(cmdName) && args.length == 1) {
+            return List.of("status", "help").stream()
+                    .filter(s -> s.startsWith(args[0].toLowerCase()))
+                    .collect(Collectors.toList());
+        }
         return Collections.emptyList();
     }
 }

@@ -1,6 +1,8 @@
 package com.umbrellaos.plugin;
 
 import io.papermc.paper.event.player.AsyncChatEvent;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -27,10 +29,8 @@ import java.util.logging.Level;
  * player repeatedly asks questions. The cooldown duration is also pulled from
  * core ({@code chat_responder.cooldown_seconds}).
  *
- * <p>All AI calls are made asynchronously — this listener is already on an
- * async thread (fired on {@link AsyncPlayerChatEvent}) so the scheduler wrap
- * uses {@code runTaskAsynchronously} from within a task to keep the HTTP call
- * off the main thread while also being safe when used inside an async event.
+ * <p>Migrated from {@code AsyncPlayerChatEvent} (removed in Paper 1.20.6) to
+ * Paper's {@code AsyncChatEvent} with Adventure API message extraction (BUG-4 fix).
  *
  * <p>Controlled by {@code chat_responder.enabled} in {@code config.yml}.
  */
@@ -75,7 +75,8 @@ public class ChatResponderListener implements Listener {
             return;
         }
 
-        // Paper 1.19+: message() returns a Component — serialise to plain text.
+        // Extract plain text from the Adventure Component message (BUG-4 fix —
+        // Paper 1.20.6+ uses AsyncChatEvent whose message() returns a Component).
         String message = PlainTextComponentSerializer.plainText().serialize(event.message());
         String messageLower = message.toLowerCase(Locale.ROOT);
 
@@ -100,9 +101,6 @@ public class ChatResponderListener implements Listener {
         String responseStyle = templateManager.getTemplate(
                 MessageTemplateManager.KEY_CHAT_RESPONDER_STYLE);
 
-        // The event is already async, but we still schedule an async task so the
-        // HTTP call happens on a Bukkit pool thread (not the event's own thread,
-        // which may have a tight timeout in some server implementations).
         plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
                 String context = String.format(
@@ -122,9 +120,12 @@ public class ChatResponderListener implements Listener {
                     JSONObject body = new JSONObject(resp.body());
                     String aiReply = body.optString("response", "").trim();
                     if (!aiReply.isEmpty()) {
-                        // Send the reply on the main thread (broadcastMessage is main-thread only).
+                        // Broadcast reply to all so the question+answer are both
+                        // visible in chat (DESIGN-5 fix). Prefixed with the asking
+                        // player's name for context.
+                        Component reply = Component.text(REPLY_PREFIX + playerName + ": " + aiReply);
                         plugin.getServer().getScheduler().runTask(plugin, () ->
-                                event.getPlayer().sendMessage(REPLY_PREFIX + aiReply));
+                                event.getPlayer().getServer().broadcast(reply));
                     }
                 } else {
                     plugin.getLogger().warning("ChatResponder: AI request failed with HTTP "
@@ -138,14 +139,6 @@ public class ChatResponderListener implements Listener {
         });
     }
 
-    // ------------------------------------------------------------------
-    // Helpers
-    // ------------------------------------------------------------------
-
-    /**
-     * Parse the JSON array string from the template manager into a list of
-     * keyword strings. Falls back to an empty list on parse failure.
-     */
     private List<String> parseKeywords(String raw) {
         List<String> result = new ArrayList<>();
         if (raw == null || raw.isBlank()) return result;
@@ -162,10 +155,6 @@ public class ChatResponderListener implements Listener {
         return result;
     }
 
-    /**
-     * Parse the cooldown seconds setting and convert to milliseconds.
-     * Returns {@link #DEFAULT_COOLDOWN_MS} on parse failure.
-     */
     private long parseCooldownMs(String raw) {
         try {
             return Long.parseLong(raw.trim()) * 1000L;
