@@ -1,8 +1,7 @@
 package com.umbrellaos.plugin;
 
-import net.md_5.bungee.api.ChatMessageType;
-import net.md_5.bungee.api.chat.TextComponent;
-import org.bukkit.Bukkit;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -109,6 +108,10 @@ public class GreeterListener implements Listener {
                     String msg = templateManager.render(
                             templateManager.getTemplate("greeter.first_join_message"), vars);
 
+                    // Note: relies on the 60-second window for "new player" detection.
+                    // If join_count ever becomes available on the player profile endpoint,
+                    // prefer join_count == 1 as an unambiguous first-join signal (DESIGN-4).
+
                     // Title on screen (fade-in 10, stay 100, fade-out 20 ticks).
                     player.sendTitle(
                             "§aWelcome!",
@@ -116,9 +119,11 @@ public class GreeterListener implements Listener {
                             10, TITLE_STAY_TICKS, 20
                     );
 
-                    // Broadcast in chat with a leading blank line for visibility.
-                    Bukkit.broadcastMessage("");
-                    Bukkit.broadcastMessage("§6[Welcome] §f" + msg);
+                    // Send welcome message to the joining player only via Adventure API
+                    // (BUG-2/3 fix: Bukkit.broadcastMessage() is deprecated and sends to
+                    // the whole server — a personal welcome should go to the player alone).
+                    player.sendMessage(Component.text("[Welcome] ", NamedTextColor.GOLD)
+                            .append(Component.text(msg, NamedTextColor.WHITE)));
                 } else {
                     String template = templateManager.getTemplate("greeter.return_join_message");
                     if (template == null || template.isBlank()) return;
