@@ -131,6 +131,7 @@ public final class UmbrellaPlugin extends JavaPlugin {
             messageTemplateManager.stop();
         }
         if (consoleStreamManager != null) {
+            consoleStreamManager.stopPushing();
             consoleStreamManager.stopCapture();
         }
         getLogger().info("UmbrellaOS plugin disabled");

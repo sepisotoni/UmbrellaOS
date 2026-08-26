@@ -1,8 +1,9 @@
 package com.umbrellaos.plugin;
 
+import io.papermc.paper.event.player.AsyncChatEvent;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
-import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -60,7 +61,7 @@ public class ChatResponderListener implements Listener {
     }
 
     @EventHandler
-    public void onPlayerChat(AsyncPlayerChatEvent event) {
+    public void onPlayerChat(AsyncChatEvent event) {
         if (!plugin.getConfig().getBoolean("chat_responder.enabled", true)) {
             return;
         }
@@ -74,7 +75,8 @@ public class ChatResponderListener implements Listener {
             return;
         }
 
-        String message = event.getMessage();
+        // Paper 1.19+: message() returns a Component — serialise to plain text.
+        String message = PlainTextComponentSerializer.plainText().serialize(event.message());
         String messageLower = message.toLowerCase(Locale.ROOT);
 
         // Fetch keyword list from template cache.

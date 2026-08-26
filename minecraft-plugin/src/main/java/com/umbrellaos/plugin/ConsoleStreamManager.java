@@ -1,6 +1,7 @@
 package com.umbrellaos.plugin;
 
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.scheduler.BukkitTask;
 
 import java.io.IOException;
 import java.net.http.HttpResponse;
@@ -29,6 +30,12 @@ public class ConsoleStreamManager {
     private final Deque<String> buffer;
     private final Object lock = new Object();
     private Handler logHandler;
+    /** The repeating task scheduled by startPushing(), cancelled in stopPushing(). */
+    private volatile BukkitTask pushTask;
+    /** Total lines ever appended — used for delta tracking so we only push new lines. */
+    private long totalAppended = 0;
+    /** Total lines that have been pushed to core — only send lines after this index. */
+    private long totalPushed = 0;
 
     public ConsoleStreamManager() {
         this(DEFAULT_CAPACITY);
@@ -53,6 +60,7 @@ public class ConsoleStreamManager {
                 buffer.removeFirst();
             }
             buffer.addLast(line);
+            totalAppended++;
         }
     }
 
@@ -156,15 +164,64 @@ public class ConsoleStreamManager {
      * @param serverId      the server's umbrella-core server_id
      * @param intervalTicks ticks between pushes (100 = 5s at 20 TPS)
      */
+    /**
+     * Returns lines appended since the last push call (delta only), capped at
+     * {@code maxLines}. Advances {@code totalPushed} so subsequent calls don't
+     * resend already-sent lines.
+     */
+    private List<String> drainNewLines(int maxLines) {
+        synchronized (lock) {
+            long newCount = totalAppended - totalPushed;
+            if (newCount <= 0) return Collections.emptyList();
+            int take = (int) Math.min(newCount, maxLines);
+            // Lines are in the buffer oldest-first; we want the newest `take` that haven't been sent.
+            // totalPushed tracks how many have been sent; buffer may have evicted oldest under capacity.
+            List<String> all = new ArrayList<>(buffer);
+            int fromIndex = Math.max(0, all.size() - take);
+            List<String> result = new ArrayList<>(all.subList(fromIndex, all.size()));
+            totalPushed += result.size();
+            return result;
+        }
+    }
+
+    /**
+     * Properly escape a string for embedding inside a JSON double-quoted value.
+     * Handles backslash, quote, and all JSON control characters (\n, \r, \t, etc.).
+     */
+    private static String escapeJsonString(String s) {
+        StringBuilder sb = new StringBuilder(s.length() + 8);
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '\\' -> sb.append("\\\\");
+                case '"'  -> sb.append("\\\"");
+                case '\n' -> sb.append("\\n");
+                case '\r' -> sb.append("\\r");
+                case '\t' -> sb.append("\\t");
+                case '\b' -> sb.append("\\b");
+                case '\f' -> sb.append("\\f");
+                default -> {
+                    if (c < 0x20) {
+                        sb.append(String.format("\\u%04x", (int) c));
+                    } else {
+                        sb.append(c);
+                    }
+                }
+            }
+        }
+        return sb.toString();
+    }
+
     public void startPushing(JavaPlugin plugin, CoreApiClient client, String serverId, long intervalTicks) {
-        plugin.getServer().getScheduler().runTaskTimerAsynchronously(plugin, () -> {
-            List<String> lines = getRecentLines(50);
+        if (pushTask != null) return; // already started
+        pushTask = plugin.getServer().getScheduler().runTaskTimerAsynchronously(plugin, () -> {
+            // Only send lines we haven't sent yet (delta tracking).
+            List<String> lines = drainNewLines(50);
             if (lines.isEmpty()) return;
 
-            // Build JSON array of line strings
+            // Build a properly-escaped JSON array.
             String jsonArray = lines.stream()
-                    .map(l -> "\"" + l.replace("\\", "\\\\").replace("\"", "\\\"")
-                            .replace("\n", "\\n").replace("\r", "\\r") + "\"")
+                    .map(l -> "\"" + escapeJsonString(l) + "\"")
                     .collect(Collectors.joining(",", "[", "]"));
             String body = "{\"lines\": " + jsonArray + "}";
 
@@ -176,9 +233,21 @@ public class ConsoleStreamManager {
                             + resp.statusCode() + " — " + resp.body());
                 }
             } catch (IOException | InterruptedException e) {
+                if (e instanceof InterruptedException) Thread.currentThread().interrupt();
                 client.logger().warning("[ConsoleStreamManager] Push failed: " + e.getMessage());
             }
         }, intervalTicks, intervalTicks);
+    }
+
+    /**
+     * Cancels the repeating push task. Safe to call if startPushing() was never called.
+     * Called from UmbrellaPlugin.onDisable() so the task doesn't outlive the plugin.
+     */
+    public void stopPushing() {
+        if (pushTask != null) {
+            pushTask.cancel();
+            pushTask = null;
+        }
     }
 
     /**
