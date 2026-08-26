@@ -109,8 +109,7 @@ public class PlayerTelemetryListener implements Listener {
         obj.put("brand", brand != null && !brand.isBlank() ? brand : "vanilla");
         obj.put("ping", ping);
         obj.put("protocol_version", protocolVersion);
-        obj.put("event", eventType != null ? eventType : "snapshot");
-        obj.put("action", eventType != null ? eventType : "snapshot");
+        obj.put("event_type", eventType != null ? eventType : "snapshot");
         return obj.toString();
     }
 
