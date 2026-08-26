@@ -1065,6 +1065,17 @@ export class UmbrellaApiClient {
   }
 
   // --------------------------------------------------------------------------
+  // Bot Registration & Command Manifest
+  // --------------------------------------------------------------------------
+  public async getBotRegistration(): Promise<{ registered: boolean; callback_url: string | null; registered_at: string | null }> {
+    return this.request('/api/v1/bot/register');
+  }
+
+  public async getBotCommands(): Promise<{ commands: { name: string; description: string; args: string; owner_only: boolean }[]; pushed_at: string | null }> {
+    return this.request('/api/v1/bot/commands');
+  }
+
+  // --------------------------------------------------------------------------
   // Global Broadcast & Shortcuts
   // --------------------------------------------------------------------------
   public async broadcast(message: string, serverId?: string): Promise<any> {
@@ -1085,3 +1096,17 @@ export class UmbrellaApiClient {
 
 export const api = new UmbrellaApiClient();
 export default api;
+
+// Bot-related interfaces (exported for DiscordView)
+export interface BotRegistrationStatus {
+  registered: boolean;
+  callback_url: string | null;
+  registered_at: string | null;
+}
+
+export interface BotCommand {
+  name: string;
+  description: string;
+  args: string;
+  owner_only: boolean;
+}
