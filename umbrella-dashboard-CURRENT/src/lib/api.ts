@@ -502,9 +502,14 @@ export class UmbrellaApiClient {
   }
 
   public async sendServerCommand(serverId: string, command: string): Promise<any> {
-    return this.request<any>(`/api/v1/servers/${encodeURIComponent(serverId)}/command`, {
+    // Core queues commands via POST /api/v1/mc/command — plugin polls and executes
+    return this.request<any>('/api/v1/mc/command', {
       method: 'POST',
-      body: JSON.stringify({ command }),
+      body: JSON.stringify({
+        command,
+        requested_by_discord_id: 'dashboard',
+        requested_by_username: 'Dashboard',
+      }),
     });
   }
 

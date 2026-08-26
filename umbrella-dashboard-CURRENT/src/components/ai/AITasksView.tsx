@@ -397,7 +397,7 @@ export const AITasksView: React.FC = () => {
                   </span>
                 </div>
                 <div className="text-slate-300 font-sans text-xs">
-                  {crashRiskResult.summary || JSON.stringify(crashRiskResult)}
+                  {crashRiskResult.recommendation || crashRiskResult.summary || JSON.stringify(crashRiskResult)}
                 </div>
               </div>
             )}
