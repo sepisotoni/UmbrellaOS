@@ -3,7 +3,7 @@ import {
   Bot, Hash, RefreshCw, Send, Radio, Copy, Check, Info,
   Users, Server, Activity, Terminal, Shield, Layers, Box, Settings
 } from 'lucide-react';
-import { api, SettingRecord } from '../../lib/api';
+import { api, SettingRecord, GuildChannel, GuildRole } from '../../lib/api';
 import { useDashboard } from '../../context/DashboardContext';
 import { DisconnectedBanner } from '../common/DisconnectedBanner';
 
@@ -103,6 +103,10 @@ export const DiscordView: React.FC = () => {
   const [commandsLastPushed, setCommandsLastPushed] = useState<string | null>(null);
   const [commandsLoading, setCommandsLoading] = useState(true);
 
+  // ── Guild channels + roles (from bot push) ──
+  const [guildChannels, setGuildChannels] = useState<GuildChannel[]>([]);
+  const [guildRoles, setGuildRoles] = useState<GuildRole[]>([]);
+
   // ── Broadcast ──
   const [embedTitle, setEmbedTitle] = useState('Network Update & Maintenance Notice');
   const [embedDescription, setEmbedDescription] = useState('All Minecraft nodes have been synchronized with Umbrella Core v1.2.4.');
@@ -178,6 +182,16 @@ export const DiscordView: React.FC = () => {
     loadCommands();
   }, [loadVerified, loadBotReg, loadRoles, loadCommands]);
 
+  // ── Guild channels + roles from bot push ──
+  useEffect(() => {
+    api.getGuildChannels()
+      .then(r => { if (r.channels.length > 0) setGuildChannels(r.channels); })
+      .catch(() => setGuildChannels([]));
+    api.getGuildRoles()
+      .then(r => { if (r.roles.length > 0) setGuildRoles(r.roles); })
+      .catch(() => setGuildRoles([]));
+  }, []);
+
   // ── Set initial channel after settings load ──
   useEffect(() => {
     if (!settingsLoading && !embedChannel) {
@@ -223,11 +237,35 @@ export const DiscordView: React.FC = () => {
   const discordSettingKeys = Object.keys(settings).filter(k => k.startsWith('discord.'));
   const configuredCount = discordSettingKeys.filter(k => settings[k] && settings[k].trim() !== '').length;
 
-  // Channel options from settings
-  const channelOptions: { value: string; label: string }[] = [];
-  if (settings['discord.announcements_channel']) channelOptions.push({ value: settings['discord.announcements_channel'], label: '#announcements' });
-  const staffAlertKey = settings['discord.staff_alerts_channel_id'] || settings['discord.staff_alert_channel_id'] || '';
-  if (staffAlertKey) channelOptions.push({ value: staffAlertKey, label: '#staff-alerts' });
+  // Channel options — prefer live data from bot push; fall back to settings-based IDs
+  const channelOptions: { value: string; label: string; category?: string }[] =
+    guildChannels.length > 0
+      ? guildChannels.map(ch => ({ value: ch.id, label: `#${ch.name}`, category: ch.category ?? undefined }))
+      : (() => {
+          const opts: { value: string; label: string }[] = [];
+          if (settings['discord.announcements_channel']) opts.push({ value: settings['discord.announcements_channel'], label: '#announcements' });
+          const staffAlertKey = settings['discord.staff_alerts_channel_id'] || settings['discord.staff_alert_channel_id'] || '';
+          if (staffAlertKey) opts.push({ value: staffAlertKey, label: '#staff-alerts' });
+          return opts;
+        })();
+
+  // Group channels by category for <optgroup> rendering
+  const channelsByCategory = channelOptions.reduce((acc, ch) => {
+    const cat = (ch as any).category ?? 'Uncategorized';
+    if (!acc[cat]) acc[cat] = [];
+    acc[cat].push(ch);
+    return acc;
+  }, {} as Record<string, typeof channelOptions>);
+
+  // Role mention options — prefer live data from bot push; fall back to hardcoded defaults
+  const roleMentionOptions: { value: string; label: string }[] =
+    guildRoles.length > 0
+      ? guildRoles.map(r => ({ value: r.id, label: `@${r.name}` }))
+      : [
+          { value: 'everyone', label: '@everyone' },
+          { value: 'here', label: '@here' },
+          { value: 'Staff', label: '@Staff' },
+        ];
 
   // Role → dashboard clearance mapping
   const clearanceMap: Record<string, string> = {
@@ -460,11 +498,19 @@ export const DiscordView: React.FC = () => {
                 className="w-full rounded-lg border border-[#1e1b4b] bg-[#070914] px-3 py-2.5 text-sm text-white focus:border-indigo-500 focus:outline-none appearance-none"
               >
                 {channelOptions.length > 0 ? (
-                  channelOptions.map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.label} ({opt.value})</option>
-                  ))
+                  guildChannels.length > 0
+                    ? Object.entries(channelsByCategory).map(([cat, opts]) => (
+                        <optgroup key={cat} label={cat}>
+                          {opts.map(opt => (
+                            <option key={opt.value} value={opt.value}>#{(opt.label as string).replace(/^#/, '')}</option>
+                          ))}
+                        </optgroup>
+                      ))
+                    : channelOptions.map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))
                 ) : (
-                  <option value="" disabled>No channels configured — set in Settings</option>
+                  <option value="" disabled>No channels available — bot offline</option>
                 )}
               </select>
             </div>
@@ -476,9 +522,9 @@ export const DiscordView: React.FC = () => {
                 className="w-full rounded-lg border border-[#1e1b4b] bg-[#070914] px-3 py-2.5 text-sm text-white focus:border-indigo-500 focus:outline-none appearance-none"
               >
                 <option value="none">No Mention (Silent)</option>
-                <option value="everyone">@everyone</option>
-                <option value="here">@here</option>
-                <option value="staff">@Staff</option>
+                {roleMentionOptions.map(r => (
+                  <option key={r.value} value={r.value}>{r.label}</option>
+                ))}
               </select>
             </div>
           </div>

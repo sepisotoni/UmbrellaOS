@@ -48,6 +48,19 @@ export interface DiscordOAuthCallbackResponse {
   expires_in: number;
 }
 
+// Bot Guild Types
+export interface GuildChannel {
+  id: string;
+  name: string;
+  category: string | null;
+}
+
+export interface GuildRole {
+  id: string;
+  name: string;
+  color: number;
+}
+
 // Knowledge Base Types
 export interface KnowledgeEntry {
   id: string;
@@ -1073,6 +1086,14 @@ export class UmbrellaApiClient {
 
   public async getBotCommands(): Promise<{ commands: { name: string; description: string; args: string; owner_only: boolean }[]; pushed_at: string | null }> {
     return this.request('/api/v1/bot/commands');
+  }
+
+  public async getGuildChannels(): Promise<{ channels: GuildChannel[]; pushed_at: string | null }> {
+    return this.request('/api/v1/bot/channels');
+  }
+
+  public async getGuildRoles(): Promise<{ roles: GuildRole[]; pushed_at: string | null }> {
+    return this.request('/api/v1/bot/roles');
   }
 
   // --------------------------------------------------------------------------
