@@ -220,3 +220,34 @@ class UmbrellaCoreClient:
         except ValueError as exc:
             raise UmbrellaCoreError(f"umbrella-core returned a non-JSON response: {exc}") from exc
 
+    async def search_knowledge(self, query: str, limit: int = 5) -> dict[str, Any]:
+        """GET /api/v1/knowledge?query=<q>&limit=<n>
+
+        Returns {"entries": [...], "total": int} — same shape the knowledge
+        capability returned, so KnowledgeCog._format_result() works unchanged.
+        Uses the same PBKDF2 auth headers as every other method.
+        Raises UmbrellaCoreError on non-2xx or network failure.
+        """
+        url = f"{self._base_url}/api/v1/knowledge"
+        headers = await self._make_auth_headers_async()
+
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout, transport=self._transport) as client:
+                response = await client.get(url, params={"query": query, "limit": limit}, headers=headers)
+        except httpx.RequestError as exc:
+            raise UmbrellaCoreError(f"Could not reach umbrella-core: {exc}") from exc
+
+        if response.status_code >= 400:
+            try:
+                body = response.json()
+                message = body.get("detail", body.get("error", response.text))
+                code = body.get("code")
+            except ValueError:
+                message = response.text
+                code = None
+            raise UmbrellaCoreError(message, status_code=response.status_code, code=code)
+
+        try:
+            return response.json()
+        except ValueError as exc:
+            raise UmbrellaCoreError(f"umbrella-core returned a non-JSON response: {exc}") from exc

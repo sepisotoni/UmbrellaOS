@@ -51,9 +51,7 @@ class KnowledgeCog(commands.Cog):
         await interaction.response.defer(thinking=True, ephemeral=True)
 
         try:
-            result = await self.bot.core.invoke(
-                "knowledge.entry.search", {"query": query}, discord_user_id=str(interaction.user.id)
-            )
+            result = await self.bot.core.search_knowledge(query, limit=5)
         except UmbrellaCoreError as exc:
             await interaction.followup.send(self._format_error(exc), ephemeral=True)
             return
