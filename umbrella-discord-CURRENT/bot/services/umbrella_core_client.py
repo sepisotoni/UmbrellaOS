@@ -159,6 +159,24 @@ class UmbrellaCoreClient:
                 f"Bot registration failed: {response.status_code}", status_code=response.status_code
             )
 
+    async def push_command_manifest(self, commands: list[dict]) -> None:
+        """POST /api/v1/bot/commands — push slash command manifest to core.
+        Called once on startup after tree.sync() so the dashboard can read
+        real command data without hardcoding."""
+        url = f"{self._base_url}/api/v1/bot/commands"
+        headers = await self._make_auth_headers_async()
+
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout, transport=self._transport) as client:
+                response = await client.post(url, headers=headers, json={"commands": commands})
+        except httpx.RequestError as exc:
+            raise UmbrellaCoreError(f"Could not reach umbrella-core: {exc}") from exc
+
+        if response.status_code >= 400:
+            raise UmbrellaCoreError(
+                f"Command manifest push failed: {response.status_code}", status_code=response.status_code
+            )
+
     async def get(self, path: str) -> dict[str, Any]:
         """Makes an authenticated GET request to umbrella-core at the given
         path (e.g. '/api/v1/settings/some_key') and returns the parsed JSON

@@ -124,6 +124,29 @@ class UmbrellaBot(commands.Bot):
             await self.tree.sync()
             logger.info("Slash commands synced globally (up to 1hr propagation — set discord.guild_id in core settings for instant registration).")
 
+        # Push command manifest to core so the dashboard can read real command data.
+        try:
+            guild_obj = discord.Object(id=guild_id) if guild_id else None
+            tree_commands = self.tree.get_commands(guild=guild_obj)
+            manifest = []
+            for cmd in tree_commands:
+                manifest.append({
+                    "name": cmd.name,
+                    "description": getattr(cmd, "description", "") or "",
+                    "args": " ".join(
+                        f"<{p.name}>" if p.required else f"[{p.name}]"
+                        for p in (getattr(cmd, "parameters", []) or [])
+                    ),
+                    "owner_only": any(
+                        c.__class__.__name__ == "OwnerRoleCheck"
+                        for c in (getattr(cmd, "checks", []) or [])
+                    ),
+                })
+            await self.core.push_command_manifest(manifest)
+            logger.info("Pushed %d commands to core manifest.", len(manifest))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to push command manifest: %s", exc)
+
     async def close(self) -> None:
         await super().close()
 
