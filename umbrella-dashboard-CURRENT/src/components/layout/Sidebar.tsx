@@ -19,6 +19,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Bot,
+  BookOpen,
 } from 'lucide-react';
 import { UmbrellaLogo } from '../common/UmbrellaLogo';
 
@@ -58,6 +59,7 @@ export const Sidebar: React.FC<SidebarProps> = () => {
     { id: 'plugins', label: 'Plugins', icon: Cpu },
     { id: 'ai-tasks', label: 'AI Tasks', icon: Brain },
     { id: 'audit', label: 'Audit Log', icon: ScrollText },
+    { id: 'knowledge', label: 'Knowledge Base', icon: BookOpen },
     { id: 'feature-flags', label: 'Feature Flags', icon: Flag },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];

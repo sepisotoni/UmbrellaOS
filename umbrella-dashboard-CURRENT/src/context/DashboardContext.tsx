@@ -15,6 +15,7 @@ export type NavigationTab =
   | 'ai-tasks'
   | 'audit'
   | 'feature-flags'
+  | 'knowledge'
   | 'settings'
   | 'discord'
   | 'access-denied'
@@ -36,6 +37,7 @@ export const TAB_ROLE_CLEARANCE: Record<NavigationTab, string[]> = {
   'ai-tasks': ['superadmin', 'owner', 'admin', 'developer', 'moderator', 'staff'],
   audit: ['superadmin', 'owner', 'admin', 'developer'],
   'feature-flags': ['superadmin', 'owner', 'admin', 'developer'],
+  knowledge: ['superadmin', 'owner', 'admin', 'developer', 'moderator', 'support', 'helper', 'staff'],
   settings: ['superadmin', 'owner', 'admin'],
   'access-denied': ['superadmin', 'owner', 'admin', 'developer', 'moderator', 'support', 'helper', 'staff', 'viewer'],
   '404': ['superadmin', 'owner', 'admin', 'developer', 'moderator', 'support', 'helper', 'staff', 'viewer'],

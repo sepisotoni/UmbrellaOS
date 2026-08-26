@@ -48,6 +48,27 @@ export interface DiscordOAuthCallbackResponse {
   expires_in: number;
 }
 
+// Knowledge Base Types
+export interface KnowledgeEntry {
+  id: string;
+  channel_name: string;
+  author_name: string;
+  content: string;
+  confidence_score: number;
+  review_status: 'approved' | 'pending' | 'rejected';
+  created_at: string;
+  updated_at: string | null;
+  corrects_entry_id: string | null;
+  superseded_by_id: string | null;
+}
+
+export interface KnowledgeVersion {
+  version_number: number;
+  content: string;
+  edited_by: string | null;
+  created_at: string;
+}
+
 // Server & Mesh Types
 export interface ServerRecord {
   id: string;
@@ -481,6 +502,60 @@ export class UmbrellaApiClient {
     return this.request(
       `/api/v1/plugin/servers/${encodeURIComponent(serverId)}/console/recent?n=${n}`,
     );
+  }
+
+  // Knowledge Base
+  public async getKnowledgeEntries(params?: {
+    query?: string;
+    limit?: number;
+    status?: string;
+  }): Promise<{ entries: KnowledgeEntry[]; total: number }> {
+    const qs = new URLSearchParams();
+    if (params?.query) qs.set('query', params.query);
+    if (params?.limit) qs.set('limit', String(params.limit));
+    if (params?.status) qs.set('status', params.status);
+    const q = qs.toString();
+    return this.request(`/api/v1/knowledge${q ? `?${q}` : ''}`);
+  }
+
+  public async createKnowledgeEntry(data: {
+    title: string;
+    content: string;
+    category?: string;
+  }): Promise<KnowledgeEntry> {
+    return this.request('/api/v1/knowledge', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async updateKnowledgeEntry(id: string, content: string): Promise<KnowledgeEntry> {
+    return this.request(`/api/v1/knowledge/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ content }),
+    });
+  }
+
+  public async deleteKnowledgeEntry(id: string): Promise<void> {
+    return this.request(`/api/v1/knowledge/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
+  public async getKnowledgeEntryDetail(
+    id: string,
+  ): Promise<{ entry: KnowledgeEntry; versions: KnowledgeVersion[] }> {
+    return this.request(`/api/v1/knowledge/${encodeURIComponent(id)}`);
+  }
+
+  public async getPendingKnowledge(): Promise<{ entries: KnowledgeEntry[] }> {
+    return this.request('/api/v1/knowledge/pending');
+  }
+
+  public async approveKnowledge(id: string): Promise<KnowledgeEntry> {
+    return this.request(`/api/v1/knowledge/${encodeURIComponent(id)}/approve`, { method: 'POST' });
+  }
+
+  public async rejectKnowledge(id: string): Promise<KnowledgeEntry> {
+    return this.request(`/api/v1/knowledge/${encodeURIComponent(id)}/reject`, { method: 'POST' });
   }
 
   private async request<T>(path: string, options: RequestInit = {}): Promise<T> {

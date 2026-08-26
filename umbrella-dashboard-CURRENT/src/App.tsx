@@ -16,6 +16,7 @@ import { PluginsView } from './components/plugins/PluginsView';
 import { AITasksView } from './components/ai/AITasksView';
 import { AuditView } from './components/audit/AuditView';
 import { FeatureFlagsView } from './components/feature-flags/FeatureFlagsView';
+import { KnowledgeView } from './components/knowledge/KnowledgeView';
 import { SettingsView } from './components/settings/SettingsView';
 import { DiscordView } from './components/discord/DiscordView';
 import { LoginView } from './components/auth/LoginView';
@@ -177,6 +178,8 @@ const DashboardContent: React.FC = () => {
         return <AITasksView />;
       case 'audit':
         return <AuditView />;
+      case 'knowledge':
+        return <KnowledgeView />;
       case 'feature-flags':
         return <FeatureFlagsView />;
       case 'settings':
