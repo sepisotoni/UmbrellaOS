@@ -86,9 +86,8 @@ export const VerificationView: React.FC = () => {
     try {
       await api.manualLinkVerification({
         discord_id: discordId.trim(),
-        player_uuid: playerUuid.trim(),
+        mc_username: minecraftUsername.trim() || playerUuid.trim(),
         discord_username: discordUsername.trim() || undefined,
-        minecraft_username: minecraftUsername.trim() || undefined,
       });
       addToast({
         type: 'success',
@@ -117,7 +116,7 @@ export const VerificationView: React.FC = () => {
       l.minecraft_username?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       l.discord_username?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       l.discord_id.includes(searchQuery) ||
-      l.player_uuid.toLowerCase().includes(searchQuery.toLowerCase())
+      (l.minecraft_uuid || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
@@ -237,12 +236,12 @@ export const VerificationView: React.FC = () => {
                     {filteredLinks.map((l) => (
                       <tr key={l.id} className="hover:bg-[#121638]/50 transition">
                         <td
-                          onClick={() => navigateToPlayer(l.player_uuid)}
+                          onClick={() => navigateToPlayer(l.minecraft_uuid || '')}
                           className="py-3 font-bold text-white hover:text-purple-300 hover:underline cursor-pointer"
                         >
                           {l.minecraft_username || 'Unknown'}
                         </td>
-                        <td className="py-3 text-slate-400 text-[11px]">{l.player_uuid.slice(0, 12)}...</td>
+                        <td className="py-3 text-slate-400 text-[11px]">{(l.minecraft_uuid || '').slice(0, 12)}...</td>
                         <td className="py-3 text-purple-300 font-semibold">{l.discord_username || 'Discord User'}</td>
                         <td className="py-3 text-slate-400">{l.discord_id}</td>
                         <td className="py-3 text-slate-400 text-[11px]">
@@ -294,7 +293,7 @@ export const VerificationView: React.FC = () => {
                     <tr key={p.code} className="hover:bg-[#121638]/50 transition">
                       <td className="py-3 font-bold text-amber-400 text-sm">{p.code}</td>
                       <td className="py-3 text-slate-300">{p.player_uuid}</td>
-                      <td className="py-3 text-purple-300">{p.discord_id || 'Awaiting Discord Command'}</td>
+                      <td className="py-3 text-purple-300">Awaiting Discord Command</td>
                       <td className="py-3 text-slate-400 text-[11px]">
                         {p.created_at ? new Date(p.created_at).toLocaleTimeString() : 'N/A'}
                       </td>

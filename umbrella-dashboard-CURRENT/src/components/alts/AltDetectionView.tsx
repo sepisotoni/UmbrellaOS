@@ -32,10 +32,33 @@ export const AltDetectionView: React.FC = () => {
       ]);
 
       if (flaggedRes.status === 'fulfilled') {
-        setFlaggedAlts(flaggedRes.value || []);
+        // Core returns FlaggedPlayerSchema {uuid, username, suspicion_score, first_seen}
+        // Normalize to FlaggedAltAccount shape the table expects
+        const normalized = (flaggedRes.value || []).map((p: any) => ({
+          id: p.uuid,
+          primary_uuid: p.uuid,
+          primary_username: p.username,
+          alt_uuid: p.uuid,
+          alt_username: p.username,
+          method: 'Suspicion Score',
+          confidence: Math.min((p.suspicion_score || 0) / 100, 1),
+          created_at: p.first_seen,
+        }));
+        setFlaggedAlts(normalized);
       }
       if (groupsRes.status === 'fulfilled') {
-        setAltGroups(groupsRes.value || []);
+        // Core returns AltGroupSchema {id, created_at, notes, confirmed}
+        // Normalize to AltClusterGroup shape
+        const normalized = (groupsRes.value || []).map((g: any) => ({
+          group_id: String(g.id),
+          reason: g.notes || (g.confirmed ? 'Confirmed Cluster' : 'Suspected Cluster'),
+          members: (g.members || []).map((m: any) => ({
+            uuid: m.player_uuid || m.uuid || '',
+            username: m.player_uuid?.slice(0, 8) || 'Unknown',
+            is_banned: false,
+          })),
+        }));
+        setAltGroups(normalized);
       }
     } catch (err: any) {
       setError(err.message || 'Failed to fetch alt intelligence data');

@@ -64,7 +64,7 @@ export const StaffView: React.FC = () => {
 
   const handlePromoteDemote = async (memberId: string, role: string) => {
     try {
-      await api.manageStaff({ member_id: memberId, role });
+      await api.manageStaff({ user_id: memberId, role });
       addToast({
         type: 'success',
         title: 'Staff Role Updated',
@@ -82,7 +82,7 @@ export const StaffView: React.FC = () => {
 
   const handleToggleActive = async (memberId: string, currentActive: boolean) => {
     try {
-      await api.manageStaff({ member_id: memberId, is_active: !currentActive });
+      await api.manageStaff({ user_id: memberId, is_active: !currentActive });
       addToast({
         type: 'success',
         title: 'Status Updated',
@@ -272,6 +272,7 @@ export const StaffView: React.FC = () => {
                     <td className="py-3 text-right">
                       <button
                         onClick={() => handleToggleActive(member.id, true)}
+                      title="Deactivate this staff member"
                         className="text-[11px] text-slate-400 hover:text-rose-400 underline cursor-pointer"
                       >
                         Deactivate
@@ -315,8 +316,8 @@ export const StaffView: React.FC = () => {
                   >
                     <option value="">-- Choose from Discord Server Members --</option>
                     {discordMembers.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.username} ({m.id})
+                      <option key={m.discord_id} value={m.discord_id}>
+                        {m.username} ({m.discord_id})
                       </option>
                     ))}
                   </select>
