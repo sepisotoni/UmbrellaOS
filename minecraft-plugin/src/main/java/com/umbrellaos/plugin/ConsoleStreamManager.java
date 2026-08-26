@@ -170,7 +170,8 @@ public class ConsoleStreamManager {
      * {@code maxLines}. Advances {@code totalPushed} so subsequent calls don't
      * resend already-sent lines.
      */
-    private List<String> drainNewLines(int maxLines) {
+    /** Package-private for testing. Production callers use startPushing(). */
+    List<String> drainNewLines(int maxLines) {
         synchronized (lock) {
             long newCount = totalAppended - totalPushed;
             if (newCount <= 0) return Collections.emptyList();

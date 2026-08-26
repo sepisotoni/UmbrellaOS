@@ -67,7 +67,7 @@ class GrimBridgeTest {
         // 1.9 → 2, not 1
         String json = GrimBridge.buildFlagPayload(
                 UUID.fromString("00000000-0000-0000-0000-000000000001"),
-                "Player", "Speed", "verbose", (int) Math.round(1.9));
+                "Player", "Speed", "verbose", (int) Math.round(1.9), "default");
 
         assertTrue(json.contains("\"vl\":2"), "Expected vl=2, got: " + json);
     }
@@ -77,7 +77,7 @@ class GrimBridgeTest {
         // 1.4 → 1
         String json = GrimBridge.buildFlagPayload(
                 UUID.fromString("00000000-0000-0000-0000-000000000001"),
-                "Player", "Speed", "verbose", (int) Math.round(1.4));
+                "Player", "Speed", "verbose", (int) Math.round(1.4), "default");
 
         assertTrue(json.contains("\"vl\":1"), "Expected vl=1, got: " + json);
     }
@@ -86,7 +86,7 @@ class GrimBridgeTest {
     void buildFlagPayload_vlExactInteger_noChange() {
         String json = GrimBridge.buildFlagPayload(
                 UUID.fromString("00000000-0000-0000-0000-000000000001"),
-                "Player", "Reach", "verbose", (int) Math.round(5.0));
+                "Player", "Reach", "verbose", (int) Math.round(5.0), "default");
 
         assertTrue(json.contains("\"vl\":5"), "Expected vl=5, got: " + json);
     }
@@ -98,12 +98,13 @@ class GrimBridgeTest {
     @Test
     void buildFlagPayload_containsAllRequiredFields() {
         UUID uuid = UUID.fromString("aaaabbbb-cccc-dddd-eeee-ffffaaaabbbb");
-        String json = GrimBridge.buildFlagPayload(uuid, "TestPlayer", "Reach", "dx=0.1", 3);
+        String json = GrimBridge.buildFlagPayload(uuid, "TestPlayer", "Reach", "dx=0.1", 3, "default");
 
         assertTrue(json.contains("\"player_uuid\":\"" + uuid + "\""),
                 "Missing player_uuid: " + json);
-        assertTrue(json.contains("\"player_name\":\"TestPlayer\""),
-                "Missing player_name: " + json);
+        // Field is "username" not "player_name" — matches AnticheatFlagRequest (MM-1 fix)
+        assertTrue(json.contains("\"username\":\"TestPlayer\""),
+                "Missing username field (was player_name before MM-1 fix): " + json);
         assertTrue(json.contains("\"check_name\":\"Reach\""),
                 "Missing check_name: " + json);
         assertTrue(json.contains("\"verbose\":\"dx=0.1\""),
@@ -114,29 +115,39 @@ class GrimBridgeTest {
 
     @Test
     void buildFlagPayload_escapesDoubleQuotesInVerbose() {
-        // GrimAC verbose strings can contain quotes (e.g. key="value")
+        // GrimAC verbose strings can contain quotes, tabs, newlines, etc.
+        // JSONObject handles all of these — this test verifies the basic quote case.
         String json = GrimBridge.buildFlagPayload(
-                UUID.randomUUID(), "Player", "Check", "key=\"val\"", 1);
+                UUID.randomUUID(), "Player", "Check", "key=\"val\"", 1, "default");
 
-        // The JSON string value must have escaped quotes, not raw ones
-        assertFalse(json.contains("\"key=\"val\"\""),
-                "Raw unescaped quotes in verbose field: " + json);
-        assertTrue(json.contains("\\\""), "Expected escaped quotes in json: " + json);
+        // The JSON must be parseable (no invalid JSON from unescaped chars)
+        assertDoesNotThrow(() -> new org.json.JSONObject(json));
+        assertTrue(json.contains("key="), "verbose content should be in json: " + json);
+    }
+
+    @Test
+    void buildFlagPayload_escapesControlCharsInVerbose() {
+        // Tab and newline in verbose — these would break manual escaping but JSONObject handles them
+        String json = GrimBridge.buildFlagPayload(
+                UUID.randomUUID(), "Player", "Check", "line1\nline2\ttabbed", 1, "default");
+
+        assertDoesNotThrow(() -> new org.json.JSONObject(json),
+                "JSON with control chars must still be valid: " + json);
     }
 
     @Test
     void buildFlagPayload_escapesDoubleQuotesInPlayerName() {
         String json = GrimBridge.buildFlagPayload(
-                UUID.randomUUID(), "Play\"er", "Check", "v", 1);
+                UUID.randomUUID(), "Play\"er", "Check", "v", 1, "default");
 
-        assertFalse(json.contains("\"Play\"er\""),
-                "Raw unescaped quote in player_name: " + json);
+        assertDoesNotThrow(() -> new org.json.JSONObject(json),
+                "JSON with quote in player name must still be valid: " + json);
     }
 
     @Test
     void buildFlagPayload_nullVerbose_becomesEmptyString() {
         String json = GrimBridge.buildFlagPayload(
-                UUID.randomUUID(), "Player", "Check", null, 1);
+                UUID.randomUUID(), "Player", "Check", null, 1, "default");
 
         assertTrue(json.contains("\"verbose\":\"\""), "Expected empty verbose: " + json);
     }

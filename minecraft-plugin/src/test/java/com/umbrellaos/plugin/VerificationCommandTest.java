@@ -37,9 +37,6 @@ class VerificationCommandTest {
     HttpResponse<String> httpResponse;
 
     @Mock
-    HttpResponse<String> fallbackResponse;
-
-    @Mock
     Player player;
 
     @Mock
@@ -206,20 +203,22 @@ class VerificationCommandTest {
     }
 
     @Test
-    void verifyCode_primary404_fallbackSucceeds() throws IOException, InterruptedException {
+    void verifyCode_primary404_returnsNotFoundError() throws IOException, InterruptedException {
+        // DESIGN-1 fix: fallback endpoint removed. A 404 from /verify-code now returns
+        // a user-facing "code not found" error directly — no second HTTP call.
         when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
-                .thenReturn(httpResponse)       // first call -> 404
-                .thenReturn(fallbackResponse);   // fallback call -> 200
-
+                .thenReturn(httpResponse);
         when(httpResponse.statusCode()).thenReturn(404);
-        when(fallbackResponse.statusCode()).thenReturn(200);
-        when(fallbackResponse.body()).thenReturn("{\"success\": true}");
+        when(httpResponse.body()).thenReturn("{\"detail\": \"Code not found\"}");
 
         VerificationCommand.VerificationResult result =
                 verificationCommand.verifyCode("123456", playerUuid.toString(), playerName);
 
-        assertTrue(result.success());
-        verify(httpClient, times(2)).send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
+        assertFalse(result.success());
+        assertEquals(404, result.statusCode());
+        assertTrue(result.message().contains("not found"));
+        // Only ONE network call — no fallback attempt
+        verify(httpClient, times(1)).send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
     }
 
     @Test
@@ -452,12 +451,14 @@ class VerificationCommandTest {
     }
 
     @Test
-    void onTabComplete_appeal_suggestsStatus() {
+    void onTabComplete_appeal_returnsEmpty() {
+        // PLUGIN-BUG-3 fix: /appeal has no subcommands. Tab-completing "status" was dead
+        // code — the handler never processed args[0]=="status". Now returns empty list.
         when(command.getName()).thenReturn("appeal");
 
         List<String> suggestions = verificationCommand.onTabComplete(player, command, "appeal", new String[]{""});
 
         assertNotNull(suggestions);
-        assertTrue(suggestions.contains("status"));
+        assertTrue(suggestions.isEmpty(), "Expected no tab suggestions for /appeal: " + suggestions);
     }
 }
