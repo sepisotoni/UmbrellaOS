@@ -11,6 +11,7 @@ GET  /api/v1/replay/sessions/{replay_id}/events
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
+import json
 from datetime import datetime
 
 from database import get_db
@@ -123,7 +124,16 @@ async def ingest_replay_events(
     Ingest events into a replay session.
     Returns count of events inserted.
     """
-    inserted = await replay_service.ingest_events(db, replay_id, body.events)
+    # Normalize events: callers may send data/event_data as a dict;
+    # the service expects event_data_json as a pre-serialized JSON string.
+    normalized = []
+    for e in body.events:
+        ev = dict(e)
+        if "event_data_json" not in ev:
+            raw = ev.pop("data", ev.pop("event_data", {}))
+            ev["event_data_json"] = json.dumps(raw) if not isinstance(raw, str) else raw
+        normalized.append(ev)
+    inserted = await replay_service.ingest_events(db, replay_id, normalized)
     return {"inserted": inserted}
 
 

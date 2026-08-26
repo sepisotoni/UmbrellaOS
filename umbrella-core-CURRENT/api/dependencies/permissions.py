@@ -18,6 +18,8 @@ from database import get_db
 from models import User
 from models.permissions import Role
 from api.middleware.session import require_admin_key_or_session
+from api.middleware.api_key_auth import require_capability_auth
+from models.api_key import ApiKey
 from services.permission_resolution import resolve_user_permissions
 
 
@@ -47,10 +49,17 @@ def require_permission(permission: str):
 
     async def _checker(
         request: Request,
-        auth: User | str = Depends(require_admin_key_or_session),
+        auth: User | str | ApiKey = Depends(require_capability_auth),
         db: AsyncSession = Depends(get_db),
-    ) -> User | str:
-        if isinstance(auth, str):
+    ) -> User | str | ApiKey:
+        if isinstance(auth, (str, ApiKey)):
+            # admin key or hmac or api key — check api key permissions
+            if isinstance(auth, ApiKey):
+                if permission not in (auth.permissions or []):
+                    raise HTTPException(
+                        status_code=403,
+                        detail=f"API key missing permission: {permission}",
+                    )
             return auth
 
         permissions = await _load_role_permissions(auth, db, request)
@@ -74,10 +83,17 @@ class RoleChecker:
     async def __call__(
         self,
         request: Request,
-        auth: User | str = Depends(require_admin_key_or_session),
+        auth: User | str | ApiKey = Depends(require_capability_auth),
         db: AsyncSession = Depends(get_db),
-    ) -> User | str:
-        if isinstance(auth, str):
+    ) -> User | str | ApiKey:
+        if isinstance(auth, (str, ApiKey)):
+            if isinstance(auth, ApiKey):
+                if self.require_all:
+                    missing = [p for p in self.permissions if p not in (auth.permissions or [])]
+                    if missing:
+                        raise HTTPException(status_code=403, detail=f"API key missing permissions: {', '.join(missing)}")
+                elif not any(p in (auth.permissions or []) for p in self.permissions):
+                    raise HTTPException(status_code=403, detail=f"API key missing one of: {', '.join(self.permissions)}")
             return auth
 
         user_permissions = await _load_role_permissions(auth, db, request)
@@ -99,11 +115,11 @@ class RoleChecker:
 
 
 async def require_owner(
-    auth: User | str = Depends(require_admin_key_or_session),
+    auth: User | str | ApiKey = Depends(require_capability_auth),
     db: AsyncSession = Depends(get_db),
-) -> User | str:
+) -> User | str | ApiKey:
     """Only the owner role (or admin key) may access settings."""
-    if isinstance(auth, str):
+    if isinstance(auth, (str, ApiKey)):
         return auth
     if not auth.role_id:
         raise HTTPException(status_code=403, detail="Owner access required")

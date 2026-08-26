@@ -597,14 +597,17 @@ export class UmbrellaApiClient {
   }
 
   public async restartServer(id: string): Promise<{ success: boolean; message: string }> {
-    return this.request<{ success: boolean; message: string }>(`/api/v1/servers/${encodeURIComponent(id)}/restart`, {
+    // Core endpoint is POST /api/v1/server/control with body {server_id, action}
+    return this.request<{ success: boolean; message: string }>('/api/v1/server/control', {
       method: 'POST',
+      body: JSON.stringify({ server_id: id, action: 'restart' }),
     });
   }
 
   public async getPlugins(serverId?: string): Promise<PluginHeartbeatRecord[]> {
+    // Core prefix is /api/v1/plugin (not /api/v1/plugins); use dashboard endpoint
     const query = serverId ? `?server=${encodeURIComponent(serverId)}` : '';
-    return this.request<PluginHeartbeatRecord[]>(`/api/v1/plugins${query}`);
+    return this.request<PluginHeartbeatRecord[]>(`/api/v1/plugin/health${query}`);
   }
 
   public async getPluginsHeartbeat(): Promise<PluginHeartbeatStatus[]> {
@@ -818,7 +821,15 @@ export class UmbrellaApiClient {
   }
 
   public async getPendingVerifications(): Promise<PendingVerification[]> {
-    return this.request<PendingVerification[]>('/api/v1/verification/pending');
+    // Core returns player_username; normalize to username for dashboard consistency
+    const raw = await this.request<any[]>('/api/v1/verification/pending');
+    return (raw || []).map((v: any) => ({
+      code: v.code,
+      player_uuid: v.player_uuid,
+      username: v.player_username || v.username,
+      created_at: v.created_at,
+      expires_at: v.expires_at,
+    }));
   }
 
   public async manualLinkAccount(discordId: string, mcUsername: string): Promise<{ success: boolean; message: string }> {

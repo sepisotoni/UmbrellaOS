@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
 from api.dependencies.permissions import require_permission
-from services.webhooks.service import WebhookService, WebhookDeliveryError
+from services.webhooks.service import WebhookService, WebhookDeliveryService, WebhookDeliveryError
 
 router = APIRouter(prefix="/api/v1/webhooks", tags=["webhooks"])
 
@@ -112,7 +112,7 @@ async def test_webhook(
         "message": "This is a test delivery from UmbrellaOS.",
     }
     try:
-        await WebhookService.deliver(
+        await WebhookDeliveryService.deliver(
             subscription,
             topic="webhook.test",
             event_id=f"test-{subscription_id}",
