@@ -1,10 +1,14 @@
 """
-api/routers/bot_registration.py — Bot webhook registration + command manifest.
+api/routers/bot_registration.py — Bot webhook registration + command manifest + guild data.
 
 POST /api/v1/bot/register   — Bot registers its callback URL on startup.
 GET  /api/v1/bot/register   — Dashboard reads current bot registration status.
 POST /api/v1/bot/commands   — Bot pushes its full slash command manifest on startup.
 GET  /api/v1/bot/commands   — Dashboard reads the command manifest.
+POST /api/v1/bot/channels   — Bot pushes guild text channel list on startup.
+GET  /api/v1/bot/channels   — Dashboard reads channel list for broadcaster dropdown.
+POST /api/v1/bot/roles      — Bot pushes guild mentionable role list on startup.
+GET  /api/v1/bot/roles      — Dashboard reads role list for role-mention dropdown.
 
 Auth: require_admin_hmac_or_session (only the bot or a dashboard session).
 """
@@ -21,6 +25,8 @@ from api.middleware.auth import require_admin_hmac_or_session
 from database import get_db
 from models.bot_registration import BotRegistration
 from models.bot_command_manifest import BotCommandManifest
+from models.bot_guild_channels import BotGuildChannels
+from models.bot_guild_roles import BotGuildRoles
 import services.bot_push_service as bot_push_service
 
 router = APIRouter(prefix="/api/v1/bot", tags=["bot"])
@@ -134,5 +140,101 @@ async def get_command_manifest(
         return {"commands": [], "pushed_at": None}
     return {
         "commands": json.loads(row.commands),
+        "pushed_at": row.pushed_at.isoformat() if row.pushed_at else None,
+    }
+
+
+# ─── Guild Channels ────────────────────────────────────────────────────────────
+
+class ChannelSchema(BaseModel):
+    id: str            # Discord snowflake as string
+    name: str          # channel name without #
+    category: str | None = None  # parent category name, if any
+
+
+class GuildChannelsRequest(BaseModel):
+    channels: list[ChannelSchema]
+
+
+@router.post("/channels")
+async def push_guild_channels(
+    body: GuildChannelsRequest,
+    auth: str = Depends(require_admin_hmac_or_session),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Bot pushes its full guild text-channel list on startup."""
+    payload = json.dumps([c.model_dump() for c in body.channels])
+    now = datetime.now(timezone.utc)
+
+    existing = await db.get(BotGuildChannels, 1)
+    if existing:
+        existing.channels = payload
+        existing.pushed_at = now
+    else:
+        db.add(BotGuildChannels(id=1, channels=payload, pushed_at=now))
+
+    await db.commit()
+    return {"ok": True, "count": len(body.channels)}
+
+
+@router.get("/channels")
+async def get_guild_channels(
+    auth: str = Depends(require_admin_hmac_or_session),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Dashboard reads guild channel list for broadcaster dropdown."""
+    row = await db.get(BotGuildChannels, 1)
+    if not row:
+        return {"channels": [], "pushed_at": None}
+    return {
+        "channels": json.loads(row.channels),
+        "pushed_at": row.pushed_at.isoformat() if row.pushed_at else None,
+    }
+
+
+# ─── Guild Roles ───────────────────────────────────────────────────────────────
+
+class RoleSchema(BaseModel):
+    id: str    # Discord snowflake as string
+    name: str  # role name (e.g. "Staff", "@everyone")
+    color: int = 0  # Discord role color as int (0 = no color)
+
+
+class GuildRolesRequest(BaseModel):
+    roles: list[RoleSchema]
+
+
+@router.post("/roles")
+async def push_guild_roles(
+    body: GuildRolesRequest,
+    auth: str = Depends(require_admin_hmac_or_session),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Bot pushes mentionable guild role list on startup."""
+    payload = json.dumps([r.model_dump() for r in body.roles])
+    now = datetime.now(timezone.utc)
+
+    existing = await db.get(BotGuildRoles, 1)
+    if existing:
+        existing.roles = payload
+        existing.pushed_at = now
+    else:
+        db.add(BotGuildRoles(id=1, roles=payload, pushed_at=now))
+
+    await db.commit()
+    return {"ok": True, "count": len(body.roles)}
+
+
+@router.get("/roles")
+async def get_guild_roles(
+    auth: str = Depends(require_admin_hmac_or_session),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Dashboard reads mentionable role list for broadcaster role-mention dropdown."""
+    row = await db.get(BotGuildRoles, 1)
+    if not row:
+        return {"roles": [], "pushed_at": None}
+    return {
+        "roles": json.loads(row.roles),
         "pushed_at": row.pushed_at.isoformat() if row.pushed_at else None,
     }

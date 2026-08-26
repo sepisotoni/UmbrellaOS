@@ -54,6 +54,8 @@ from .feature_flag import FeatureFlag  # noqa: F401
 from .anticheat_violation import AnticheatViolation  # noqa: F401
 from .bot_registration import BotRegistration  # noqa: F401
 from .bot_command_manifest import BotCommandManifest  # noqa: F401
+from .bot_guild_channels import BotGuildChannels  # noqa: F401
+from .bot_guild_roles import BotGuildRoles  # noqa: F401
 from .plugin_console_line import PluginConsoleLine  # noqa: F401
 
 __all__ = [
@@ -128,5 +130,7 @@ __all__ = [
     "AnticheatViolation",
     "BotRegistration",
     "BotCommandManifest",
+    "BotGuildChannels",
+    "BotGuildRoles",
     "PluginConsoleLine",
 ]
