@@ -124,7 +124,7 @@ async def process_ai_config_request(
                 ai_interpretation=ai_interpretation,
                 proposed_changes=proposed_changes,
                 status="pending",
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(timezone.utc),
             )
             db.add(config_action)
             await db.commit()
@@ -175,7 +175,7 @@ async def apply_config_action(
     except json.JSONDecodeError as e:
         action.status = "rejected"
         action.error_message = f"Invalid JSON: {e}"
-        action.reviewed_at = datetime.utcnow()
+        action.reviewed_at = datetime.now(timezone.utc)
         await db.commit()
         await db.refresh(action)
         return action
@@ -205,8 +205,8 @@ async def apply_config_action(
         
         # Mark as applied
         action.status = "applied"
-        action.applied_at = datetime.utcnow()
-        action.reviewed_at = datetime.utcnow()
+        action.applied_at = datetime.now(timezone.utc)
+        action.reviewed_at = datetime.now(timezone.utc)
         await db.commit()
         await db.refresh(action)
         
@@ -216,7 +216,7 @@ async def apply_config_action(
         # Mark as rejected with error
         action.status = "rejected"
         action.error_message = f"Failed to apply: {e}"
-        action.reviewed_at = datetime.utcnow()
+        action.reviewed_at = datetime.now(timezone.utc)
         await db.commit()
         await db.refresh(action)
         return action

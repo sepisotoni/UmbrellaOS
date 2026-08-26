@@ -3,7 +3,7 @@ models/verification.py — Player verification system models.
 
 VerificationCode: Stores 6-digit codes for Discord-based player verification.
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import Boolean, DateTime, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
@@ -25,7 +25,7 @@ class VerificationCode(Base):
     )
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False,
-        default=lambda: datetime.utcnow() + timedelta(minutes=10)
+        default=lambda: datetime.now(timezone.utc) + timedelta(minutes=10)
     )
     used: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)

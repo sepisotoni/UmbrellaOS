@@ -4,7 +4,7 @@ services/replay_service.py — Replay system service.
 Methods for managing replay sessions and events.
 """
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, func
 from sqlalchemy.orm import selectinload
@@ -119,7 +119,7 @@ async def finalize_replay(
     result = await db.execute(
         update(ReplaySession)
         .where(ReplaySession.id == replay_id)
-        .values(ended_at=datetime.utcnow())
+        .values(ended_at=datetime.now(timezone.utc))
         .returning(ReplaySession)
     )
     row = result.scalar_one_or_none()

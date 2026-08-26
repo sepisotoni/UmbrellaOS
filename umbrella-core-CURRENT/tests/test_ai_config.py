@@ -109,7 +109,7 @@ async def test_get_ai_config_pending_returns_list(
             ai_interpretation="Test interpretation",
             proposed_changes='{"test": "value"}',
             status="pending",
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
         )
         db.add(action)
         await db.commit()
@@ -138,7 +138,7 @@ async def test_post_ai_config_id_approve_calls_apply(
             ai_interpretation="Test interpretation",
             proposed_changes='{"test": "value"}',
             status="pending",
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
         )
         db.add(action)
         await db.commit()
@@ -170,7 +170,7 @@ async def test_post_ai_config_id_reject_updates_status(
             ai_interpretation="Test interpretation",
             proposed_changes='{"test": "value"}',
             status="pending",
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
         )
         db.add(action)
         await db.commit()

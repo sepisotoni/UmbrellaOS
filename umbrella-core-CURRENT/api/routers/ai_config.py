@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timezone
 
 from database import get_db
 from models import AIConfigAction
@@ -113,7 +113,7 @@ async def reject_config(
         raise HTTPException(status_code=400, detail=f"Action is {config_action.status}, cannot reject")
     
     config_action.status = "rejected"
-    config_action.reviewed_at = datetime.utcnow()
+    config_action.reviewed_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(config_action)
     

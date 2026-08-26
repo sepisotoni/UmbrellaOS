@@ -85,7 +85,7 @@ def register_error_handlers(app: FastAPI) -> None:
             error=exc.message,
             code=exc.code,
             status=exc.status_code,
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
             path=str(request.url.path),
             details=exc.details
         )
@@ -102,7 +102,7 @@ def register_error_handlers(app: FastAPI) -> None:
             error="Internal server error",
             code="INTERNAL_ERROR",
             status=500,
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
             path=str(request.url.path),
             details=str(exc) if str(exc) else None
         )

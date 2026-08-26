@@ -4,7 +4,7 @@ services/snapshot_service.py — Snapshot system service.
 Methods for managing player snapshots.
 """
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -44,7 +44,7 @@ async def create_snapshot(
         raise ValueError(f"Invalid trigger: {trigger}. Must be one of {VALID_TRIGGERS}")
 
     if timestamp is None:
-        timestamp = datetime.utcnow()
+        timestamp = datetime.now(timezone.utc)
 
     snapshot = PlayerSnapshot(
         minecraft_uuid=minecraft_uuid,

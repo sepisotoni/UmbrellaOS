@@ -4,7 +4,7 @@ tests/test_snapshots.py — Snapshot API tests.
 Tests for the snapshot system endpoints.
 """
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -98,7 +98,7 @@ async def test_get_snapshots_players_uuid_returns_list_newest_first(client: Asyn
     uuid = "550e8400-e29b-41d4-a716-446655440000"
     
     # Create three snapshots with different timestamps
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     for i in range(3):
         payload = {
             "minecraft_uuid": uuid,
@@ -153,7 +153,7 @@ async def test_get_snapshots_players_uuid_latest_returns_most_recent(client: Asy
     uuid = "550e8400-e29b-41d4-a716-446655440000"
     
     # Create two snapshots
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     payload1 = {
         "minecraft_uuid": uuid,
         "trigger": "scheduled",
@@ -235,7 +235,7 @@ async def test_get_snapshots_replay_replay_id_returns_snapshots_within_window(cl
     """GET /snapshots/replay/{replay_id} returns snapshots within time window."""
     async with db_session() as db:
         # Create a replay session
-        incident_at = datetime.utcnow()
+        incident_at = datetime.now(timezone.utc)
         replay = ReplaySession(
             trigger="ban",
             triggered_by="staff",
@@ -283,8 +283,8 @@ async def test_post_snapshots_with_replay_id_links_to_replay_session(client: Asy
             trigger="ban",
             triggered_by="staff",
             minecraft_uuid="550e8400-e29b-41d4-a716-446655440000",
-            started_at=datetime.utcnow() - timedelta(minutes=5),
-            incident_at=datetime.utcnow(),
+            started_at=datetime.now(timezone.utc) - timedelta(minutes=5),
+            incident_at=datetime.now(timezone.utc),
         )
         db.add(replay)
         await db.commit()
@@ -318,7 +318,7 @@ async def test_multiple_snapshots_for_same_player_returned_newest_first(client: 
     uuid = "550e8400-e29b-41d4-a716-446655440000"
     
     # Create multiple snapshots
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     for i in range(5):
         payload = {
             "minecraft_uuid": uuid,

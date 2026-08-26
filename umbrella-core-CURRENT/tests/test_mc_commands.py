@@ -5,7 +5,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 from models import MCCommand, AuditLog
-from datetime import datetime
+from datetime import datetime, timezone
 from tests.conftest import PLUGIN_HEADERS
 
 
@@ -71,22 +71,22 @@ async def test_get_mc_commands_pending_returns_list(client: AsyncClient, db_sess
             requested_by_discord_id="123456789",
             requested_by_username="TestStaff1",
             status="pending",
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
         )
         cmd2 = MCCommand(
             command="gamemode creative",
             requested_by_discord_id="987654321",
             requested_by_username="TestStaff2",
             status="pending",
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
         )
         cmd3 = MCCommand(
             command="op player",
             requested_by_discord_id="111222333",
             requested_by_username="TestStaff3",
             status="completed",
-            created_at=datetime.utcnow(),
-            completed_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
+            completed_at=datetime.now(timezone.utc),
         )
         db.add(cmd1)
         db.add(cmd2)
@@ -121,7 +121,7 @@ async def test_post_mc_commands_id_complete_marks_completed(client: AsyncClient,
             requested_by_discord_id="123456789",
             requested_by_username="TestStaff",
             status="pending",
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
         )
         db.add(cmd)
         await db.commit()
@@ -158,7 +158,7 @@ async def test_post_mc_commands_id_complete_marks_failed(client: AsyncClient, db
             requested_by_discord_id="123456789",
             requested_by_username="TestStaff",
             status="pending",
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
         )
         db.add(cmd)
         await db.commit()
@@ -206,8 +206,8 @@ async def test_post_mc_commands_id_complete_already_completed_returns_400(client
             requested_by_discord_id="123456789",
             requested_by_username="TestStaff",
             status="completed",
-            created_at=datetime.utcnow(),
-            completed_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
+            completed_at=datetime.now(timezone.utc),
         )
         db.add(cmd)
         await db.commit()
@@ -274,7 +274,7 @@ async def test_post_mc_commands_id_complete_creates_audit_log(client: AsyncClien
             requested_by_discord_id="123456789",
             requested_by_username="TestStaff",
             status="pending",
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
         )
         db.add(cmd)
         await db.commit()

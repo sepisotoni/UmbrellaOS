@@ -5,7 +5,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 from models import AITask, Player, Setting
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 
 
 @pytest.mark.asyncio
@@ -26,8 +26,8 @@ async def test_post_ai_review_player_creates_task(client: AsyncClient, db_sessio
         player = Player(
             uuid="00000000-0000-0000-0000-000000000001",
             username="TestPlayer",
-            first_seen=datetime.utcnow(),
-            last_seen=datetime.utcnow(),
+            first_seen=datetime.now(timezone.utc),
+            last_seen=datetime.now(timezone.utc),
         )
         db.add(player)
         await db.commit()
@@ -41,8 +41,8 @@ async def test_post_ai_review_player_creates_task(client: AsyncClient, db_sessio
             task_type="moderation_review",
             status="pending",
             player_uuid=player_uuid,
-            created_at=datetime.utcnow(),
-            expires_at=datetime.utcnow() + timedelta(hours=48),
+            created_at=datetime.now(timezone.utc),
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=48),
             ai_summary="Test summary",
             ai_recommendation="ban",
             ai_confidence=0.9,
@@ -77,8 +77,8 @@ async def test_get_ai_tasks_returns_list(client: AsyncClient, db_session):
             task_type="moderation_review",
             status="pending",
             player_uuid="00000000-0000-0000-0000-000000000001",
-            created_at=datetime.utcnow(),
-            expires_at=datetime.utcnow() + timedelta(hours=48),
+            created_at=datetime.now(timezone.utc),
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=48),
             ai_summary="Test summary 1",
             ai_recommendation="ban",
             ai_confidence=0.9,
@@ -88,8 +88,8 @@ async def test_get_ai_tasks_returns_list(client: AsyncClient, db_session):
             task_type="appeal_review",
             status="approved",
             player_uuid="00000000-0000-0000-0000-000000000002",
-            created_at=datetime.utcnow(),
-            expires_at=datetime.utcnow() + timedelta(hours=48),
+            created_at=datetime.now(timezone.utc),
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=48),
             ai_summary="Test summary 2",
             ai_recommendation="approve",
             ai_confidence=0.8,
@@ -117,8 +117,8 @@ async def test_get_ai_tasks_status_pending_filters_correctly(client: AsyncClient
             task_type="moderation_review",
             status="pending",
             player_uuid="00000000-0000-0000-0000-000000000001",
-            created_at=datetime.utcnow(),
-            expires_at=datetime.utcnow() + timedelta(hours=48),
+            created_at=datetime.now(timezone.utc),
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=48),
             ai_summary="Test summary 1",
             ai_recommendation="ban",
             ai_confidence=0.9,
@@ -128,8 +128,8 @@ async def test_get_ai_tasks_status_pending_filters_correctly(client: AsyncClient
             task_type="appeal_review",
             status="approved",
             player_uuid="00000000-0000-0000-0000-000000000002",
-            created_at=datetime.utcnow(),
-            expires_at=datetime.utcnow() + timedelta(hours=48),
+            created_at=datetime.now(timezone.utc),
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=48),
             ai_summary="Test summary 2",
             ai_recommendation="approve",
             ai_confidence=0.8,
@@ -157,8 +157,8 @@ async def test_get_ai_task_id_returns_full_task(client: AsyncClient, db_session)
             task_type="moderation_review",
             status="pending",
             player_uuid="00000000-0000-0000-0000-000000000001",
-            created_at=datetime.utcnow(),
-            expires_at=datetime.utcnow() + timedelta(hours=48),
+            created_at=datetime.now(timezone.utc),
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=48),
             ai_summary="Test summary",
             ai_recommendation="ban",
             ai_confidence=0.9,
@@ -188,8 +188,8 @@ async def test_post_ai_tasks_id_approve_updates_status(client: AsyncClient, db_s
             task_type="moderation_review",
             status="pending",
             player_uuid="00000000-0000-0000-0000-000000000001",
-            created_at=datetime.utcnow(),
-            expires_at=datetime.utcnow() + timedelta(hours=48),
+            created_at=datetime.now(timezone.utc),
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=48),
             ai_summary="Test summary",
             ai_recommendation="ban",
             ai_confidence=0.9,
@@ -220,8 +220,8 @@ async def test_post_ai_tasks_id_deny_updates_status(client: AsyncClient, db_sess
             task_type="moderation_review",
             status="pending",
             player_uuid="00000000-0000-0000-0000-000000000001",
-            created_at=datetime.utcnow(),
-            expires_at=datetime.utcnow() + timedelta(hours=48),
+            created_at=datetime.now(timezone.utc),
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=48),
             ai_summary="Test summary",
             ai_recommendation="ban",
             ai_confidence=0.9,
@@ -251,14 +251,14 @@ async def test_approved_task_cannot_be_approved_again(client: AsyncClient, db_se
             task_type="moderation_review",
             status="approved",
             player_uuid="00000000-0000-0000-0000-000000000001",
-            created_at=datetime.utcnow(),
-            expires_at=datetime.utcnow() + timedelta(hours=48),
+            created_at=datetime.now(timezone.utc),
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=48),
             ai_summary="Test summary",
             ai_recommendation="ban",
             ai_confidence=0.9,
             evidence='{"test": "data"}',
             reviewed_by="staff123",
-            reviewed_at=datetime.utcnow(),
+            reviewed_at=datetime.now(timezone.utc),
             action_taken="Banned",
         )
         db.add(task)
@@ -282,14 +282,14 @@ async def test_denied_task_cannot_be_denied_again(client: AsyncClient, db_sessio
             task_type="moderation_review",
             status="denied",
             player_uuid="00000000-0000-0000-0000-000000000001",
-            created_at=datetime.utcnow(),
-            expires_at=datetime.utcnow() + timedelta(hours=48),
+            created_at=datetime.now(timezone.utc),
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=48),
             ai_summary="Test summary",
             ai_recommendation="ban",
             ai_confidence=0.9,
             evidence='{"test": "data"}',
             reviewed_by="staff123",
-            reviewed_at=datetime.utcnow(),
+            reviewed_at=datetime.now(timezone.utc),
         )
         db.add(task)
         await db.commit()
@@ -337,8 +337,8 @@ async def test_post_ai_review_appeal_creates_task(client: AsyncClient, db_sessio
         player = Player(
             uuid="00000000-0000-0000-0000-000000000002",
             username="TestPlayer2",
-            first_seen=datetime.utcnow(),
-            last_seen=datetime.utcnow(),
+            first_seen=datetime.now(timezone.utc),
+            last_seen=datetime.now(timezone.utc),
         )
         db.add(player)
         await db.commit()
@@ -376,8 +376,8 @@ async def test_post_ai_review_appeal_creates_task(client: AsyncClient, db_sessio
             task_type="appeal_review",
             status="pending",
             player_uuid="00000000-0000-0000-0000-000000000002",
-            created_at=datetime.utcnow(),
-            expires_at=datetime.utcnow() + timedelta(hours=48),
+            created_at=datetime.now(timezone.utc),
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=48),
             ai_summary="Appeal summary",
             ai_recommendation="approve",
             ai_confidence=0.85,
@@ -409,8 +409,8 @@ async def test_get_ai_tasks_task_type_filters_correctly(client: AsyncClient, db_
             task_type="moderation_review",
             status="pending",
             player_uuid="00000000-0000-0000-0000-000000000001",
-            created_at=datetime.utcnow(),
-            expires_at=datetime.utcnow() + timedelta(hours=48),
+            created_at=datetime.now(timezone.utc),
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=48),
             ai_summary="Test summary 1",
             ai_recommendation="ban",
             ai_confidence=0.9,
@@ -420,8 +420,8 @@ async def test_get_ai_tasks_task_type_filters_correctly(client: AsyncClient, db_
             task_type="appeal_review",
             status="pending",
             player_uuid="00000000-0000-0000-0000-000000000002",
-            created_at=datetime.utcnow(),
-            expires_at=datetime.utcnow() + timedelta(hours=48),
+            created_at=datetime.now(timezone.utc),
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=48),
             ai_summary="Test summary 2",
             ai_recommendation="approve",
             ai_confidence=0.8,

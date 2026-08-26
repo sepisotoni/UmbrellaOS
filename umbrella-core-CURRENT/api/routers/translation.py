@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timezone
 
 from database import get_db
 from models import PlayerLanguage
@@ -113,8 +113,8 @@ async def get_player_language_endpoint(
             language_name="English",
             auto_translate_incoming=True,
             auto_translate_outgoing=False,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
         )
         return PlayerLanguageResponse.model_validate(default_lang)
     

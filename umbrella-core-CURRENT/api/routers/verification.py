@@ -8,7 +8,7 @@ GET  /api/v1/verification/pending    — List pending verifications
 POST /api/v1/verification/revoke     — Revoke verification
 """
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
@@ -110,7 +110,7 @@ async def request_verification(
         player_uuid=body.player_uuid,
         player_username=body.player_username,
         code=code,
-        expires_at=datetime.utcnow() + timedelta(minutes=10),
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
         ip_address=body.ip_address,
     )
     db.add(verification_code)
@@ -143,7 +143,7 @@ async def confirm_verification(
         raise HTTPException(status_code=404, detail="Code not found")
     
     # Check if expired
-    if datetime.utcnow() > verification_code.expires_at.replace(tzinfo=None):
+    if datetime.now(timezone.utc) > verification_code.expires_at:
         raise HTTPException(status_code=400, detail="Code expired")
     
     # Check if already used
@@ -188,14 +188,14 @@ async def confirm_verification(
         else:
             account.player_uuid = verification_code.player_uuid
             account.verified = True
-            account.linked_at = datetime.utcnow()
+            account.linked_at = datetime.now(timezone.utc)
             account.discord_username = body.discord_username
     else:
         account = DiscordAccount(
             discord_id=body.discord_id,
             player_uuid=verification_code.player_uuid,
             verified=True,
-            linked_at=datetime.utcnow(),
+            linked_at=datetime.now(timezone.utc),
             discord_username=body.discord_username,
         )
         db.add(account)
@@ -276,7 +276,7 @@ async def list_pending_verifications(
         select(VerificationCode).where(
             and_(
                 VerificationCode.used == False,
-                VerificationCode.expires_at > datetime.utcnow()
+                VerificationCode.expires_at > datetime.now(timezone.utc)
             )
         )
     )
@@ -353,14 +353,14 @@ async def manual_link(
     if existing:
         existing.verified = True
         existing.player_uuid = player_uuid
-        existing.linked_at = datetime.utcnow()
+        existing.linked_at = datetime.now(timezone.utc)
         existing.discord_username = existing.discord_username or body.discord_id
     else:
         existing = DiscordAccount(
             discord_id=body.discord_id,
             player_uuid=player_uuid,
             verified=True,
-            linked_at=datetime.utcnow(),
+            linked_at=datetime.now(timezone.utc),
             discord_username=body.discord_id,
         )
         db.add(existing)
@@ -582,7 +582,7 @@ async def plugin_verify_code(
         )
 
     # Look up the pending verification code
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     vc_result = await db.execute(
         select(VerificationCode).where(
             and_(
@@ -630,7 +630,7 @@ async def plugin_verify_code(
     if discord_acct:
         # Update with confirmed minecraft identity
         discord_acct.verified = True
-        discord_acct.linked_at = datetime.utcnow()
+        discord_acct.linked_at = datetime.now(timezone.utc)
         # Overwrite player_uuid with the joining player's real UUID if it changed
         discord_acct.player_uuid = player_uuid
     else:
@@ -640,7 +640,7 @@ async def plugin_verify_code(
             discord_id=f"pending_mc:{player_uuid}",
             player_uuid=player_uuid,
             verified=True,
-            linked_at=datetime.utcnow(),
+            linked_at=datetime.now(timezone.utc),
             discord_username=None,
         )
         db.add(discord_acct)

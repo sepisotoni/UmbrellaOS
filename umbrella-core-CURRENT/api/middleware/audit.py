@@ -89,7 +89,7 @@ async def create_audit_log(
         actor_type=actor_type or "system",
         target=target,
         details_json=json.dumps(details or {}) if details else "{}",
-        created_at=datetime.utcnow()
+        created_at=datetime.now(timezone.utc)
     )
     db.add(audit_log)
     await db.flush()

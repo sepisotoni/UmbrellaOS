@@ -40,7 +40,7 @@ same already-linked pair is treated as an idempotent success.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -88,7 +88,7 @@ async def confirm_verification(
     if not verification_code:
         raise ResourceNotFoundException("Verification code", code)
 
-    if datetime.utcnow() > verification_code.expires_at.replace(tzinfo=None):
+    if datetime.now(timezone.utc) > verification_code.expires_at:
         raise ValidationException("Verification code has expired.")
 
     if verification_code.used:
@@ -123,14 +123,14 @@ async def confirm_verification(
         else:
             account.player_uuid = verification_code.player_uuid
             account.verified = True
-            account.linked_at = datetime.utcnow()
+            account.linked_at = datetime.now(timezone.utc)
             account.discord_username = discord_username
     else:
         account = DiscordAccount(
             discord_id=discord_id,
             player_uuid=verification_code.player_uuid,
             verified=True,
-            linked_at=datetime.utcnow(),
+            linked_at=datetime.now(timezone.utc),
             discord_username=discord_username,
         )
         db.add(account)

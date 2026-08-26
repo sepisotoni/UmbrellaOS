@@ -16,7 +16,7 @@ P15 Tasks 4 & 5:
     rich decision UI.
 """
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -204,7 +204,7 @@ async def approve_ai_task(
 
     task.status = "approved"
     task.reviewed_by = body.reviewed_by
-    task.reviewed_at = datetime.utcnow()
+    task.reviewed_at = datetime.now(timezone.utc)
     task.action_taken = body.action_taken
 
     audit = AuditLog(
@@ -246,7 +246,7 @@ async def deny_ai_task(
 
     task.status = "denied"
     task.reviewed_by = body.reviewed_by
-    task.reviewed_at = datetime.utcnow()
+    task.reviewed_at = datetime.now(timezone.utc)
 
     audit = AuditLog(
         actor=body.reviewed_by,

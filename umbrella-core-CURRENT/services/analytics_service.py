@@ -4,7 +4,7 @@ services/analytics_service.py — Analytics event tracking and player statistics
 Handles recording analytics events and aggregating player statistics.
 """
 import json
-from datetime import datetime, date, timedelta
+from datetime import datetime, timezone, date, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -81,7 +81,7 @@ async def _increment_stat(
     
     Uses upsert pattern to avoid race conditions.
     """
-    today = datetime.utcnow().date()
+    today = datetime.now(timezone.utc).date()
     
     for period in periods:
         if period == "daily":
@@ -110,7 +110,7 @@ async def _increment_stat(
         if stat:
             # Increment existing
             stat.value += amount
-            stat.updated_at = datetime.utcnow()
+            stat.updated_at = datetime.now(timezone.utc)
         else:
             # Create new
             stat = PlayerStat(
