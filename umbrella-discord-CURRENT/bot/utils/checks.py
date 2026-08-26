@@ -41,9 +41,9 @@ def require_owner_role() -> app_commands.check:
             )
             return False
 
-        # Retrieve the configured role ID from bot.settings.
-        settings = getattr(interaction.client, "settings", None)
-        owner_role_id: int = getattr(settings, "owner_role_id", 0) or 0
+        # Retrieve the configured role ID from bot.remote (DB-backed RemoteConfig).
+        remote = getattr(interaction.client, "remote", None)
+        owner_role_id: int = getattr(remote, "owner_role_id", 0) or 0
 
         if owner_role_id:
             has_role = any(r.id == owner_role_id for r in member.roles)

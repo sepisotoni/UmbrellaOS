@@ -269,3 +269,41 @@ class UmbrellaCoreClient:
             return response.json()
         except ValueError as exc:
             raise UmbrellaCoreError(f"umbrella-core returned a non-JSON response: {exc}") from exc
+
+    async def push_guild_channels(self, channels: list[dict]) -> None:
+        """POST /api/v1/bot/channels — push guild text channel list to core.
+        Called on startup (and again in on_ready if guild cache was cold in
+        setup_hook). Dashboard reads this to populate the broadcaster dropdown.
+        """
+        url = f"{self._base_url}/api/v1/bot/channels"
+        headers = await self._make_auth_headers_async()
+
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout, transport=self._transport) as client:
+                response = await client.post(url, headers=headers, json={"channels": channels})
+        except httpx.RequestError as exc:
+            raise UmbrellaCoreError(f"Could not reach umbrella-core: {exc}") from exc
+
+        if response.status_code >= 400:
+            raise UmbrellaCoreError(
+                f"Guild channels push failed: {response.status_code}", status_code=response.status_code
+            )
+
+    async def push_guild_roles(self, roles: list[dict]) -> None:
+        """POST /api/v1/bot/roles — push mentionable guild role list to core.
+        Called on startup (and again in on_ready). Dashboard reads this to
+        populate the broadcaster role-mention dropdown.
+        """
+        url = f"{self._base_url}/api/v1/bot/roles"
+        headers = await self._make_auth_headers_async()
+
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout, transport=self._transport) as client:
+                response = await client.post(url, headers=headers, json={"roles": roles})
+        except httpx.RequestError as exc:
+            raise UmbrellaCoreError(f"Could not reach umbrella-core: {exc}") from exc
+
+        if response.status_code >= 400:
+            raise UmbrellaCoreError(
+                f"Guild roles push failed: {response.status_code}", status_code=response.status_code
+            )

@@ -126,8 +126,8 @@ class UmbrellaBot(commands.Bot):
 
         # Push command manifest to core so the dashboard can read real command data.
         try:
-            guild_obj = discord.Object(id=guild_id) if guild_id else None
-            tree_commands = self.tree.get_commands(guild=guild_obj)
+            guild_obj_for_cmds = discord.Object(id=guild_id) if guild_id else None
+            tree_commands = self.tree.get_commands(guild=guild_obj_for_cmds)
             manifest = []
             for cmd in tree_commands:
                 manifest.append({
@@ -147,8 +147,55 @@ class UmbrellaBot(commands.Bot):
         except Exception as exc:  # noqa: BLE001
             logger.warning("Failed to push command manifest: %s", exc)
 
+        # Push guild channels + roles — guild cache may be cold in setup_hook
+        # (GUILD_CREATE not received yet), so also retry in on_ready.
+        await self._push_guild_data()
+
     async def close(self) -> None:
         await super().close()
+
+    async def _push_guild_data(self) -> None:
+        """Push guild text channels and mentionable roles to core.
+
+        Safe to call multiple times — upserts to id=1 each time. Called from
+        both setup_hook (optimistic, guild cache may be cold) and on_ready
+        (guaranteed cache warm) so the dashboard always gets real data.
+        """
+        guild_id = self.remote.guild_id if self.remote else None
+        guild_obj = self.get_guild(guild_id) if guild_id else None
+
+        if guild_obj is None:
+            logger.warning(
+                "_push_guild_data: guild %s not in cache yet — will retry in on_ready.", guild_id
+            )
+            return
+
+        # Channels
+        try:
+            channels = [
+                {
+                    "id": str(ch.id),
+                    "name": ch.name,
+                    "category": ch.category.name if ch.category else None,
+                }
+                for ch in guild_obj.text_channels
+            ]
+            await self.core.push_guild_channels(channels)
+            logger.info("Pushed %d guild channels to core.", len(channels))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to push guild channels: %s", exc)
+
+        # Roles — mentionable only (includes @everyone which is always mentionable)
+        try:
+            roles = [
+                {"id": str(r.id), "name": r.name, "color": r.color.value}
+                for r in guild_obj.roles
+                if r.mentionable or r.name == "@everyone"
+            ]
+            await self.core.push_guild_roles(roles)
+            logger.info("Pushed %d mentionable guild roles to core.", len(roles))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to push guild roles: %s", exc)
 
     async def on_ready(self) -> None:
         logger.info("Logged in as %s (id=%s)", self.user, getattr(self.user, "id", "?"))
@@ -156,6 +203,8 @@ class UmbrellaBot(commands.Bot):
             status=discord.Status.online,
             activity=discord.Activity(type=discord.ActivityType.watching, name="the server | /investigate"),
         )
+        # Retry channel + role push now that guild cache is guaranteed warm.
+        await self._push_guild_data()
 
     async def on_message(self, message: discord.Message) -> None:
         """Single global on_message — dispatches to cog listeners then
