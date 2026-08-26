@@ -5,6 +5,8 @@ import ac.grim.grimac.api.event.events.FlagEvent;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.Plugin;
 
+import org.json.JSONObject;
+
 import java.io.IOException;
 import java.net.http.HttpResponse;
 import java.util.UUID;
@@ -161,42 +163,21 @@ public final class GrimBridge {
      * Constructs the JSON body for {@code POST /api/v1/anticheat/flag}.
      * Package-private so tests can assert on it without making network calls.
      *
-     * <p>Shape verified against {@code api/routers/anticheat.py} in
-     * umbrella-core — specifically {@code AnticheatFlagRequest}'s Pydantic
-     * model. Using manual string-building here (same pattern as Step 1/2)
-     * rather than a JSON library, because {@code verbose} is the only
-     * potentially-untrusted string field and we escape it manually.
-     *
-     * <p>The {@code server_id} field was added in P15 Task 5. Old core
-     * versions (pre-P15) will simply ignore the unknown field — Pydantic
-     * silently discards extra keys by default.
+     * <p>Uses {@code org.json.JSONObject} (already shaded into the jar) to
+     * correctly escape all control characters in free-text fields such as
+     * {@code verbose} — GrimAC verbose strings can contain tabs, newlines,
+     * and other chars that manual escaping misses (DESIGN-2 fix).
      */
-
     static String buildFlagPayload(UUID playerUuid, String playerName,
                                    String checkName, String verbose, int vl,
                                    String serverId) {
-        // Escape double-quotes in free-text fields so the JSON body stays valid
-        // if GrimAC's verbose string contains them (it sometimes does).
-        String safeName    = escapeJson(playerName);
-        String safeCheck   = escapeJson(checkName);
-        String safeVerbose = verbose != null ? escapeJson(verbose) : "";
-        String safeServerId = serverId != null ? escapeJson(serverId) : DEFAULT_SERVER_ID;
-
-        // Field name is "username" (not "player_name") — matches AnticheatFlagRequest
-        // in umbrella-core's api/routers/anticheat.py. Using "player_name" caused
-        // Pydantic to silently drop the field, storing the UUID as the player name
-        // in every anticheat_violations row (MM-1 fix).
-        return "{"
-                + "\"player_uuid\":\"" + playerUuid + "\","
-                + "\"username\":\"" + safeName + "\","
-                + "\"check_name\":\"" + safeCheck + "\","
-                + "\"verbose\":\"" + safeVerbose + "\","
-                + "\"vl\":" + vl + ","
-                + "\"server_id\":\"" + safeServerId + "\""
-                + "}";
-    }
-
-    private static String escapeJson(String s) {
-        return s.replace("\\", "\\\\").replace("\"", "\\\"");
+        JSONObject body = new JSONObject();
+        body.put("player_uuid", playerUuid.toString());
+        body.put("username", playerName != null ? playerName : "");
+        body.put("check_name", checkName != null ? checkName : "");
+        body.put("verbose", verbose != null ? verbose : "");
+        body.put("vl", vl);
+        body.put("server_id", serverId != null ? serverId : DEFAULT_SERVER_ID);
+        return body.toString();
     }
 }

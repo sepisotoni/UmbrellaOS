@@ -3,6 +3,8 @@ package com.umbrellaos.plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 
+import org.json.JSONArray;
+
 import java.io.IOException;
 import java.net.http.HttpResponse;
 import java.util.ArrayDeque;
@@ -15,7 +17,6 @@ import java.util.logging.Handler;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 import java.util.logging.SimpleFormatter;
-import java.util.stream.Collectors;
 
 /**
  * Thread-safe manager for capturing and buffering server console log lines.
@@ -185,33 +186,6 @@ public class ConsoleStreamManager {
     }
 
     /**
-     * Properly escape a string for embedding inside a JSON double-quoted value.
-     * Handles backslash, quote, and all JSON control characters (\n, \r, \t, etc.).
-     */
-    private static String escapeJsonString(String s) {
-        StringBuilder sb = new StringBuilder(s.length() + 8);
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            switch (c) {
-                case '\\' -> sb.append("\\\\");
-                case '"'  -> sb.append("\\\"");
-                case '\n' -> sb.append("\\n");
-                case '\r' -> sb.append("\\r");
-                case '\t' -> sb.append("\\t");
-                case '\b' -> sb.append("\\b");
-                case '\f' -> sb.append("\\f");
-                default -> {
-                    if (c < 0x20) {
-                        sb.append(String.format("\\u%04x", (int) c));
-                    } else {
-                        sb.append(c);
-                    }
-                }
-            }
-        }
-        return sb.toString();
-    }
-
     public void startPushing(JavaPlugin plugin, CoreApiClient client, String serverId, long intervalTicks) {
         if (pushTask != null) return; // already started
         pushTask = plugin.getServer().getScheduler().runTaskTimerAsynchronously(plugin, () -> {
@@ -219,11 +193,10 @@ public class ConsoleStreamManager {
             List<String> lines = drainNewLines(50);
             if (lines.isEmpty()) return;
 
-            // Build a properly-escaped JSON array.
-            String jsonArray = lines.stream()
-                    .map(l -> "\"" + escapeJsonString(l) + "\"")
-                    .collect(Collectors.joining(",", "[", "]"));
-            String body = "{\"lines\": " + jsonArray + "}";
+            // Build JSON array using JSONArray so all control chars are
+            // correctly escaped (DESIGN-3 fix — org.json is already shaded in).
+            JSONArray arr = new JSONArray(lines);
+            String body = "{\"lines\": " + arr.toString() + "}";
 
             try {
                 HttpResponse<String> resp = client.post(
