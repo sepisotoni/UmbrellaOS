@@ -88,7 +88,7 @@ class NotificationsCog(commands.Cog):
         if not unnotified:
             return
 
-        channel_id = self.bot.settings.staff_alert_channel_id
+        channel_id = self.bot.remote.staff_alert_channel_id
         if channel_id is None:
             logger.warning(
                 "%d new staff escalation(s) found but staff_alert_channel_id isn't configured — nothing posted, nothing marked notified.",
@@ -129,7 +129,7 @@ class NotificationsCog(commands.Cog):
         will see notified_at is still None and call mark_notified then.
         If the channel isn't configured or visible, logs and returns — same
         behaviour as the poll loop's own channel-missing guard."""
-        channel_id = self.bot.settings.staff_alert_channel_id
+        channel_id = self.bot.remote.staff_alert_channel_id
         if channel_id is None:
             logger.warning(
                 "Push: escalation %s received but staff_alert_channel_id isn't configured.",

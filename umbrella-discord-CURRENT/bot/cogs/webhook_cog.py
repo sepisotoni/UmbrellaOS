@@ -36,7 +36,7 @@ class WebhookCog(commands.Cog):
         self._server: WebhookServer | None = None
 
     async def cog_load(self) -> None:
-        port = self.bot.settings.bot_callback_port
+        port = self.bot.remote.callback_port
         secret = self.bot.settings.umbrella_core_api_key
 
         self._server = WebhookServer(shared_secret=secret, port=port)
@@ -55,7 +55,7 @@ class WebhookCog(commands.Cog):
             return
 
         # Register this bot's public URL with umbrella-core.
-        callback_url = self.bot.settings.bot_callback_url
+        callback_url = self.bot.remote.callback_url
         if not callback_url:
             logger.warning(
                 "BOT_CALLBACK_URL is not set — skipping registration with core. "
