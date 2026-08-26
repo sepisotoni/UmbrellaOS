@@ -137,13 +137,14 @@
                             <goal>shade</goal>
                         </goals>
                         <configuration>
-                            <relocations>
-                                <relocation>
-                                    <pattern>org.json</pattern>
-                                    <shadedPattern>com.umbrellaos.plugin.libs.json</shadedPattern>
-                                </relocation>
-                            </relocations>
-                        </configuration>
+                                <minimizeJar>true</minimizeJar>
+                                <relocations>
+                                    <relocation>
+                                        <pattern>org.json</pattern>
+                                        <shadedPattern>com.umbrellaos.plugin.libs.json</shadedPattern>
+                                    </relocation>
+                                </relocations>
+                            </configuration>
                     </execution>
                 </executions>
             </plugin>

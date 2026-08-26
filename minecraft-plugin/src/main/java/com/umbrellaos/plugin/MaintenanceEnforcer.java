@@ -96,6 +96,13 @@ public class MaintenanceEnforcer implements Listener {
 
     /**
      * Checks if maintenance mode is enabled via override, config manager, or local config.
+     *
+     * <p>Canonical config key is {@code server.maintenance_mode} (BUG-7 fix — previously
+     * checked 4 different keys which caused ambiguity; anyone configuring maintenance mode
+     * had to know which key took precedence). The local {@code config.yml} key
+     * {@code maintenance.enabled} is kept as a secondary fallback for operators who set
+     * it directly in the file, but the dashboard and all docs should point to
+     * {@code server.maintenance_mode} in core settings.
      */
     public boolean isMaintenanceEnabled() {
         if (maintenanceOverride != null) {
@@ -103,19 +110,13 @@ public class MaintenanceEnforcer implements Listener {
         }
 
         if (configManager != null) {
-            String serverMaint = configManager.getSetting("server.maintenance");
-            if (isTruthy(serverMaint)) return true;
-
-            String maintEnabled = configManager.getSetting("maintenance.enabled");
-            if (isTruthy(maintEnabled)) return true;
-
-            String maintMode = configManager.getSetting("maintenance_mode");
-            if (isTruthy(maintMode)) return true;
-
+            // Single canonical key — set this via the dashboard settings panel.
             String serverMaintMode = configManager.getSetting("server.maintenance_mode");
             if (isTruthy(serverMaintMode)) return true;
         }
 
+        // Fallback: local config.yml allows operators to force maintenance mode
+        // without a network call to core (e.g. during a core outage).
         if (plugin != null && plugin.getConfig() != null) {
             if (plugin.getConfig().getBoolean("maintenance.enabled", false)) {
                 return true;
