@@ -101,10 +101,31 @@ async def request_verification(
             player_uuid=body.player_uuid,
             already_verified=True
         )
-    
+
+    # Bug #8 fix: ensure a Player row exists before creating the VerificationCode.
+    # DiscordAccount.player_uuid is a FK to players.uuid — any confirm/verify-code
+    # call would raise a FK violation for a brand-new player who has no players row
+    # yet (the plugin snapshot may not have arrived before the verification request).
+    # We upsert here so the FK is always satisfiable.
+    from models import Player
+    player = await db.scalar(
+        select(Player).where(Player.uuid == body.player_uuid)
+    )
+    if player is None:
+        player = Player(
+            uuid=body.player_uuid,
+            username=body.player_username or "unknown",
+        )
+        db.add(player)
+        await db.flush()
+    elif body.player_username and player.username != body.player_username:
+        # Keep username fresh — player may have renamed since last join.
+        player.username = body.player_username
+        await db.flush()
+
     # Generate random 6-digit code
     code = f"{random.randint(100000, 999999)}"
-    
+
     # Create verification code with 10 minute expiry
     verification_code = VerificationCode(
         player_uuid=body.player_uuid,
@@ -115,7 +136,7 @@ async def request_verification(
     )
     db.add(verification_code)
     await db.flush()
-    
+
     return VerificationRequestResponse(
         code=code,
         expires_in=600,

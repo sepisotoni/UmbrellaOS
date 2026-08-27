@@ -32,15 +32,25 @@ class RateLimiter:
     async def check(self, identifier: str, limit: int, window_seconds: int) -> RateLimitResult:
         """
         Increment this identifier's counter for the current window and
-        report whether it's still within `limit`. The counter's TTL is set
-        only on the increment that creates the key (count == 1) — later
-        increments within the same window don't reset the window's expiry,
-        which would let a busy client keep its window open indefinitely.
+        report whether it's still within `limit`.
+
+        TTL strategy (Bug #7 fix): the original code only called EXPIRE on
+        count==1, leaving a permanent key if that EXPIRE call was lost (Redis
+        crash, eviction, or a race where the key was set by one request and
+        the EXPIRE was sent after Redis restarted). We now call EXPIRE on
+        every request using the NX flag (set TTL only if the key has NO
+        current expiry) — this means the first request that finds a TTL-less
+        key self-heals it, without resetting an already-running window.
         """
         key = f"{self._key_prefix}:{identifier}:{window_seconds}"
         count = await self._redis.incr(key)
-        if count == 1:
-            await self._redis.expire(key, window_seconds)
+
+        # Always ensure the key has a TTL. `nx=True` means "only set the
+        # expiry if the key currently has no TTL" — safe to call every time:
+        # - new key (count==1): sets the TTL for the first time
+        # - existing key with TTL: no-op (window keeps running)
+        # - existing key with no TTL (wedged key from a prior crash): heals it
+        await self._redis.expire(key, window_seconds, nx=True)
 
         ttl = await self._redis.ttl(key)
         reset_seconds = ttl if ttl and ttl > 0 else window_seconds

@@ -42,7 +42,7 @@ class AppealCreateRequest(BaseModel):
 
 
 class AppealUpdateRequest(BaseModel):
-    status: str  # "pending", "approved", "denied", etc.
+    status: str  # "open", "accepted", "denied" (constrained by ck_appeals_status)
 
 
 class AppealCloseRequest(BaseModel):
@@ -131,7 +131,7 @@ async def create_appeal(
     appeal = Appeal(
         punishment_id=body.punishment_id,
         player_uuid=body.player_uuid,
-        status="pending",
+        status="open",  # Bug #9 fix: ck_appeals_status only allows open/accepted/denied; was "pending" which always violated the constraint
         message=body.message,
     )
 
