@@ -28,6 +28,7 @@ import {
 export const LoginView: React.FC = () => {
   const {
     setSessionToken,
+    setAdminKey,
     setCurrentUser,
     setActiveTab,
     addToast,
@@ -145,34 +146,42 @@ export const LoginView: React.FC = () => {
         setActiveTab('overview');
         return;
       } catch {
-        // If Bearer auth fails, test as X-Admin-Key
+        // Bearer token failed — try as X-Admin-Key
         api.setSessionToken(null);
         api.setAdminKey(cred);
-        const health = await api.getHealth();
-        if (health.status) {
-          const fallbackUser = {
-            id: 'admin-key-holder',
-            discord_id: '0',
-            username: usernameInput.trim() || 'Administrator (Key)',
-            email: null,
-            role_id: 'admin',
-            role: 'owner',
-            permissions: ['*'],
-            is_active: true,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          };
-          setCurrentUser(fallbackUser);
-          addToast({
-            type: 'success',
-            title: 'Admin Key Verified',
-            message: 'Authenticated with administrative privileges.',
-          });
-          setActiveTab('overview');
-          return;
+        try {
+          // Verify against a protected endpoint. getHealth() is public (always 200)
+          // so we must hit an authed route to actually validate the key.
+          await api.getRoles();
+        } catch {
+          api.setAdminKey(null);
+          throw new Error('Invalid Session Token or Admin Key.');
         }
+
+        // Key accepted — persist via context so isAuthenticated becomes true
+        setAdminKey(cred);
+        const fallbackUser = {
+          id: 'admin-key-holder',
+          discord_id: '0',
+          username: usernameInput.trim() || 'Administrator (Key)',
+          email: null,
+          role_id: 'owner',
+          role: 'owner',
+          permissions: ['*'],
+          is_active: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        localStorage.setItem('umbrella_admin_user', JSON.stringify(fallbackUser));
+        setCurrentUser(fallbackUser);
+        addToast({
+          type: 'success',
+          title: 'Admin Key Verified',
+          message: 'Authenticated with administrative privileges.',
+        });
+        setActiveTab('overview');
+        return;
       }
-      throw new Error('Invalid Session Token or Admin Key.');
     } catch (err: any) {
       api.setSessionToken(null);
       api.setAdminKey(null);

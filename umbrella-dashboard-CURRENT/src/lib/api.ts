@@ -459,7 +459,7 @@ export class UmbrellaApiClient {
       if (storedUrl) {
         this.baseUrl = storedUrl.replace(/\/+$/, '');
       }
-      const storedKey = localStorage.getItem('umbrella_admin_key_override');
+      const storedKey = localStorage.getItem('umbrella_admin_key_override') || localStorage.getItem('umbrella_admin_key');
       if (storedKey) {
         this.adminKey = storedKey;
       }
@@ -666,6 +666,7 @@ export class UmbrellaApiClient {
     if (typeof window !== 'undefined' && window.localStorage) {
       localStorage.removeItem('umbrella_session_token');
       localStorage.removeItem('umbrella_admin_key');
+      localStorage.removeItem('umbrella_admin_user');
       localStorage.removeItem('umb_auth_user');
     }
   }

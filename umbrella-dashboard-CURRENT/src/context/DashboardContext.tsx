@@ -219,6 +219,11 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const setAdminKey = useCallback((key: string | null) => {
     setAdminKeyState(key);
     api.setAdminKey(key);
+    if (key) {
+      localStorage.setItem('umbrella_admin_key', key);
+    } else {
+      localStorage.removeItem('umbrella_admin_key');
+    }
   }, []);
 
   const checkHealth = useCallback(async (): Promise<boolean> => {
@@ -284,8 +289,24 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           setSessionToken(null);
           setCurrentUser(null);
         });
+    } else if (adminKey) {
+      // Admin key login — restore synthetic user from localStorage if present,
+      // otherwise synthesise a default one so isAuthenticated stays true on refresh.
+      const saved = localStorage.getItem('umbrella_admin_user');
+      if (saved) {
+        try { setCurrentUser(JSON.parse(saved)); } catch { /* ignore */ }
+      } else {
+        setCurrentUser({
+          id: 'admin-key-holder', discord_id: '0',
+          username: 'Administrator (Key)', email: null,
+          role_id: 'owner', role: 'owner', permissions: ['*'],
+          is_active: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        } as any);
+      }
     }
-  }, [sessionToken, setSessionToken]);
+  }, [sessionToken, adminKey, setSessionToken]);
 
   const logout = useCallback(async () => {
     try {
