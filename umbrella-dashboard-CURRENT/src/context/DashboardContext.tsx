@@ -113,7 +113,10 @@ const DashboardContext = createContext<DashboardContextType | null>(null);
 export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Navigation State
   const [activeTab, setActiveTab] = useState<NavigationTab>('overview');
-  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(
+    // Default to collapsed on mobile (< 768px) so the sidebar doesn't eat the viewport
+    typeof window !== 'undefined' && window.innerWidth < 768
+  );
 
   // Discord Invite URL
   const [discordInvite, setDiscordInviteState] = useState<string>(() => {

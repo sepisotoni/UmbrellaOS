@@ -116,12 +116,23 @@ async def list_subscriptions(
 
 
 class UpdateWebhookSubscriptionParams(BaseModel):
-    subscription_id: str
+    # Accept both `id` (matches create/list response field) and `subscription_id`
+    # (legacy name) — callers previously had to know the field was named differently
+    # from the response (review-6 API-consistency note).
+    subscription_id: str | None = None
+    id: str | None = None
     url: str | None = None
     active: bool | None = None
 
+    @property
+    def resolved_id(self) -> str:
+        resolved = self.subscription_id or self.id
+        if not resolved:
+            raise ValueError("Either 'id' or 'subscription_id' is required")
+        return resolved
+
     def audit_target(self) -> str:
-        return self.subscription_id
+        return self.resolved_id
 
 
 @capability(
@@ -137,7 +148,7 @@ async def update_subscription(
     ctx: CallContext, params: UpdateWebhookSubscriptionParams
 ) -> WebhookSubscriptionResult:
     subscription = await WebhookService.update(
-        ctx.db, params.subscription_id, url=params.url, active=params.active
+        ctx.db, params.resolved_id, url=params.url, active=params.active
     )
     return WebhookSubscriptionResult.from_model(subscription)
 
@@ -148,10 +159,19 @@ async def update_subscription(
 
 
 class DeleteWebhookSubscriptionParams(BaseModel):
-    subscription_id: str
+    # Accept both `id` (matches create/list response field) and `subscription_id`
+    subscription_id: str | None = None
+    id: str | None = None
+
+    @property
+    def resolved_id(self) -> str:
+        resolved = self.subscription_id or self.id
+        if not resolved:
+            raise ValueError("Either 'id' or 'subscription_id' is required")
+        return resolved
 
     def audit_target(self) -> str:
-        return self.subscription_id
+        return self.resolved_id
 
 
 class DeleteWebhookSubscriptionResult(BaseModel):
@@ -171,5 +191,5 @@ class DeleteWebhookSubscriptionResult(BaseModel):
 async def delete_subscription(
     ctx: CallContext, params: DeleteWebhookSubscriptionParams
 ) -> DeleteWebhookSubscriptionResult:
-    await WebhookService.delete(ctx.db, params.subscription_id)
+    await WebhookService.delete(ctx.db, params.resolved_id)
     return DeleteWebhookSubscriptionResult(deleted=True)

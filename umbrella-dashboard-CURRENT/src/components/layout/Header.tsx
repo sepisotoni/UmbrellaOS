@@ -4,6 +4,7 @@ import { UmbrellaLogo } from '../common/UmbrellaLogo';
 import { ProfileModal } from '../auth/ProfileModal';
 import {
   Megaphone,
+  Menu,
   Radio,
   Search,
   Zap,
@@ -27,6 +28,7 @@ export const Header: React.FC<HeaderProps> = ({
     healthInfo,
     currentUser,
     setActiveTab,
+    toggleSidebar,
   } = useDashboard();
 
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -38,6 +40,14 @@ export const Header: React.FC<HeaderProps> = ({
     >
       {/* Brand Wordmark & Health Indicator */}
       <div className="flex items-center gap-4">
+        {/* Mobile hamburger — only visible below md breakpoint */}
+        <button
+          onClick={toggleSidebar}
+          className="md:hidden h-8 w-8 flex items-center justify-center rounded-md text-slate-400 hover:text-indigo-300 hover:bg-indigo-950/40 transition cursor-pointer"
+          aria-label="Toggle navigation"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
         <UmbrellaLogo size="sm" />
 
         <div

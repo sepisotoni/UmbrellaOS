@@ -71,9 +71,14 @@ class Punishment(Base):
     id: Mapped[str] = mapped_column(
         String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
-    player_uuid: Mapped[str] = mapped_column(
-        String(36), ForeignKey("players.uuid", ondelete="CASCADE"), nullable=False, index=True
+    # Nullable for IP-level bans (type='ipban') where no specific player is targeted.
+    # The "SYSTEM" sentinel previously used caused FK violations; NULL is the correct
+    # sentinel (same pattern as bridge.py uses for system messages). See migration 041.
+    player_uuid: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("players.uuid", ondelete="CASCADE"), nullable=True, index=True
     )
+    # Stored for IP-level bans; NULL for player-specific punishments.
+    ban_ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
     staff_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     type: Mapped[str] = mapped_column(String(16), nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)

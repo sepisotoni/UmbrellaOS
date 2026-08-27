@@ -44,6 +44,8 @@ const DashboardContent: React.FC = () => {
     setDoodleOpacity,
     selectedBrand,
     setSelectedBrand,
+    sidebarCollapsed,
+    toggleSidebar,
   } = useDashboard();
 
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
@@ -212,8 +214,23 @@ const DashboardContent: React.FC = () => {
 
       {/* Main Body with Unified Backdrop Sidebar and Independently Scrollable Workspace */}
       <div className="flex-1 flex flex-row overflow-hidden min-h-0 w-full relative z-10">
-        {/* Left Sidebar (Translucent backdrop blends into main cosmic background) */}
-        <Sidebar onOpenBanModal={() => handleOpenBanModalWithTarget('')} />
+        {/* Mobile sidebar overlay — tapping it collapses the sidebar */}
+        <div
+          className={`fixed inset-0 z-20 bg-black/60 md:hidden transition-opacity duration-200 ${
+            !sidebarCollapsed ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+          }`}
+          onClick={toggleSidebar}
+          aria-hidden="true"
+        />
+
+        {/* Left Sidebar — fixed on mobile (slides in/out), static on desktop */}
+        <div
+          className={`md:relative fixed inset-y-0 left-0 z-30 transition-transform duration-200 ${
+            sidebarCollapsed ? '-translate-x-full md:translate-x-0' : 'translate-x-0'
+          }`}
+        >
+          <Sidebar onOpenBanModal={() => handleOpenBanModalWithTarget('')} />
+        </div>
 
         {/* Dynamic Main Workspace Container */}
         <main className="flex-1 overflow-y-auto min-h-0 px-4 py-6 md:px-8 max-w-7xl mx-auto w-full">

@@ -206,12 +206,16 @@ async def ipban_address(
     _auth: str = Depends(require_permission("moderation.ipban")),
 ) -> dict:
     """Ban an IP address (affects all players from that IP)."""
-    # Create a system punishment for IP ban
+    # player_uuid is NULL for IP-level bans — there's no specific player being targeted.
+    # The old "SYSTEM" string sentinel caused a FK violation against players.uuid since
+    # no such player exists. NULL is the correct representation (same pattern as
+    # bridge.py uses for system-sender messages). ban_ip_address stores the target IP.
     ipban = Punishment(
-        player_uuid="SYSTEM",  # Special marker for IP-level punishment
+        player_uuid=None,
+        ban_ip_address=body.ip_address,
         staff_id=body.staff_id,
         type="ipban",
-        reason=f"IP: {body.ip_address} - {body.reason}",
+        reason=body.reason,
         active=True,
     )
     db.add(ipban)
@@ -236,7 +240,7 @@ async def ipunban_address(
     ipban_result = await db.execute(
         select(Punishment).where(
             (Punishment.type == "ipban") &
-            (Punishment.reason.contains(body.ip_address)) &
+            (Punishment.ban_ip_address == body.ip_address) &
             (Punishment.active == True)
         )
     )

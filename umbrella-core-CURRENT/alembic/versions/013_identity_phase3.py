@@ -56,8 +56,9 @@ def upgrade() -> None:
         "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_discord_id ON users (discord_id)"
     ))
 
-    # Now add MFA columns if they don't exist (safe for create_all-bootstrapped DBs)
-    conn = op.get_bind()
+    # Add MFA columns if they don't exist (idempotent for create_all-bootstrapped DBs).
+    # Use op.get_context().connection — op.get_bind() is deprecated in Alembic 2.x.
+    conn = op.get_context().connection
     existing_cols = {
         row[0] for row in conn.execute(
             text("SELECT column_name FROM information_schema.columns WHERE table_name='users'")
