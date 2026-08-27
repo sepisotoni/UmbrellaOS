@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from database import AsyncSessionLocal
 from models import AIConfigAction, Setting
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 @pytest.mark.asyncio

@@ -6,7 +6,7 @@ Staff: Role assignment and permissions
 Session: Token-based session tracking
 """
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy import Boolean, DateTime, ForeignKey, JSON, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 

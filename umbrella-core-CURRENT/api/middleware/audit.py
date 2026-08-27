@@ -8,7 +8,7 @@ Provides:
 """
 from sqlalchemy.ext.asyncio import AsyncSession
 from models import AuditLog
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Any, Dict
 from uuid import uuid4
 from enum import Enum

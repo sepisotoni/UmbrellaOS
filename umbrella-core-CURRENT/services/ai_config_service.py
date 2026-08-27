@@ -5,7 +5,7 @@ Uses OpenRouter API to generate configuration suggestions from natural language.
 """
 import httpx
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
