@@ -3,7 +3,21 @@ tests/conftest.py — Shared fixtures for the test suite.
 
 Uses an in-memory SQLite database so tests never touch Postgres.
 The async test client is built against the real FastAPI app with
-overridden DB and settings dependencies.
+overridden DB, settings, and rate-limiter dependencies.
+
+Rate limiter hermetics (Critical Finding #1):
+  main.py creates a RateLimiter against redis://localhost:6379/0 at import
+  time. When Redis is reachable the real limiter fires during tests, causing
+  ~272 failures (counters trip the per-IP limit within a single test file).
+  When Redis is unreachable the middleware fails open — so tests pass, but
+  only because a safety valve is silently swallowing errors. Neither
+  behaviour is correct for a test suite.
+
+  Fix: conftest patches main._rate_limiter with a no-op stub before the
+  client fixture yields. The stub always returns allowed=True with no Redis
+  I/O, making tests hermetic regardless of whether a local Redis is running.
+  The real RateLimiter and its fixed-window algorithm are tested separately
+  in tests/test_rate_limit.py using a mock Redis client.
 """
 import pytest
 import pytest_asyncio
@@ -13,12 +27,31 @@ from sqlalchemy.pool import StaticPool
 
 from database.engine import Base, get_db
 from services import SettingsService, RolesService
+from services.rate_limit_service import RateLimitResult
 
 # Use in-memory SQLite for tests (no Postgres needed)
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
 # Override SECRET_KEY so auth tests have a known value
 TEST_SECRET_KEY = "test-secret-key"
+
+
+class _NoOpRateLimiter:
+    """Always-allow rate limiter stub for tests.
+
+    Replaces the real Redis-backed RateLimiter so tests are hermetic —
+    they pass whether or not a local Redis is running, and they never
+    trip the per-IP counter from rapid sequential requests within a
+    test file (Critical Finding #1 fix).
+    """
+
+    async def check(self, identifier: str, limit: int, window_seconds: int) -> RateLimitResult:
+        return RateLimitResult(
+            allowed=True,
+            limit=limit,
+            remaining=limit,
+            reset_seconds=window_seconds,
+        )
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -76,8 +109,11 @@ async def db_session():
 @pytest_asyncio.fixture(scope="function")
 async def client(db_session, monkeypatch):
     """
-    Async HTTP test client with DB and settings overridden.
+    Async HTTP test client with DB, settings, and rate limiter overridden.
     Injects TEST_SECRET_KEY so auth works without a real .env.
+
+    Rate limiter is replaced with _NoOpRateLimiter so tests are hermetic
+    regardless of Redis availability (Critical Finding #1 fix).
     """
     # Patch API keys used by auth middleware (admin + plugin share test value)
     import config.settings as cfg_module
@@ -89,6 +125,28 @@ async def client(db_session, monkeypatch):
     import api.middleware.session as session_middleware
     monkeypatch.setattr(auth_middleware, "settings", settings)
     monkeypatch.setattr(session_middleware, "settings", settings)
+
+    # Replace the real Redis-backed rate limiter with a no-op stub.
+    # The RateLimitMiddleware captures `rate_limiter` as `self._limiter` at
+    # add_middleware() time. We patch the module-level `_rate_limiter` for
+    # completeness, then walk the middleware stack to find the
+    # RateLimitMiddleware instance and patch its `_limiter` reference directly.
+    # This is robust to Starlette stack nesting depth changes.
+    import main as main_module
+    from api.middleware.rate_limit import RateLimitMiddleware
+
+    no_op = _NoOpRateLimiter()
+    monkeypatch.setattr(main_module, "_rate_limiter", no_op)
+
+    # Walk the ASGI middleware stack to find the RateLimitMiddleware instance
+    node = main_module.app
+    for _ in range(20):  # depth guard
+        if isinstance(node, RateLimitMiddleware):
+            node._limiter = no_op
+            break
+        node = getattr(node, "app", None)
+        if node is None:
+            break
 
     # Override the DB dependency
     async def override_get_db():
