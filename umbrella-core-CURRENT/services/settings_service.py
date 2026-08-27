@@ -109,6 +109,10 @@ DEFAULT_SETTINGS: list[tuple] = [
     ("discord.staff_alerts_channel", "", "discord",
      "Staff alerts channel ID", False, False),
     # --- Message templates (P16D) ---
+    ("verification.enabled",
+     "true",
+     False,
+     "Master toggle — set to false to disable the entire verification system."),
     ("verification.dm_prompt",
      "Hi $PLAYER! To verify your Minecraft account, send this code in-game: $CODE (expires in $EXPIRES)",
      "verification", "DM sent to the player when verification is requested", False, False),

@@ -645,6 +645,63 @@ export const SettingsView: React.FC = () => {
                   onCopyColor={handleCopyColor}
                 />
               </div>
+            ) : activeTab === 'verification' ? (
+              <div className="space-y-4">
+                {/* ── Master Toggle ── */}
+                <div className="rounded-xl border border-[#141d3d] bg-[#060b1c]/60 p-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <CheckCircle className="h-4 w-4 text-indigo-400" />
+                        <span className="text-sm font-bold text-white">Verification System</span>
+                        {saving['verification.enabled'] && <Loader2 className="h-3.5 w-3.5 text-indigo-400 animate-spin" />}
+                        {saved['verification.enabled'] && !saving['verification.enabled'] && <CheckCircle className="h-3.5 w-3.5 text-emerald-400" />}
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        Master toggle — when off, all verification commands and link flows are disabled server-wide.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = values['verification.enabled'] === 'true' ? 'false' : 'true';
+                        handleChange('verification.enabled', next);
+                        setTimeout(() => handleSave('verification.enabled'), 0);
+                      }}
+                      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors cursor-pointer ${
+                        values['verification.enabled'] === 'true' ? 'bg-indigo-600' : 'bg-slate-700'
+                      }`}
+                    >
+                      <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                        values['verification.enabled'] === 'true' ? 'translate-x-6' : 'translate-x-1'
+                      }`} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* ── Other verification settings ── */}
+                {loading ? (
+                  <div className="flex items-center justify-center py-10 text-slate-500 gap-2">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <span className="text-sm">Loading…</span>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {tabRecords.filter(r => r.key !== 'verification.enabled').map((record) => (
+                      <SettingsField
+                        key={record.key}
+                        record={record}
+                        value={values[record.key] ?? ''}
+                        onChange={handleChange}
+                        saving={saving}
+                        saved={saved}
+                        errors={errors}
+                        onSave={handleSave}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
             ) : loading ? (
               <div className="flex items-center justify-center py-16 text-slate-500 gap-2">
                 <Loader2 className="h-5 w-5 animate-spin" />

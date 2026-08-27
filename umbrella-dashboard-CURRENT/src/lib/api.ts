@@ -660,7 +660,17 @@ export class UmbrellaApiClient {
     return this.exchangeDiscordCode(code, state, redirectUri);
   }
 
-  public logout(): void {
+  public async logout(): Promise<void> {
+    // Hit core to revoke the session server-side before clearing local state
+    if (this.sessionToken) {
+      try {
+        await this.request<unknown>(`/api/v1/auth/logout?session_token=${encodeURIComponent(this.sessionToken)}`, {
+          method: 'POST',
+        });
+      } catch {
+        // Best-effort — clear local state regardless
+      }
+    }
     this.sessionToken = null;
     this.adminKey = null;
     if (typeof window !== 'undefined' && window.localStorage) {
