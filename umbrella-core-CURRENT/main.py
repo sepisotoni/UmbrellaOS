@@ -89,18 +89,23 @@ async def lifespan(app: FastAPI):
     print("[Umbrella Core] Starting up...")
 
     # Run Alembic migrations to head before anything else.
-    # This ensures new columns/tables are always present even after a deploy
-    # that adds migrations — safe to call every time (only applies pending ones).
-    try:
+    # Must run in a thread because env.py uses asyncio.run() internally,
+    # which can't be called from within an already-running event loop.
+    def _run_migrations() -> None:
         from alembic.config import Config
         from alembic import command as alembic_command
         import os
         alembic_cfg = Config(os.path.join(os.path.dirname(__file__), "alembic.ini"))
-        alembic_cfg.set_main_option("script_location", os.path.join(os.path.dirname(__file__), "alembic"))
+        alembic_cfg.set_main_option(
+            "script_location", os.path.join(os.path.dirname(__file__), "alembic")
+        )
         alembic_command.upgrade(alembic_cfg, "heads")
+
+    try:
+        import asyncio
+        await asyncio.to_thread(_run_migrations)
         print("[Umbrella Core] Alembic migrations applied")
     except Exception as _mig_err:
-        # Never block startup on a migration error — log and continue.
         print(f"[Umbrella Core] WARNING: Alembic migration failed: {_mig_err}")
 
     # Create tables (safe in dev; in prod, use Alembic migrations instead)
