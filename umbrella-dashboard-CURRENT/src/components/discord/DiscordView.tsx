@@ -108,8 +108,8 @@ export const DiscordView: React.FC = () => {
   const [guildRoles, setGuildRoles] = useState<GuildRole[]>([]);
 
   // ── Broadcast ──
-  const [embedTitle, setEmbedTitle] = useState('Network Update & Maintenance Notice');
-  const [embedDescription, setEmbedDescription] = useState('All Minecraft nodes have been synchronized with Umbrella Core v1.2.4.');
+  const [embedTitle, setEmbedTitle] = useState('');
+  const [embedDescription, setEmbedDescription] = useState('');
   const [embedChannel, setEmbedChannel] = useState('');
   const [embedMention, setEmbedMention] = useState('none');
   const [embedColor, setEmbedColor] = useState('bg-indigo-500');
@@ -122,8 +122,8 @@ export const DiscordView: React.FC = () => {
   const loadVerified = useCallback(async () => {
     setVerifiedLoading(true);
     try {
-      const players = await api.getPlayers({ limit: 999 });
-      setVerifiedCount(players.filter((p: any) => p.discord_id).length);
+      const res = await api.getVerificationCount();
+      setVerifiedCount(res.count);
     } catch {
       setVerifiedCount(null);
     } finally {
@@ -218,7 +218,7 @@ export const DiscordView: React.FC = () => {
     }
     setIsBroadcasting(true);
     try {
-      await api.broadcastMessage(`**${embedTitle ? embedTitle + '**\n' : ''}${embedDescription}`, 'Staff');
+      await api.broadcastMessage(`**${embedTitle ? embedTitle + '**\n' : ''}${embedDescription}`, 'Staff', embedChannel || undefined);
       addToast({ type: 'success', title: 'Broadcast sent', message: 'Message dispatched to the network.' });
       setEmbedTitle('');
       setEmbedDescription('');
@@ -294,7 +294,7 @@ export const DiscordView: React.FC = () => {
 
   // Commands to display
   const displayCommands = botCommands.length > 0 ? botCommands : STATIC_COMMANDS;
-  const commandsSource = botCommands.length > 0 ? 'live' : 'static';
+  const commandsSource = botCommands.length > 0 ? 'live' : 'static'; // static = bot hasn't pushed manifest yet
 
   return (
     <div className="space-y-6 max-w-7xl">

@@ -929,6 +929,10 @@ export class UmbrellaApiClient {
     return this.unlinkAccount(discordId);
   }
 
+  public async getVerificationCount(): Promise<{ count: number }> {
+    return this.request<{ count: number }>('/api/v1/verification/count');
+  }
+
   public async getPendingVerifications(): Promise<PendingVerification[]> {
     // Core returns player_username; normalize to username for dashboard consistency
     const raw = await this.request<any[]>('/api/v1/verification/pending');
@@ -1124,13 +1128,14 @@ export class UmbrellaApiClient {
     return this.broadcastMessage(message, 'Admin');
   }
 
-  public async broadcastMessage(message: string, playerName: string = 'Staff'): Promise<any> {
+  public async broadcastMessage(message: string, playerName: string = 'Staff', channelId?: string): Promise<any> {
     return this.request<any>('/api/v1/bridge/message', {
       method: 'POST',
       body: JSON.stringify({
-        source: 'dashboard',
+        source: 'DASHBOARD',
         player_name: playerName,
         message,
+        ...(channelId ? { channel_id: channelId } : {}),
       }),
     });
   }

@@ -31,7 +31,7 @@ export const PunishModal: React.FC<PunishModalProps> = ({
   >('TEMP_BAN');
   const [duration, setDuration] = useState('7d');
   const [serverScope, setServerScope] = useState('GLOBAL');
-  const [reason, setReason] = useState('GrimAC Flag: Reach & Hitbox Expansion');
+  const [reason, setReason] = useState('');
   const [evidenceUrl, setEvidenceUrl] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -54,7 +54,7 @@ export const PunishModal: React.FC<PunishModalProps> = ({
   if (!isOpen) return null;
 
   const presetReasons = [
-    'GrimAC Flag: Reach & Hitbox Expansion',
+    'GrimAC Flag: Reach & Hitbox Expansion', // example — fill from anticheat context when available
     'KillAura & AutoClicker (Unfair Advantages)',
     'Fly / Speed / Movement Exploit',
     'Severe Chat Toxicity / Harassment',

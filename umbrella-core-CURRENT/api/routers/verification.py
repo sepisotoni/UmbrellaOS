@@ -567,6 +567,19 @@ class PluginVerifyCodeResponse(BaseModel):
     discord_username: str | None = None
 
 
+@router.get("/count")
+async def get_verification_count(
+    db: AsyncSession = Depends(get_db),
+    _auth=Depends(require_admin_key_or_session),
+) -> dict:
+    """Return total verified account count — lightweight alternative to fetching all links."""
+    from sqlalchemy import func as sql_func
+    total = await db.scalar(
+        select(sql_func.count(DiscordAccount.discord_id)).where(DiscordAccount.verified == True)
+    )
+    return {"count": total or 0}
+
+
 @router.post("/verify-code", response_model=PluginVerifyCodeResponse)
 async def plugin_verify_code(
     body: PluginVerifyCodeRequest,
