@@ -598,7 +598,7 @@ export class UmbrellaApiClient {
       const response = await fetch(url, {
         ...options,
         headers,
-        credentials: 'include',
+        credentials: 'omit',
       });
 
       if (!response.ok) {
