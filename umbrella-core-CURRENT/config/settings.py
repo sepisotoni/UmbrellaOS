@@ -114,6 +114,12 @@ class Settings(BaseSettings):
     app_host: str = "0.0.0.0"
     app_port: int = 8765
     debug: bool = False
+    cors_origins: list[str] = [
+        "https://umbrella-os-ndilimqeni-6825s-projects.vercel.app",
+        "https://umbrella-dashboard.vercel.app",
+        "http://localhost:5173",
+        "http://localhost:3000",
+    ]
 
     # Optional — will be moved to DB settings after first boot
     discord_client_id: str = ""

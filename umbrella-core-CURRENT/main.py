@@ -174,13 +174,16 @@ app = FastAPI(
 # Register global error handlers
 register_error_handlers(app)
 
-# CORS — restrict to your dashboard domain in production
+# CORS — credentials=True is required so the browser can send Authorization: Bearer
+# across origins. Wildcard "*" is incompatible with credentials=True, so origins
+# are driven by settings.cors_origins (env var CORS_ORIGINS, comma-separated list).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins if hasattr(settings, "cors_origins") else ["*"],
-    allow_credentials=False,
+    allow_origins=settings.cors_origins,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Session-Token"],
 )
 
 # Rate limiting (Phase 3) — per-client-IP, Redis-backed. Constructed from

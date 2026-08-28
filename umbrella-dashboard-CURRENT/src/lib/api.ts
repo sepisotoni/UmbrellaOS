@@ -597,6 +597,7 @@ export class UmbrellaApiClient {
       const response = await fetch(url, {
         ...options,
         headers,
+        credentials: 'include',
       });
 
       if (!response.ok) {
@@ -620,8 +621,12 @@ export class UmbrellaApiClient {
       return (await response.json()) as T;
     } catch (err: any) {
       if (err instanceof ApiError) throw err;
+      // TypeError = browser blocked the request (CORS / server offline)
+      const isNetworkErr = err instanceof TypeError;
       throw new ApiError(
-        err?.message || 'Network connection failed (Umbrella Core unreachable)',
+        isNetworkErr
+          ? `Cannot reach Core at ${this.baseUrl} — server may be offline or CORS is blocking this origin`
+          : (err?.message || 'Network connection failed'),
         0,
         err
       );
