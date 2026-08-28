@@ -115,6 +115,7 @@ class Settings(BaseSettings):
     app_port: int = 8765
     debug: bool = False
     cors_origins: list[str] = [
+        "https://umbrella-os-phi.vercel.app",
         "https://umbrella-os-ndilimqeni-6825s-projects.vercel.app",
         "https://umbrella-dashboard.vercel.app",
         "http://localhost:5173",
