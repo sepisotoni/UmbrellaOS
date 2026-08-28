@@ -90,8 +90,8 @@ async def request_verification(
     """
     # Master toggle check — fast path before any DB work
     from services.settings_service import SettingsService
-    enabled_record = await SettingsService.get(db, "verification.enabled")
-    if enabled_record and enabled_record.value.lower() in ("false", "0", "no", "off"):
+    enabled_value = await SettingsService.get_value(db, "verification.enabled")
+    if enabled_value is not None and enabled_value.lower() in ("false", "0", "no", "off"):
         return VerificationRequestResponse(
             code="",
             expires_in=0,

@@ -663,10 +663,21 @@ export const SettingsView: React.FC = () => {
                     </div>
                     <button
                       type="button"
-                      onClick={() => {
+                      onClick={async () => {
                         const next = values['verification.enabled'] === 'true' ? 'false' : 'true';
                         handleChange('verification.enabled', next);
-                        setTimeout(() => handleSave('verification.enabled'), 0);
+                        // Save directly with the new value — don't rely on setTimeout+handleSave
+                        // because handleSave's useCallback closure may capture the pre-click value.
+                        setSaving((prev) => ({ ...prev, ['verification.enabled']: true }));
+                        try {
+                          await api.updateSetting('verification.enabled', next);
+                          setSaved((prev) => ({ ...prev, ['verification.enabled']: true }));
+                          setTimeout(() => setSaved((prev) => ({ ...prev, ['verification.enabled']: false })), 2500);
+                        } catch (err: any) {
+                          addToast({ type: 'error', title: 'Failed to save verification.enabled', message: err.message });
+                        } finally {
+                          setSaving((prev) => ({ ...prev, ['verification.enabled']: false }));
+                        }
                       }}
                       className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors cursor-pointer ${
                         values['verification.enabled'] === 'true' ? 'bg-indigo-600' : 'bg-slate-700'
