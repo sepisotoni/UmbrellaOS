@@ -43,6 +43,7 @@ class ActivePunishmentSchema(BaseModel):
     staff_id: str | None
     created_at: datetime
     expires_at: datetime | None
+    ban_ip_address: str | None = None  # Set for type='ipban'; None for player bans
 
     class Config:
         from_attributes = True

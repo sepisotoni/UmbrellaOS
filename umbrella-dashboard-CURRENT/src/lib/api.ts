@@ -228,7 +228,7 @@ export interface FullProfileResponse {
 // Punishments
 export interface PunishmentSchema {
   id: string;
-  player_uuid: string;
+  player_uuid: string | null;  // null for IP-level bans (type='ipban')
   player_name?: string | null;
   staff_id: string | null;
   type: string;
@@ -237,6 +237,7 @@ export interface PunishmentSchema {
   expires_at: string | null;
   active: boolean;
   status?: string | null;
+  ban_ip_address?: string | null;  // set for type='ipban'
 }
 
 export interface CreatePunishmentPayload {

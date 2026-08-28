@@ -260,10 +260,12 @@ export const ModerationView: React.FC<ModerationViewProps> = ({ onOpenBanModal }
                       <tr key={p.id} className="hover:bg-[#121638]/50 transition">
                         <td className="py-3 font-bold uppercase text-purple-300">{p.type}</td>
                         <td
-                          onClick={() => navigateToPlayer(p.player_uuid)}
-                          className="py-3 text-slate-300 hover:text-purple-300 hover:underline cursor-pointer"
+                          onClick={() => p.player_uuid ? navigateToPlayer(p.player_uuid) : undefined}
+                          className={`py-3 text-slate-300 ${p.player_uuid ? 'hover:text-purple-300 hover:underline cursor-pointer' : 'cursor-default'}`}
                         >
-                          {p.player_name || p.player_uuid.slice(0, 12) + '...'}
+                          {p.type === 'ipban'
+                            ? <span className="font-mono text-xs text-slate-400">🌐 {p.ban_ip_address || 'IP ban'}</span>
+                            : p.player_name || (p.player_uuid ? p.player_uuid.slice(0, 12) + '...' : '—')}
                         </td>
                         <td className="py-3 text-slate-200 max-w-xs truncate">{p.reason}</td>
                         <td className="py-3 text-slate-400">{p.staff_id || 'AutoMod'}</td>
