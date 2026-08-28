@@ -1,6 +1,7 @@
 import React from 'react';
 import { AlertTriangle, RefreshCw, ServerOff } from 'lucide-react';
 import { useDashboard } from '../../context/DashboardContext';
+import { api } from '../../lib/api';
 
 export const DisconnectedBanner: React.FC = () => {
   const { isDisconnected, checkHealth } = useDashboard();
@@ -10,6 +11,18 @@ export const DisconnectedBanner: React.FC = () => {
 
   const handleRetry = async () => {
     setIsRetrying(true);
+    try {
+      // Use fetch with cache: 'no-store' to bypass the browser's cached
+      // CORS preflight failure (browsers cache preflight results for up to
+      // Access-Control-Max-Age seconds).
+      await fetch(`${api.getBaseUrl()}/health`, {
+        method: 'GET',
+        cache: 'no-store',
+        headers: { 'X-Cache-Bust': Date.now().toString() },
+      });
+    } catch {
+      // ignore — checkHealth below will update isDisconnected state
+    }
     await checkHealth();
     setIsRetrying(false);
   };
