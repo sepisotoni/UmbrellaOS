@@ -107,23 +107,46 @@ class BanEnforcerTest {
 
     @Test
     void checkActiveBan_returnsParsedResultOn200() throws Exception {
+        when(apiClient.get("/api/v1/plugin/punishments/some-uuid/active?ip=1.2.3.4")).thenReturn(httpResponse);
+        when(httpResponse.statusCode()).thenReturn(200);
+        when(httpResponse.body()).thenReturn("{\"banned\": false, \"punishment\": null}");
+
+        BanEnforcer.BanCheckResult result = banEnforcer.checkActiveBan("some-uuid", "1.2.3.4");
+
+        assertFalse(result.banned());
+        verify(apiClient).get("/api/v1/plugin/punishments/some-uuid/active?ip=1.2.3.4");
+    }
+
+    @Test
+    void checkActiveBan_non200_throws() throws Exception {
+        when(apiClient.get("/api/v1/plugin/punishments/some-uuid/active?ip=1.2.3.4")).thenReturn(httpResponse);
+        when(httpResponse.statusCode()).thenReturn(401);
+        when(httpResponse.body()).thenReturn("Invalid or missing plugin key");
+
+        assertThrows(IllegalStateException.class, () -> banEnforcer.checkActiveBan("some-uuid", "1.2.3.4"));
+    }
+
+    @Test
+    void checkActiveBan_nullIp_doesNotAppendIpParam() throws Exception {
         when(apiClient.get("/api/v1/plugin/punishments/some-uuid/active")).thenReturn(httpResponse);
         when(httpResponse.statusCode()).thenReturn(200);
         when(httpResponse.body()).thenReturn("{\"banned\": false, \"punishment\": null}");
 
-        BanEnforcer.BanCheckResult result = banEnforcer.checkActiveBan("some-uuid");
+        BanEnforcer.BanCheckResult result = banEnforcer.checkActiveBan("some-uuid", null);
 
         assertFalse(result.banned());
         verify(apiClient).get("/api/v1/plugin/punishments/some-uuid/active");
     }
 
     @Test
-    void checkActiveBan_non200_throws() throws Exception {
-        when(apiClient.get("/api/v1/plugin/punishments/some-uuid/active")).thenReturn(httpResponse);
-        when(httpResponse.statusCode()).thenReturn(401);
-        when(httpResponse.body()).thenReturn("Invalid or missing plugin key");
+    void checkActiveBan_withIp_appendsIpParam() throws Exception {
+        when(apiClient.get("/api/v1/plugin/punishments/some-uuid/active?ip=10.0.0.1")).thenReturn(httpResponse);
+        when(httpResponse.statusCode()).thenReturn(200);
+        when(httpResponse.body()).thenReturn("{\"banned\": true, \"punishment\": {\"id\": \"abc\", \"type\": \"ipban\", \"reason\": \"VPN\", \"active\": true}}");
 
-        assertThrows(IllegalStateException.class, () -> banEnforcer.checkActiveBan("some-uuid"));
+        BanEnforcer.BanCheckResult result = banEnforcer.checkActiveBan("some-uuid", "10.0.0.1");
+
+        assertTrue(result.banned());
     }
 }
 

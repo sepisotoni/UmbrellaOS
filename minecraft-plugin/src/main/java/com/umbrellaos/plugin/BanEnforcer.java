@@ -44,9 +44,13 @@ public class BanEnforcer implements Listener {
         }
 
         String playerUuid = event.getUniqueId().toString();
+        // Extract the connecting IP — used to check ipban records (migration 041 fix).
+        String playerIp = event.getAddress() != null
+                ? event.getAddress().getHostAddress()
+                : null;
         BanCheckResult result;
         try {
-            result = checkActiveBan(playerUuid);
+            result = checkActiveBan(playerUuid, playerIp);
         } catch (Exception e) {
             // Fail closed: if core is unreachable we cannot verify ban status,
             // so we kick the player rather than risk letting a banned player in.
@@ -74,8 +78,15 @@ public class BanEnforcer implements Listener {
      * CoreApiClient}, the parsing via {@link #parseBanCheckResponse} against
      * fixed JSON fixtures.
      */
-    BanCheckResult checkActiveBan(String playerUuid) throws Exception {
-        HttpResponse<String> response = apiClient.get("/api/v1/plugin/punishments/" + playerUuid + "/active");
+    BanCheckResult checkActiveBan(String playerUuid, String playerIp) throws Exception {
+        // Include the player's IP so the core endpoint can also check ipban records.
+        // Migration 041 made player_uuid nullable for IP-level bans — without passing
+        // the IP here, any active ipban would be silently unenforced.
+        String ipParam = (playerIp != null && !playerIp.isEmpty())
+                ? "?ip=" + java.net.URLEncoder.encode(playerIp, java.nio.charset.StandardCharsets.UTF_8)
+                : "";
+        HttpResponse<String> response = apiClient.get(
+                "/api/v1/plugin/punishments/" + playerUuid + "/active" + ipParam);
         if (response.statusCode() != 200) {
             throw new IllegalStateException(
                     "Ban check endpoint returned HTTP " + response.statusCode() + " — " + response.body());

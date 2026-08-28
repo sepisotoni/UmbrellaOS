@@ -178,6 +178,7 @@ async def plugin_config(
 @router.get("/punishments/{player_uuid}/active", response_model=ActiveBanCheckResponse)
 async def plugin_active_punishment_check(
     player_uuid: str,
+    ip: str | None = Query(default=None, description="Connecting player IP — used to check ipban records"),
     db: AsyncSession = Depends(get_db),
     _auth: str = Depends(require_plugin_key),
 ) -> ActiveBanCheckResponse:
@@ -197,8 +198,15 @@ async def plugin_active_punishment_check(
     tempban, since that's the one that actually determines whether the
     player can ever rejoin. Mutes and warns are intentionally excluded;
     they don't block a join.
+
+    Migration 041 made punishments.player_uuid nullable for IP-level bans
+    (type='ipban'). The optional ?ip= parameter allows the plugin to also
+    check whether the connecting IP is banned — without it, ipbans would
+    be silently unenforced after the migration.
     """
     now = datetime.now(timezone.utc)
+
+    # --- Check player-specific bans (ban, tempban) ---
     result = await db.execute(
         select(Punishment)
         .where(Punishment.player_uuid == player_uuid)
@@ -212,13 +220,33 @@ async def plugin_active_punishment_check(
     )
     punishment = result.scalars().first()
 
-    if punishment is None:
-        return ActiveBanCheckResponse(banned=False, punishment=None)
+    if punishment is not None:
+        return ActiveBanCheckResponse(
+            banned=True,
+            punishment=ActivePunishmentSchema.model_validate(punishment),
+        )
 
-    return ActiveBanCheckResponse(
-        banned=True,
-        punishment=ActivePunishmentSchema.model_validate(punishment),
-    )
+    # --- Check IP-level bans if IP was provided ---
+    if ip:
+        ip_result = await db.execute(
+            select(Punishment)
+            .where(Punishment.ban_ip_address == ip)
+            .where(Punishment.type == "ipban")
+            .where(Punishment.active == True)  # noqa: E712
+            .where(
+                (Punishment.expires_at == None)  # noqa: E711
+                | (Punishment.expires_at > now)
+            )
+            .order_by(Punishment.created_at.desc())
+        )
+        ip_ban = ip_result.scalars().first()
+        if ip_ban is not None:
+            return ActiveBanCheckResponse(
+                banned=True,
+                punishment=ActivePunishmentSchema.model_validate(ip_ban),
+            )
+
+    return ActiveBanCheckResponse(banned=False, punishment=None)
 
 
 @router.post("/control")
