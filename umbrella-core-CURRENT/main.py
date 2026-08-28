@@ -195,12 +195,14 @@ app = FastAPI(
 register_error_handlers(app)
 
 # CORS — credentials=True is required so the browser can send Authorization: Bearer
-# across origins. Wildcard "*" is incompatible with credentials=True, so origins
-# are driven by settings.cors_origins (env var CORS_ORIGINS, comma-separated list).
+# Auth is header-based (X-Admin-Key / Bearer token) — not cookie-based.
+# allow_credentials=False + allow_origins=["*"] is the correct CORS config:
+# credentials=True with wildcard is invalid per spec and causes 400 preflights.
+# The settings.cors_origins list is kept for reference but not used here.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["X-Session-Token"],
