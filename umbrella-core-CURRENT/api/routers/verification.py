@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from database import get_db
 from models import VerificationCode, DiscordAccount, AuditLog
 from api.middleware.auth import require_admin_key, require_plugin_key
+from api.middleware.session import require_admin_key_or_session
 from api.dependencies.permissions import require_permission
 
 router = APIRouter(prefix="/api/v1/verification", tags=["verification"])
