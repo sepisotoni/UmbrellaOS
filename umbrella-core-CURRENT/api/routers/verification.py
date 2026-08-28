@@ -33,6 +33,7 @@ class VerificationRequestResponse(BaseModel):
     expires_in: int
     player_uuid: str
     already_verified: bool = False
+    disabled: bool = False  # True when verification.enabled=false — plugin/bot should skip flow
 
 
 class VerificationConfirmRequest(BaseModel):
@@ -84,7 +85,20 @@ async def request_verification(
     """
     Request a verification code for a player.
     Called by MC plugin when unverified player joins.
+    Respects the verification.enabled master toggle — returns disabled=True when off
+    so the plugin/bot can skip the flow without treating it as an error.
     """
+    # Master toggle check — fast path before any DB work
+    from services.settings_service import SettingsService
+    enabled_record = await SettingsService.get(db, "verification.enabled")
+    if enabled_record and enabled_record.value.lower() in ("false", "0", "no", "off"):
+        return VerificationRequestResponse(
+            code="",
+            expires_in=0,
+            player_uuid=body.player_uuid,
+            disabled=True,
+        )
+
     # Check if player is already verified
     existing_account = await db.execute(
         select(DiscordAccount).where(

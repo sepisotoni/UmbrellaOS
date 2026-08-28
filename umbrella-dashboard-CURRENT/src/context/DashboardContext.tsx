@@ -262,6 +262,8 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const redirectUri = `${window.location.origin}/`;
       api.discordCallback(code, state, redirectUri)
         .then((res) => {
+          // Clear any lingering admin key — real session token takes precedence
+          setAdminKey(null);
           setSessionToken(res.token);
           setCurrentUser(res.user);
           addToast({

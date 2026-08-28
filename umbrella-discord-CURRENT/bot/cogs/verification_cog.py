@@ -148,6 +148,15 @@ class VerificationCog(commands.Cog):
         if not self._looks_like_code(code):
             return
 
+        # Respect verification.enabled master toggle — silently skip if disabled
+        # so users don't get confusing responses when verification is turned off.
+        try:
+            setting = await self.bot.core.get(f"/api/v1/settings/verification.enabled")
+            if setting.get("value", "true").lower() in ("false", "0", "no", "off"):
+                return
+        except Exception:
+            pass  # If we can't read the setting, proceed — fail open is safer
+
         try:
             result = await self.bot.core.invoke(
                 "verification.confirm",
