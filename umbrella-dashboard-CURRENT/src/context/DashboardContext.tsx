@@ -297,6 +297,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     } else if (adminKey) {
       // Admin key login — restore synthetic user from localStorage if present,
       // otherwise synthesise a default one so isAuthenticated stays true on refresh.
+      // Never call getMe() here — admin key alone returns 401 on that endpoint.
       const saved = localStorage.getItem('umbrella_admin_user');
       if (saved) {
         try { setCurrentUser(JSON.parse(saved)); } catch { /* ignore */ }
