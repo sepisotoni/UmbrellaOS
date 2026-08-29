@@ -189,13 +189,20 @@ async def calculate_suspicion(
         )
         db.add(event)
     
-    # Update player.suspicion_score in players table
+    # Update player.suspicion_score in players table.
+    #
+    # AUDIT-2026-08-29 fix: this used to overwrite suspicion_score with the
+    # freshly-computed total_score on every call. mark_false_positive (in
+    # alt_detection.py) *subtracts* points from suspicion_score when staff
+    # clear a false positive — but the very next join recalculated and
+    # overwrote the score from scratch, silently undoing every false-positive
+    # review. Accumulating instead of overwriting preserves those reviews.
     result = await db.execute(
         select(Player).where(Player.uuid == player_uuid)
     )
     player = result.scalar_one_or_none()
     if player:
-        player.suspicion_score = total_score
+        player.suspicion_score = (player.suspicion_score or 0) + total_score
     
     await db.flush()
     
