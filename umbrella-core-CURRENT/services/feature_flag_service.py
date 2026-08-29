@@ -49,11 +49,11 @@ async def set_flag(
         db.add(flag)
     else:
         flag.enabled = enabled
-        if description:
+        # FIX (FINDING-019): `if description:` skipped the update when description
+        # was an empty string, making "clear description" a no-op. Use `is not None`
+        # so passing "" explicitly clears the field as intended.
+        if description is not None:
             flag.description = description
-        # updated_at is handled by the ORM onupdate hook on the model;
-        # we also set it explicitly here so the in-session object reflects
-        # the new value without needing a refresh round-trip.
         from datetime import datetime, timezone
         flag.updated_at = datetime.now(timezone.utc)
 

@@ -15,9 +15,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import json
+
 from database import get_db
 from api.dependencies.permissions import require_permission
 from models import User
+from models.audit_log import AuditLog
 import services.feature_flag_service as svc
 
 router = APIRouter(prefix="/api/v1/feature-flags", tags=["feature-flags"])
@@ -77,8 +80,21 @@ async def upsert_flag(
     db: AsyncSession = Depends(get_db),
     auth: User | str = Depends(require_permission("feature_flags.manage")),
 ) -> FeatureFlagResponse:
-    """Create or update a feature flag (upsert by name)."""
+    """Create or update a feature flag (upsert by name).
+
+    FIX (FINDING-019): now writes an AuditLog row so there is a trail of
+    who toggled each flag and when.
+    """
     flag = await svc.set_flag(db, body.name, body.enabled, body.description)
+    actor = auth.username if isinstance(auth, User) else "admin"
+    db.add(AuditLog(
+        actor=actor,
+        actor_type="staff" if isinstance(auth, User) else "admin",
+        action="feature_flag.upsert",
+        target=body.name,
+        details_json=json.dumps({"enabled": body.enabled, "description": body.description}),
+    ))
+    await db.flush()
     return _to_response(flag)
 
 
@@ -88,8 +104,20 @@ async def delete_flag(
     db: AsyncSession = Depends(get_db),
     auth: User | str = Depends(require_permission("feature_flags.manage")),
 ) -> dict:
-    """Delete a feature flag by name. Returns 404 if not found."""
+    """Delete a feature flag by name. Returns 404 if not found.
+
+    FIX (FINDING-019): now writes an AuditLog row on delete.
+    """
     existed = await svc.delete_flag(db, name)
     if not existed:
         raise HTTPException(status_code=404, detail=f"Feature flag '{name}' not found")
+    actor = auth.username if isinstance(auth, User) else "admin"
+    db.add(AuditLog(
+        actor=actor,
+        actor_type="staff" if isinstance(auth, User) else "admin",
+        action="feature_flag.delete",
+        target=name,
+        details_json="{}",
+    ))
+    await db.flush()
     return {"deleted": True}

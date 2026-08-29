@@ -361,20 +361,25 @@ async def revoke_verification(
     )
     account = result.scalar_one_or_none()
     
-    if account:
-        account.verified = False
-        
-        # Create audit log entry
-        audit_log = AuditLog(
-            actor="system",
-            actor_type="system",
-            action="verification.revoked",
-            target=account.player_uuid,
-            details_json='{}',
-        )
-        db.add(audit_log)
-        await db.flush()
-    
+    # FIX (FINDING-018): previously returned {"success": True} even when no
+    # DiscordAccount row existed, making a staff revoke on a typo UUID look
+    # successful. Now returns 404 so the caller can distinguish "revoked"
+    # from "never existed".
+    if not account:
+        raise HTTPException(status_code=404, detail="No verified account found for that player UUID.")
+
+    account.verified = False
+
+    audit_log = AuditLog(
+        actor="system",
+        actor_type="system",
+        action="verification.revoked",
+        target=account.player_uuid,
+        details_json="{}",
+    )
+    db.add(audit_log)
+    await db.flush()
+
     return {"success": True}
 
 
