@@ -29,8 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from models import (
-    AITask, Player, SuspicionEvent, Punishment, Appeal,
-    AltGroup, AltGroupMember, DiscordAccount, ChatMessage,
+    AITask, Player, SuspicionEvent, Punishment, Appeal, ChatMessage,
 )
 from services.ai.orchestrator import Orchestrator
 from services.ai.model_router import NoAvailableModelError
