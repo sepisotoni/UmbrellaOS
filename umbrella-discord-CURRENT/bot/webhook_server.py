@@ -51,8 +51,32 @@ class WebhookServer:
         handler is allowed (last write wins)."""
         self._handlers[event] = handler
 
-    def _verify_mac(self, mac: str | None, timestamp: str | None) -> bool:
-        """Return True if the MAC is valid and within the 30-second window."""
+    def _compute_mac(self, ts: int) -> str:
+        """Synchronous PBKDF2 derivation — only call via _verify_mac_async.
+
+        Kept as a plain method so asyncio.to_thread can offload the
+        ~500ms blocking computation without capturing self in a closure.
+        100k iterations stall the event loop long enough to trigger Discord
+        gateway heartbeat warnings; same fix applied here as in
+        UmbrellaCoreClient._make_auth_headers / _make_auth_headers_async.
+        """
+        return hashlib.pbkdf2_hmac(
+            "sha256",
+            self._secret.encode(),
+            str(ts).encode(),
+            100_000,
+            dklen=32,
+        ).hex()
+
+    async def _verify_mac_async(self, mac: str | None, timestamp: str | None) -> bool:
+        """Async MAC verification — offloads the blocking PBKDF2 to a thread.
+
+        FIX (HIGH): _verify_mac was a synchronous method called directly from
+        the async _handle_webhook handler. 100k PBKDF2 iterations (~500ms on
+        low-power containers) ran on the event loop, blocking Discord gateway
+        heartbeats. Split into _compute_mac (sync, runs in thread) + this async
+        wrapper, matching the pattern already used in UmbrellaCoreClient.
+        """
         if not mac or not timestamp:
             return False
         try:
@@ -61,20 +85,14 @@ class WebhookServer:
             return False
         if abs(time.time() - ts) > 30:
             return False
-        expected = hashlib.pbkdf2_hmac(
-            "sha256",
-            self._secret.encode(),
-            str(ts).encode(),
-            100_000,
-            dklen=32,
-        ).hex()
+        expected = await asyncio.to_thread(self._compute_mac, ts)
         return hmac.compare_digest(expected, mac)
 
     async def _handle_webhook(self, request: web.Request) -> web.Response:
         mac = request.headers.get("X-Auth-MAC")
         timestamp = request.headers.get("X-Auth-Timestamp")
 
-        if not self._verify_mac(mac, timestamp):
+        if not await self._verify_mac_async(mac, timestamp):
             logger.warning("Rejected webhook request — bad or missing MAC/timestamp")
             return web.Response(status=401, text="Unauthorized")
 
