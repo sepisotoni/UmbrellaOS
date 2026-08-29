@@ -16,10 +16,8 @@ for the reasoning behind those implementation choices.
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 import re
-from typing import Optional
 
 import discord
 from discord.ext import commands, tasks
@@ -195,7 +193,7 @@ class VerificationCog(commands.Cog):
         return f"Verification failed: {exc}"
 
     # ------------------------------------------------------------------
-    # Nickname & role helpers (unchanged from previous revision)
+    # Nickname & role helpers
     # ------------------------------------------------------------------
 
     async def _sync_nickname(self, user: discord.User, player_username: str) -> None:
@@ -216,8 +214,17 @@ class VerificationCog(commands.Cog):
                 logger.exception("Nickname sync failed for %s in guild %s", user.id, guild.id)
 
     async def _assign_verified_role(self, user: discord.User) -> None:
-        """Assign DISCORD_VERIFIED_ROLE_ID.  Best-effort only."""
-        role_id: int = getattr(self.bot.settings, "discord_verified_role_id", 0)
+        """Assign the verified role from RemoteConfig.  Best-effort only.
+
+        FIX (HIGH): was reading self.bot.settings.discord_verified_role_id, which
+        does not exist on Settings (Settings only carries discord_bot_token,
+        umbrella_core_url, umbrella_core_api_key).  getattr() silently returned 0
+        every time, so verified-role assignment was always silently skipped.
+        Corrected to self.bot.remote.verified_role_id, the RemoteConfig field
+        populated from core's discord.verified_role_id setting at startup.
+        """
+        remote = getattr(self.bot, "remote", None)
+        role_id: int = getattr(remote, "verified_role_id", 0) or 0
         if not role_id:
             return
         for guild in self.bot.guilds:
