@@ -4,6 +4,7 @@ api/routers/ai_config.py — AI Configuration API endpoints.
 Handles AI-powered configuration requests and approvals.
 """
 import json
+import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -12,6 +13,7 @@ from datetime import datetime, timezone
 
 from database import get_db
 from models import AIConfigAction
+from models.ai import AIModelConfig
 from api.dependencies.permissions import require_permission
 from services.ai_config_service import process_ai_config_request, apply_config_action, AIConfigServiceError
 
@@ -184,10 +186,8 @@ class TaskConfigUpdate(BaseModel):
 
 async def _load_model_configs(db: AsyncSession) -> dict[str, list]:
     """Return ai_model_configs rows grouped by task_type, sorted by priority."""
-    from sqlalchemy import select as sa_select
-    from models.ai import AIModelConfig
     result = await db.execute(
-        sa_select(AIModelConfig)
+        select(AIModelConfig)
         .where(AIModelConfig.enabled.is_(True))
         .order_by(AIModelConfig.task_type, AIModelConfig.priority)
     )
@@ -238,10 +238,6 @@ async def update_task_config(
     so changes had zero effect on routing. Now writes directly to the table
     the ModelRouter queries so routing changes take effect immediately.
     """
-    import uuid as _uuid
-    from sqlalchemy import select as sa_select
-    from models.ai import AIModelConfig
-
     if body.task not in KNOWN_TASK_TYPES:
         raise HTTPException(status_code=400, detail=f"Unknown task type: {body.task!r}. Valid: {sorted(KNOWN_TASK_TYPES)}")
     if body.primary not in VALID_PROVIDERS:
@@ -251,7 +247,7 @@ async def update_task_config(
 
     # Load all existing rows for this task_type
     result = await db.execute(
-        sa_select(AIModelConfig)
+        select(AIModelConfig)
         .where(AIModelConfig.task_type == body.task)
         .order_by(AIModelConfig.priority)
     )
@@ -271,7 +267,7 @@ async def update_task_config(
         primary_row.consecutive_failures = 0
     else:
         db.add(AIModelConfig(
-            id=str(_uuid.uuid4()),
+            id=str(uuid.uuid4()),
             provider=body.primary,
             model_name=_DEFAULT_MODELS.get(body.primary, body.primary),
             task_type=body.task,
@@ -291,7 +287,7 @@ async def update_task_config(
             failover_row.consecutive_failures = 0
         else:
             db.add(AIModelConfig(
-                id=str(_uuid.uuid4()),
+                id=str(uuid.uuid4()),
                 provider=body.failover,
                 model_name=_DEFAULT_MODELS.get(body.failover, body.failover),
                 task_type=body.task,
