@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import get_settings
 from database import get_db, create_tables, AsyncSessionLocal
 from services import SettingsService, RolesService
+from services.ai.constitution_service import ConstitutionService
 from api.middleware.errors import register_error_handlers
 from api.middleware.rate_limit import RateLimitMiddleware
 from api.middleware.metrics import MetricsMiddleware
@@ -116,6 +117,8 @@ async def lifespan(app: FastAPI):
     async with AsyncSessionLocal() as db:
         await SettingsService.seed_defaults(db)
         await RolesService.seed_defaults(db)
+        await ConstitutionService.seed_defaults(db)
+        await db.commit()
     print("[Umbrella Core] Defaults seeded")
 
     # Re-register already-installed marketplace plugins' capabilities
