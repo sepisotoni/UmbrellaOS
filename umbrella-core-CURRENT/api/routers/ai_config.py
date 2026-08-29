@@ -59,7 +59,10 @@ async def request_ai_config(
         )
         return AIConfigResponse.model_validate(config_action)
     except AIConfigServiceError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        msg = str(e)
+        # "no provider available" is a service outage (503), not a bad request (400)
+        status = 503 if "No AI provider available" in msg else 400
+        raise HTTPException(status_code=status, detail=msg)
 
 
 @router.get("/pending", response_model=list[AIConfigResponse])
@@ -124,30 +127,53 @@ async def reject_config(
 # Per-task AI model configuration  (P16C Task 1)
 # ---------------------------------------------------------------------------
 
-VALID_PROVIDERS = {"gemini", "anthropic", "openai", "deepseek", "openrouter"}
+# ---------------------------------------------------------------------------
+# Per-task AI model configuration  (P16C Task 1)
+#
+# Bug fixed: the old implementation stored task→provider assignments as a
+# JSON blob in the settings table (key "ai.task_config") which the
+# ModelRouter never reads — it reads ai_model_configs rows.  So any change
+# made via POST /config/tasks was silently stored but had zero effect on
+# routing.
+#
+# Fix: GET /config/tasks reads from ai_model_configs (grouped by task_type,
+# returning the top two rows by priority as "primary" and "failover").
+# POST /config/tasks writes new rows to ai_model_configs (or updates
+# existing ones) so the ModelRouter immediately sees the change.
+#
+# VALID_PROVIDERS is also restricted to providers actually registered in
+# ProviderFactory — the old list included "openai" and "deepseek" which
+# have never been implemented and would silently 503 if selected.
+# ---------------------------------------------------------------------------
 
-TASK_DEFAULTS: dict[str, dict] = {
-    "player_review":  {"primary": "gemini",    "failover": "openrouter"},
-    "appeal_review":  {"primary": "anthropic", "failover": "gemini"},
-    "copilot":        {"primary": "gemini",    "failover": "openrouter"},
-    "crash_risk":     {"primary": "gemini",    "failover": None},
-    "chat_responder": {"primary": "openrouter","failover": None},
+# These must match provider_factory._PROVIDER_REGISTRY keys exactly.
+VALID_PROVIDERS = {"gemini", "anthropic", "openrouter"}
+
+KNOWN_TASK_TYPES = {
+    "player_review", "appeal_review", "copilot",
+    "crash_risk", "chat_review", "moderation_review",
 }
 
-_SETTINGS_KEY = "ai.task_config"
+# Default model strings per provider — used when creating new ai_model_configs rows.
+_DEFAULT_MODELS: dict[str, str] = {
+    "gemini":      "gemini-1.5-flash",
+    "anthropic":   "claude-haiku-4-5-20251001",
+    "openrouter":  "openai/gpt-4o-mini",
+}
 
 
 class TaskModelAssignment(BaseModel):
-    primary: str
+    primary: str | None = None
     failover: str | None = None
 
 
 class TaskConfigResponse(BaseModel):
-    player_review: TaskModelAssignment
-    appeal_review: TaskModelAssignment
-    copilot: TaskModelAssignment
-    crash_risk: TaskModelAssignment
-    chat_responder: TaskModelAssignment
+    player_review: TaskModelAssignment = TaskModelAssignment()
+    appeal_review: TaskModelAssignment = TaskModelAssignment()
+    copilot: TaskModelAssignment = TaskModelAssignment()
+    crash_risk: TaskModelAssignment = TaskModelAssignment()
+    chat_review: TaskModelAssignment = TaskModelAssignment()
+    moderation_review: TaskModelAssignment = TaskModelAssignment()
 
 
 class TaskConfigUpdate(BaseModel):
@@ -156,26 +182,20 @@ class TaskConfigUpdate(BaseModel):
     failover: str | None = None
 
 
-async def _read_task_config(db: AsyncSession) -> dict[str, dict]:
-    """Load task config from settings, falling back to defaults."""
-    from services.settings_service import SettingsService
-    raw = await SettingsService.get_value(db, _SETTINGS_KEY)
-    if raw:
-        try:
-            stored = json.loads(raw)
-            # Merge with defaults so newly-added tasks always have an entry
-            return {**TASK_DEFAULTS, **stored}
-        except (json.JSONDecodeError, TypeError):
-            pass
-    return dict(TASK_DEFAULTS)
-
-
-async def _write_task_config(db: AsyncSession, config: dict[str, dict]) -> None:
-    from services.settings_service import SettingsService
-    await SettingsService.set_value(
-        db, _SETTINGS_KEY, json.dumps(config), category="ai", actor="system"
+async def _load_model_configs(db: AsyncSession) -> dict[str, list]:
+    """Return ai_model_configs rows grouped by task_type, sorted by priority."""
+    from sqlalchemy import select as sa_select
+    from models.ai import AIModelConfig
+    result = await db.execute(
+        sa_select(AIModelConfig)
+        .where(AIModelConfig.enabled.is_(True))
+        .order_by(AIModelConfig.task_type, AIModelConfig.priority)
     )
-    await db.commit()
+    rows = result.scalars().all()
+    grouped: dict[str, list] = {}
+    for row in rows:
+        grouped.setdefault(row.task_type, []).append(row)
+    return grouped
 
 
 @router.get("/tasks", response_model=TaskConfigResponse)
@@ -183,10 +203,26 @@ async def get_task_config(
     db: AsyncSession = Depends(get_db),
     _auth=Depends(require_permission("settings.manage")),
 ) -> TaskConfigResponse:
-    """Return the per-task AI model assignments."""
-    config = await _read_task_config(db)
+    """Return per-task AI model assignments, read from ai_model_configs table.
+
+    Previously this read from a settings JSON blob that the ModelRouter
+    never consulted — now it reads the actual table the router uses.
+    """
+    grouped = await _load_model_configs(db)
+
+    def _assignment(task: str) -> TaskModelAssignment:
+        rows = grouped.get(task, [])
+        primary = rows[0].provider if len(rows) >= 1 else None
+        failover = rows[1].provider if len(rows) >= 2 else None
+        return TaskModelAssignment(primary=primary, failover=failover)
+
     return TaskConfigResponse(
-        **{task: TaskModelAssignment(**vals) for task, vals in config.items()}
+        player_review=_assignment("player_review"),
+        appeal_review=_assignment("appeal_review"),
+        copilot=_assignment("copilot"),
+        crash_risk=_assignment("crash_risk"),
+        chat_review=_assignment("chat_review"),
+        moderation_review=_assignment("moderation_review"),
     )
 
 
@@ -196,18 +232,93 @@ async def update_task_config(
     db: AsyncSession = Depends(get_db),
     _auth=Depends(require_permission("settings.manage")),
 ) -> TaskConfigResponse:
-    """Update the primary/failover provider for a single task."""
-    if body.task not in TASK_DEFAULTS:
-        raise HTTPException(status_code=400, detail=f"Unknown task: {body.task!r}")
-    if body.primary not in VALID_PROVIDERS:
-        raise HTTPException(status_code=400, detail=f"Unknown provider: {body.primary!r}")
-    if body.failover is not None and body.failover not in VALID_PROVIDERS:
-        raise HTTPException(status_code=400, detail=f"Unknown failover provider: {body.failover!r}")
+    """Update primary/failover provider for a task by writing to ai_model_configs.
 
-    config = await _read_task_config(db)
-    config[body.task] = {"primary": body.primary, "failover": body.failover}
-    await _write_task_config(db, config)
+    Previously stored to a settings JSON blob the ModelRouter never read,
+    so changes had zero effect on routing. Now writes directly to the table
+    the ModelRouter queries so routing changes take effect immediately.
+    """
+    import uuid as _uuid
+    from sqlalchemy import select as sa_select
+    from models.ai import AIModelConfig
+
+    if body.task not in KNOWN_TASK_TYPES:
+        raise HTTPException(status_code=400, detail=f"Unknown task type: {body.task!r}. Valid: {sorted(KNOWN_TASK_TYPES)}")
+    if body.primary not in VALID_PROVIDERS:
+        raise HTTPException(status_code=400, detail=f"Unknown provider: {body.primary!r}. Valid: {sorted(VALID_PROVIDERS)}")
+    if body.failover is not None and body.failover not in VALID_PROVIDERS:
+        raise HTTPException(status_code=400, detail=f"Unknown failover provider: {body.failover!r}. Valid: {sorted(VALID_PROVIDERS)}")
+
+    # Load all existing rows for this task_type
+    result = await db.execute(
+        sa_select(AIModelConfig)
+        .where(AIModelConfig.task_type == body.task)
+        .order_by(AIModelConfig.priority)
+    )
+    existing = result.scalars().all()
+
+    # We maintain at most 2 rows (priority 10=primary, 20=failover).
+    # Find or create them.
+    primary_row = next((r for r in existing if r.priority == 10), None)
+    failover_row = next((r for r in existing if r.priority == 20), None)
+
+    # Upsert primary
+    if primary_row:
+        primary_row.provider = body.primary
+        primary_row.model_name = _DEFAULT_MODELS.get(body.primary, body.primary)
+        primary_row.enabled = True
+        primary_row.is_healthy = True
+        primary_row.consecutive_failures = 0
+    else:
+        db.add(AIModelConfig(
+            id=str(_uuid.uuid4()),
+            provider=body.primary,
+            model_name=_DEFAULT_MODELS.get(body.primary, body.primary),
+            task_type=body.task,
+            priority=10,
+            enabled=True,
+            is_healthy=True,
+            consecutive_failures=0,
+        ))
+
+    # Upsert or disable failover
+    if body.failover:
+        if failover_row:
+            failover_row.provider = body.failover
+            failover_row.model_name = _DEFAULT_MODELS.get(body.failover, body.failover)
+            failover_row.enabled = True
+            failover_row.is_healthy = True
+            failover_row.consecutive_failures = 0
+        else:
+            db.add(AIModelConfig(
+                id=str(_uuid.uuid4()),
+                provider=body.failover,
+                model_name=_DEFAULT_MODELS.get(body.failover, body.failover),
+                task_type=body.task,
+                priority=20,
+                enabled=True,
+                is_healthy=True,
+                consecutive_failures=0,
+            ))
+    elif failover_row:
+        # Failover was cleared — disable it rather than deleting so health history is preserved
+        failover_row.enabled = False
+
+    await db.commit()
+
+    grouped = await _load_model_configs(db)
+
+    def _assignment(task: str) -> TaskModelAssignment:
+        rows = grouped.get(task, [])
+        p = rows[0].provider if len(rows) >= 1 else None
+        f = rows[1].provider if len(rows) >= 2 else None
+        return TaskModelAssignment(primary=p, failover=f)
 
     return TaskConfigResponse(
-        **{task: TaskModelAssignment(**vals) for task, vals in config.items()}
+        player_review=_assignment("player_review"),
+        appeal_review=_assignment("appeal_review"),
+        copilot=_assignment("copilot"),
+        crash_risk=_assignment("crash_risk"),
+        chat_review=_assignment("chat_review"),
+        moderation_review=_assignment("moderation_review"),
     )
