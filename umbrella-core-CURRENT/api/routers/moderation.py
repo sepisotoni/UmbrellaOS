@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timezone
 
 from database import get_db
 from models import Player, Punishment, IPAddress
@@ -268,10 +268,17 @@ async def get_active_punishments(
     _auth: str = Depends(require_permission("punishments.view")),
 ) -> list[ModerationResponseSchema]:
     """Get all active punishments for a player."""
+    # AUDIT-2026-08-29 fix: this only checked active == True, unlike
+    # punishments.py's list endpoint (active_only) which also excludes rows
+    # whose expires_at has already passed. A naturally-expired tempban (no
+    # explicit revoke) showed as "active" here but not there — inconsistent
+    # active-vs-expired state across endpoints for the same data.
+    now = datetime.now(timezone.utc)
     result = await db.execute(
         select(Punishment).where(
             (Punishment.player_uuid == player_uuid) &
-            (Punishment.active == True)
+            (Punishment.active == True) &
+            ((Punishment.expires_at == None) | (Punishment.expires_at > now))
         )
     )
     punishments = result.scalars().all()

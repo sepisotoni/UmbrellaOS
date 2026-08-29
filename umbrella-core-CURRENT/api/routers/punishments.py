@@ -95,23 +95,36 @@ async def create_punishment(
     _auth: str = Depends(require_permission("punishments.create")),
 ) -> PunishmentSchema:
     """Create a new punishment for a player."""
-    # Verify player exists
+    # Verify player exists.
+    # AUDIT-2026-08-29 fix: the dashboard's "Issue Punishment" modal labels
+    # this field "Player UUID or Username", but this only ever looked up by
+    # uuid — typing a username always 404'd. Resolve either.
     player_result = await db.execute(
-        select(Player).where(Player.uuid == body.player_uuid)
+        select(Player).where(
+            (Player.uuid == body.player_uuid) | (Player.username == body.player_uuid)
+        )
     )
     player = player_result.scalar_one_or_none()
 
     if player is None:
         raise HTTPException(status_code=404, detail=f"Player '{body.player_uuid}' not found")
 
-    # Create punishment
+    # Create punishment. Use the resolved player.uuid (not body.player_uuid
+    # directly) since body.player_uuid may actually be a username per the
+    # lookup above.
+    #
+    # AUDIT-2026-08-29 fix: a "kick" created here defaulted active=True,
+    # unlike POST /api/v1/moderation/kick which correctly sets active=False
+    # ("Kick doesn't persist"). A kick issued through this generic endpoint
+    # (e.g. the dashboard's punishment-type dropdown) would show up
+    # indefinitely as an "active" punishment.
     punishment = Punishment(
-        player_uuid=body.player_uuid,
+        player_uuid=player.uuid,
         staff_id=body.staff_id,
         type=body.type,
         reason=body.reason,
         expires_at=body.expires_at,
-        active=True,
+        active=(body.type != "kick"),
     )
 
     db.add(punishment)
