@@ -62,6 +62,8 @@ class KnowledgeCog(commands.Cog):
     def _format_error(exc: UmbrellaCoreError) -> str:
         """Separated from the command body so it's testable without a
         live discord.Interaction - see tests/test_knowledge_cog.py."""
+        if exc.status_code == 503:
+            return "⚠️ The AI knowledge service is currently unavailable. Try again in a moment."
         if exc.status_code == 403:
             return "You don't have permission to search the knowledge base."
         return f"Knowledge search failed: {exc}"
