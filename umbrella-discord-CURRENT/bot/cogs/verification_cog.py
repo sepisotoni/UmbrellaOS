@@ -29,7 +29,12 @@ logger = logging.getLogger(__name__)
 _CODE_PATTERN = re.compile(r"^\d{6}$")
 
 # Keys fetched from core settings on startup / every 5 minutes.
+# verification.enabled is included here so the on/off toggle is cached and
+# never fetched per-message (fetching it on every DM would add a full
+# PBKDF2 + network round-trip to every 6-digit code received, blocking the
+# event listener unnecessarily).
 _TEMPLATE_KEYS: list[str] = [
+    "verification.enabled",
     "verification.dm_prompt",
     "verification.success_message",
     "verification.error_already_linked",
@@ -41,6 +46,7 @@ _TEMPLATE_KEYS: list[str] = [
 
 # Fallback strings used when a core fetch fails so the bot remains functional.
 _DEFAULTS: dict[str, str] = {
+    "verification.enabled": "true",
     "verification.dm_prompt": (
         "Hi $PLAYER! To verify your Minecraft account, send this code in-game: $CODE"
         " (expires in $EXPIRES)"
@@ -131,6 +137,14 @@ class VerificationCog(commands.Cog):
         """Return the cached template for *key*, falling back to the built-in default."""
         return self._templates.get(key, _DEFAULTS.get(key, f"[missing template: {key}]"))
 
+    def _verification_enabled(self) -> bool:
+        """Return True if verification is enabled (default: True).
+
+        Reads from the cached templates dict so no network call is made per
+        message — the cache is refreshed every 5 minutes by _refresh_templates.
+        """
+        return self._t("verification.enabled").lower() not in ("false", "0", "no", "off")
+
     # ------------------------------------------------------------------
     # Event listener
     # ------------------------------------------------------------------
@@ -146,14 +160,9 @@ class VerificationCog(commands.Cog):
         if not self._looks_like_code(code):
             return
 
-        # Respect verification.enabled master toggle — silently skip if disabled
-        # so users don't get confusing responses when verification is turned off.
-        try:
-            setting = await self.bot.core.get(f"/api/v1/settings/verification.enabled")
-            if setting.get("value", "true").lower() in ("false", "0", "no", "off"):
-                return
-        except Exception:
-            pass  # If we can't read the setting, proceed — fail open is safer
+        # Respect verification.enabled master toggle from cache — no network call.
+        if not self._verification_enabled():
+            return
 
         try:
             result = await self.bot.core.invoke(

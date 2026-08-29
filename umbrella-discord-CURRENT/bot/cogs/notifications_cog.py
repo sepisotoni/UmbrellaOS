@@ -14,7 +14,7 @@ meaningfully bigger infrastructure decision than "add a cog." redis and
 aioredis are already dependencies of umbrella-core (see requirements.txt)
 which could eventually back a real pub/sub layer, but nothing currently
 publishes to it - wiring that up is real future work, not assumed or
-faked here. A 60-second poll of an already-existing, already-tested list
+faked here. A 5-minute poll of an already-existing, already-tested list
 capability is a genuinely working, honest solution within this project's
 existing architecture, not a placeholder pretending to be the real thing.
 

@@ -45,7 +45,7 @@ question:
   always picks up whatever is installed at that moment, no manual step
   required.
 - **Periodically** (`_SYNC_INTERVAL_SECONDS`, independent of
-  notifications_cog's unrelated 60s escalation-poll interval - marketplace
+  notifications_cog's unrelated 5-minute escalation-poll interval - marketplace
   installs are a rarer, more deliberate admin action than escalations, so
   a longer interval is the right trade-off here): an install/update/
   uninstall made *while the bot is already running* becomes live without
@@ -77,7 +77,7 @@ from bot.services.marketplace_sync import MarketplaceCommandSync, SyncOutcome
 
 logger = logging.getLogger(__name__)
 
-_SYNC_INTERVAL_SECONDS = 300  # 5 minutes - see module docstring for why this differs from notifications_cog's 60s.
+_SYNC_INTERVAL_SECONDS = 300  # 5 minutes — see module docstring for why this differs from notifications_cog's 5-minute poll interval.
 
 
 class MarketplaceCog(commands.Cog):

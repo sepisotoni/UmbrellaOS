@@ -21,7 +21,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-import discord
 from discord.ext import commands
 
 from bot.services.umbrella_core_client import UmbrellaCoreError
