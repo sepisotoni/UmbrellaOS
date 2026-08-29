@@ -215,13 +215,14 @@ async def get_player_suspicion(
     group_members = result.scalars().all()
     
     alt_groups = []
-    for member in group_members:
-        result = await db.execute(
-            select(AltGroup).where(AltGroup.id == member.group_id)
+    # FIX: N+1 replaced with a single IN query.
+    group_ids = [m.group_id for m in group_members]
+    if group_ids:
+        groups_result = await db.execute(
+            select(AltGroup).where(AltGroup.id.in_(group_ids))
         )
-        group = result.scalar_one_or_none()
-        if group:
-            alt_groups.append(AltGroupSchema.from_orm(group))
+        for g in groups_result.scalars().all():
+            alt_groups.append(AltGroupSchema.from_orm(g))
     
     return {
         "score": player.suspicion_score,

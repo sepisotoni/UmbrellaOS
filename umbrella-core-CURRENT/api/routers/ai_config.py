@@ -95,6 +95,12 @@ async def approve_config(
     try:
         config_action = await apply_config_action(id, db)
         return AIConfigResponse.model_validate(config_action)
+    except AIConfigServiceError as e:
+        # FIX: AIConfigServiceError (e.g. no AI provider) was not caught here,
+        # propagating as an unhandled 500. Map to 503 like the /request endpoint.
+        msg = str(e)
+        status = 503 if "No AI provider available" in msg else 400
+        raise HTTPException(status_code=status, detail=msg)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
