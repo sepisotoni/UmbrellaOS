@@ -696,7 +696,10 @@ async def create_api_key(
 ) -> ApiKeySchema:
     """Create a new scoped API key. The plaintext key is shown once."""
     key, plaintext = await ApiKeyService.create_api_key(
-        db, body.name, body.permissions, created_by=None, expires_in_days=body.expires_in_days
+        db, body.name, body.permissions,
+        # FIX: pass real creator identity instead of None
+        created_by=_auth.username if hasattr(_auth, "username") else "admin",
+        expires_in_days=body.expires_in_days,
     )
     await db.commit()
     return ApiKeySchema(
@@ -714,9 +717,12 @@ async def revoke_api_key(
     _auth=Depends(require_permission("identity.apikey.manage")),
 ) -> dict:
     """Revoke an API key by ID."""
+    # FIX: catch only ResourceNotFoundException (404); let other errors
+    # propagate as 500 — same pattern as webhooks_rest F009 fix.
+    from api.middleware.errors import ResourceNotFoundException
     try:
         await ApiKeyService.revoke_api_key(db, key_id)
-    except Exception as exc:
+    except ResourceNotFoundException as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     await db.commit()
     return {"revoked": True, "id": key_id}
