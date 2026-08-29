@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from database import get_db
 from models import Appeal, Player, Punishment, AuditLog
 from api.dependencies.permissions import require_permission
+from api.middleware.auth import require_plugin_key
 
 router = APIRouter(prefix="/api/v1/appeals", tags=["appeals"])
 
@@ -28,6 +29,34 @@ VALID_CLOSE_ACTIONS = {
     "REJECT",
     "ESCALATE",
     "SCHEDULE_REVIEW",
+}
+
+# AUDIT-2026-08-29 fix: ck_appeals_status (migrations 039, 042) only permits
+# these *lowercase* values. close_appeal previously wrote uppercase action
+# names directly as the status ("ACCEPTED", "REJECTED", ...), which never
+# matched the constraint and made every close_appeal call raise an
+# unhandled CheckViolationError. This maps each close action to the
+# constraint-valid status it should set.
+ACTION_TO_STATUS = {
+    "ACCEPT": "accepted",
+    "REDUCE_SENTENCE": "reduced",
+    "REJECT": "rejected",
+    "ESCALATE": "escalated",
+    "SCHEDULE_REVIEW": "review_scheduled",
+}
+
+# Statuses accepted by PATCH /{appeal_id} — must match ck_appeals_status
+# exactly (migrations 039 + 042). Kept close to (but not identical to)
+# VALID_CLOSE_ACTIONS: this endpoint sets raw status values, not actions.
+VALID_APPEAL_STATUSES = {
+    "open",
+    "accepted",
+    "denied",
+    "pending",
+    "rejected",
+    "escalated",
+    "review_scheduled",
+    "reduced",
 }
 
 
@@ -102,6 +131,13 @@ async def list_appeals(
 async def create_appeal(
     body: AppealCreateRequest,
     db: AsyncSession = Depends(get_db),
+    # AUDIT-2026-08-29 fix: this endpoint had no auth dependency at all —
+    # unlike every other endpoint in this router and contrary to the
+    # module docstring ("All responses require admin key authentication").
+    # Appeals are player-initiated (like player_snapshot, alt/track, and
+    # anticheat/flag), so this follows the same plugin-key convention as
+    # those endpoints rather than requiring a staff permission.
+    _auth: str = Depends(require_plugin_key),
 ) -> AppealSchema:
     """Create a new appeal for a punishment."""
     # Verify player exists
@@ -157,6 +193,16 @@ async def update_appeal(
     if appeal is None:
         raise HTTPException(status_code=404, detail=f"Appeal '{appeal_id}' not found")
 
+    # AUDIT-2026-08-29 fix: body.status was written straight through with no
+    # validation, so any invalid value raised a raw, unhandled
+    # CheckViolationError (500) from ck_appeals_status instead of a clean
+    # 400. Validate against the same set the DB constraint permits.
+    if body.status not in VALID_APPEAL_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid status '{body.status}'. Must be one of: {', '.join(sorted(VALID_APPEAL_STATUSES))}",
+        )
+
     appeal.status = body.status
     await db.flush()
 
@@ -205,6 +251,17 @@ async def close_appeal(
     if appeal is None:
         raise HTTPException(status_code=404, detail=f"Appeal '{appeal_id}' not found")
 
+    # AUDIT-2026-08-29 fix: previously there was no guard against closing an
+    # already-closed appeal — a closed appeal could be re-accepted,
+    # re-rejected, or re-escalated indefinitely, silently re-mutating the
+    # linked punishment and overwriting the audit trail (case_summary,
+    # handled_by, closed_at) each time.
+    if appeal.closed_at is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Appeal '{appeal_id}' is already closed (action: {appeal.action_taken}, closed at {appeal.closed_at.isoformat()})",
+        )
+
     # Fetch linked punishment and player for summary
     punishment_result = await db.execute(
         select(Punishment).where(Punishment.id == appeal.punishment_id)
@@ -236,25 +293,27 @@ async def close_appeal(
     # Execute the action
     now = datetime.now(tz=timezone.utc)
 
+    # AUDIT-2026-08-29 fix: appeal.status was previously set to the raw
+    # uppercase action name (e.g. "ACCEPTED", "REDUCED"), but
+    # ck_appeals_status only permits specific lowercase values — and
+    # "REDUCED" wasn't in the constraint's allowed set at all (see
+    # migration 042). Every close_appeal call raised an unhandled
+    # CheckViolationError at commit. ACTION_TO_STATUS maps each action to
+    # its constraint-valid status; action_taken (below) still records the
+    # original uppercase action name for the UI/audit log.
     if action == "ACCEPT":
         if punishment:
             punishment.active = False
             punishment.status = "PARDONED"
-        appeal.status = "ACCEPTED"
 
     elif action == "REDUCE_SENTENCE":
         if punishment:
             punishment.expires_at = body.new_expiry
-        appeal.status = "REDUCED"
 
-    elif action == "REJECT":
-        appeal.status = "REJECTED"
+    elif action in ("REJECT", "ESCALATE", "SCHEDULE_REVIEW"):
+        pass  # status set uniformly below
 
-    elif action == "ESCALATE":
-        appeal.status = "ESCALATED"
-
-    elif action == "SCHEDULE_REVIEW":
-        appeal.status = "REVIEW_SCHEDULED"
+    appeal.status = ACTION_TO_STATUS[action]
 
     # Build case summary
     date_str = now.strftime("%Y-%m-%d")
