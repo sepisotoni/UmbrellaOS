@@ -9,7 +9,7 @@ server_id filtering, per-check aggregation, and VL timelines all work cleanly.
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from database.engine import Base
@@ -21,7 +21,12 @@ class AnticheatViolation(Base):
     id: Mapped[str] = mapped_column(
         String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
-    player_uuid: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    # FK to players.uuid — SET NULL on delete preserves violation
+    # history even if the player row is removed.
+    player_uuid: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("players.uuid", ondelete="SET NULL"),
+        nullable=True, index=True
+    )
     player_name: Mapped[str] = mapped_column(String(64), nullable=False)
     # server_id is nullable — old plugin versions do not send it.
     server_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)

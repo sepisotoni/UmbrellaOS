@@ -37,6 +37,6 @@ class MemoryEntry(Base):
     key: Mapped[str] = mapped_column(String(300))
     value: Mapped[str] = mapped_column(Text)  # free-form text or JSON-encoded payload
     hit_count: Mapped[int] = mapped_column(Integer, default=1)  # how many times this has recurred
-    expires_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), onupdate=func.now())
