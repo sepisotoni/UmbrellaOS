@@ -9,6 +9,12 @@ which is exactly the case an identity-keyed limiter can't cover. Per-API-key
 or per-user limits are a reasonable future refinement layered on top of
 this, not a replacement for it.
 
+Proxy-aware IP resolution: `X-Forwarded-For` is read when present, using
+the rightmost (proxy-injected, non-spoofable) entry as the rate-limit key.
+Without this, all traffic routed through Render's LB would appear to come
+from the proxy's IP and share a single rate-limit bucket, making the
+per-IP limit useless in production.
+
 Fails open, not closed: if Redis is unreachable, requests are allowed
 through rather than the entire API going down because a secondary,
 defense-in-depth feature's backing store had an outage. This was found and
@@ -78,7 +84,17 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if request.url.path in self._exempt_paths:
             return await call_next(request)
 
-        client_ip = request.client.host if request.client else "unknown"
+        # Resolve the real client IP behind Render's reverse proxy.
+        # Render (and most CDN/LB layers) appends the real client IP as the
+        # *last* value in X-Forwarded-For, making it the only trustworthy
+        # one — earlier entries can be spoofed by the client. We fall back
+        # to request.client.host (the TCP peer) if the header is absent.
+        forwarded_for = request.headers.get("x-forwarded-for", "").strip()
+        if forwarded_for:
+            # Last entry is injected by the trusted proxy, not the client
+            client_ip = forwarded_for.split(",")[-1].strip() or (request.client.host if request.client else "unknown")
+        else:
+            client_ip = request.client.host if request.client else "unknown"
 
         try:
             result = await self._limiter.check(client_ip, self._limit, self._window)

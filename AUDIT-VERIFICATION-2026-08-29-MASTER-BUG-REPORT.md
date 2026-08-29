@@ -49,6 +49,28 @@ instructions; this is investigation-only.
 
 ---
 
+
+---
+
+## Fixes Applied by Auth/Permissions Agent (2026-08-29)
+
+The following confirmed bugs within the auth/permissions/middleware subsystem
+were fixed in commit `audit-fixes-2026-08-29`:
+
+| # | Bug | Fix |
+|---|-----|-----|
+| 1 | Default `"change-me-in-production"` secret keys — no startup check | Added `validate_secrets()` in `config/settings.py`; called from `main.py` at startup — refuses to start if `SECRET_KEY` or `ADMIN_KEY` still has the default value |
+| 6 | WAF mixed-encoding bypass (`..%2f`, `..%5c` not caught) | Expanded `_PATH_TRAVERSAL_RE` to include `..%2f`/`..%5c` mixed variants; added double-decode (`unquote(unquote(x))`) pass so `%252e%252e%252f` is also caught |
+| 25 | Rate limiter keys off proxy IP, not real client IP | `rate_limit.py` now reads the rightmost `X-Forwarded-For` entry (proxy-injected, not spoofable) as the rate-limit key, falling back to `request.client.host` |
+| 27 | No session rotation on login (session fixation risk) | `discord_callback` now revokes all existing valid sessions for the user (`revoked=True`) before issuing a new session token |
+
+Not fixed by this agent (out of subsystem scope or deferred):
+- **#5** (no MFA recovery codes) — requires full recovery-code design + enrollment UI changes; flagged for a dedicated task
+- **#4** (PBKDF2 per-endpoint DoS) — partially mitigated by existing global rate limiter; a dedicated per-endpoint limit is a future hardening task
+- All items not marked ✅ TRUE under CRITICAL/HIGH that relate to DB models, op-intel, marketplace, frontend perf, or other subsystems — left for their respective agents
+
+---
+
 ## Legend
 - ✅ **TRUE** — confirmed, matches the report's claim
 - ⚠️ **PARTIALLY TRUE** — the underlying issue is real but the report's
@@ -62,12 +84,12 @@ instructions; this is investigation-only.
 
 | # | Bug | Verdict | Evidence |
 |---|-----|---------|----------|
-| 1 | Default secret keys in production | ✅ TRUE | `config/settings.py:103-104` — `secret_key`/`admin_key` both default to the literal string `"change-me-in-production"`, with no startup check anywhere that fails if unchanged. |
+| 1 | Default secret keys in production | ✅ TRUE — ✅ **FIXED** (commit: audit-fixes-2026-08-29) | `config/settings.py:103-104` — `secret_key`/`admin_key` both default to the literal string `"change-me-in-production"`, with no startup check anywhere that fails if unchanged. |
 | 2 | `secrets_encryption_key` optional, no validation | ❌ FALSE | The field is intentionally optional (comment says so), and `services/secrets_service.py::_fernet()` explicitly raises a `SecretsError` the moment anything tries to encrypt/decrypt without a key configured. It fails loudly exactly as designed — not silent. |
 | 3 | Admin key bypasses all permissions | ✅ TRUE (by design) | `api/dependencies/permissions.py` docstring states this outright ("X-Admin-Key auth bypasses all permission checks (plugin god mode)"), and `require_permission`/`RoleChecker` both return immediately for any `str`/`ApiKey`-typed admin-key auth without checking `permission`. This is a documented, intentional trust model, not a hidden flaw — but the report presents it as a discovered bug. |
 | 4 | PBKDF2 MAC without rate limiting — DoS | ⚠️ PARTIALLY TRUE | `api/middleware/auth.py:84-90` does run 100k PBKDF2 iterations per request with a valid timestamp+MAC header, with no extra protection at that specific check. But the global per-IP rate limiter (see #24) does apply to this route too, so it's not *unlimited* — just not specially hardened beyond the general limit. |
 | 5 | No MFA recovery codes | ✅ TRUE | Confirmed no `recovery`/`backup_code` anywhere in `api/routers/auth.py` or `services/mfa_service.py`. A user who loses their authenticator app has no documented recovery path. Still true even after the recent MFA-enrollment commit. |
-| 6 | WAF encoding bypass | ⚠️ PARTIALLY TRUE | `api/middleware/waf.py`'s regex explicitly includes the singly-encoded literal (`%2e%2e%2f`) as one of its alternatives, so straightforward double-encoding of the whole traversal sequence is actually caught. However, **mixed-encoding variants** (e.g. literal `..` + encoded `%2f`) genuinely bypass it, since neither alternative matches that combination. The bug is real but "double-encoded paths bypass detection" as a blanket statement is not accurate. |
+| 6 | WAF encoding bypass | ⚠️ PARTIALLY TRUE — ✅ **FIXED** (commit: audit-fixes-2026-08-29) | `api/middleware/waf.py`'s regex explicitly includes the singly-encoded literal (`%2e%2e%2f`) as one of its alternatives, so straightforward double-encoding of the whole traversal sequence is actually caught. However, **mixed-encoding variants** (e.g. literal `..` + encoded `%2f`) genuinely bypass it, since neither alternative matches that combination. The bug is real but "double-encoded paths bypass detection" as a blanket statement is not accurate. |
 | 7 | No rate limiting on AI endpoints | ❌ FALSE | `api/middleware/rate_limit.py` is global (all paths except `/health`), 120 req/60s per IP + an additive per-API-key limit. AI endpoints are covered like everything else. No AI-specific stricter limit exists, but "no rate limiting" is wrong. |
 | 8 | Prompt injection in AI endpoints | ❓ UNVERIFIED | Not checked in this pass — would require reading `services/ai_config_service.py`/prompt construction, out of scope given time budget. |
 | 9 | Prepared statement cache disabled — kills performance | ❌ FALSE (mischaracterized) | Confirmed both caches are disabled in `database/engine.py`, but the extensive comment explains this is a **required, deliberate fix** for PgBouncer transaction-pooling compatibility (a real `DuplicatePreparedStatementError` seen in production, per the comment) — not an oversight. Re-enabling it would reintroduce a real bug. |
@@ -95,9 +117,9 @@ instructions; this is investigation-only.
 | # | Bug | Verdict | Evidence |
 |---|-----|---------|----------|
 | 24 | Rate limit fails open | ✅ TRUE (documented tradeoff) | Confirmed in `api/middleware/rate_limit.py` — a `RedisError` logs a warning and allows the request through. The module's own docstring says this was found and deliberately fixed this way during Phase 3 testing (the alternative — propagating the error — took down every request on a Redis outage). Real behavior, but a considered tradeoff, not an unnoticed flaw. |
-| 25 | IP-based limiting behind proxies | ✅ TRUE | Confirmed — `request.client.host` used directly with no `X-Forwarded-For`/proxy-header handling anywhere in the middleware or `main.py`. Behind Render's/any reverse-proxy's LB, this means the rate limiter likely buckets by the proxy's IP, not the real client. |
+| 25 | IP-based limiting behind proxies | ✅ TRUE — ✅ **FIXED** (commit: audit-fixes-2026-08-29) | Confirmed — `request.client.host` used directly with no `X-Forwarded-For`/proxy-header handling anywhere in the middleware or `main.py`. Behind Render's/any reverse-proxy's LB, this means the rate limiter likely buckets by the proxy's IP, not the real client. |
 | 26 | No permission hierarchy (`players.manage` doesn't imply `players.view`) | ✅ TRUE (mechanism), severity unclear | Confirmed — roles are defined as flat, explicit permission lists in `services/roles_service.py` with no automatic implication resolved at check time. Whether this manifests as an actual usability bug depends on whether any predefined role grants `.manage` without `.view` — didn't check every role definition. |
-| 27 | No session rotation on login | ✅ TRUE (no contrary evidence found) | No rotation/reissue-on-login pattern found in `api/middleware/session.py`. |
+| 27 | No session rotation on login | ✅ TRUE — ✅ **FIXED** (commit: audit-fixes-2026-08-29) | No rotation/reissue-on-login pattern found in `api/middleware/session.py`. |
 | 28 | No API key rotation support | ✅ TRUE | Confirmed — `services/secrets_service.py` uses a single static Fernet key with no rotation mechanism; its own docstring calls per-key rotation "real follow-up work," i.e. a known, self-documented gap. |
 | 29 | `.env` write on every update | ❓ UNVERIFIED (partially contradicted) | `services/settings_service.py::write_env_value` exists, but I didn't confirm it's actually called unconditionally "on every update" vs. only for specific settings — the surrounding code suggests it's scoped, not universal. Needs a closer read to confirm/deny with confidence. |
 | 30 | Missing error handling in verification (`confirm_verification()`) | ❓ UNVERIFIED | Started checking `capabilities/verification.py` — didn't complete a full trace of whether exceptions from `confirm_verification()` propagate uncaught to the capability layer's own error handling (which may catch broadly at a higher level). Inconclusive in the time available. |

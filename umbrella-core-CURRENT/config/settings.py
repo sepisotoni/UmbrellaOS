@@ -99,7 +99,11 @@ class Settings(BaseSettings):
     # step exists elsewhere to mirror.
     plugin_storage_root: str = "data/plugins"
 
-    # Security
+    # Security — MUST be overridden via environment variables in production.
+    # Both keys default to the literal string below so pydantic-settings can
+    # instantiate Settings() during tests and local dev without requiring a
+    # .env file; the startup check in validate_secrets() below refuses to
+    # start the real server if either value is still the default.
     secret_key: str = "change-me-in-production"
     admin_key: str = "change-me-in-production"
 
@@ -170,6 +174,31 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+
+
+_INSECURE_DEFAULT = "change-me-in-production"
+
+
+def validate_secrets(settings: "Settings") -> None:
+    """
+    Abort startup if either secret key still has the insecure default value.
+    Called from main.py on application startup — not inside Settings itself
+    so that tests can still instantiate Settings() without env vars.
+
+    Raises RuntimeError if any key is still the default.
+    """
+    bad = []
+    if settings.secret_key == _INSECURE_DEFAULT:
+        bad.append("SECRET_KEY")
+    if settings.admin_key == _INSECURE_DEFAULT:
+        bad.append("ADMIN_KEY")
+    if bad:
+        raise RuntimeError(
+            f"FATAL: the following environment variable(s) are still set to the "
+            f"insecure default value '{_INSECURE_DEFAULT}': {', '.join(bad)}. "
+            f"Set them to a strong random value in your .env / Render environment "
+            f"before starting the server."
+        )
 
 
 @lru_cache()

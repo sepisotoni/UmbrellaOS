@@ -42,7 +42,19 @@ logger = logging.getLogger(__name__)
 # probe, not an attempt at exhaustive SQLi/XSS coverage (which parameterized
 # queries and output encoding are the actual defense against; see module
 # docstring).
-_PATH_TRAVERSAL_RE = re.compile(r"\.\./|\.\.\\|%2e%2e%2f|%2e%2e/", re.IGNORECASE)
+# Path traversal detection — covers:
+#   ../ and ..\ (literal)
+#   %2e%2e%2f, %2e%2e/ (percent-encoded variants already here)
+#   ..%2f, ..%5c (mixed literal dots + encoded slash/backslash — the
+#     bypass identified in the 2026-08-29 audit: literal ".." combined with
+#     an encoded separator was not matched by the prior patterns)
+#   %2e%2e%5c (fully encoded backslash variant)
+_PATH_TRAVERSAL_RE = re.compile(
+    r"\.\./|\.\.\\"           # literal ../ and ..\ 
+    r"|%2e%2e(?:%2f|%5c|/|\\)"   # %2e%2e + encoded or literal sep
+    r"|\.\." + r"(?:%2f|%5c)",    # literal .. + encoded sep (the gap)
+    re.IGNORECASE,
+)
 _SQLI_RE = re.compile(
     r"(\bunion\s+select\b|\bor\s+1\s*=\s*1\b|;\s*drop\s+table\b|\bxp_cmdshell\b|--\s*$)",
     re.IGNORECASE,
@@ -90,7 +102,21 @@ class WAFMiddleware(BaseHTTPMiddleware):
             raw_query = request.url.query
             if isinstance(raw_query, bytes):
                 raw_query = raw_query.decode("utf-8", errors="replace")
-            candidates = [str(request.url.path), unquote(raw_query).replace("+", " ")]
+            raw_path = str(request.url.path)
+            decoded_path = unquote(raw_path)
+            # Double-decode catches %252e%252e%252f (attacker encodes the %
+            # itself). We check both the singly-decoded and doubly-decoded
+            # forms so neither encoding depth bypasses detection.
+            double_decoded_path = unquote(decoded_path)
+            decoded_query = unquote(raw_query).replace("+", " ")
+            double_decoded_query = unquote(decoded_query)
+            candidates = [
+                raw_path,
+                decoded_path,
+                double_decoded_path,
+                decoded_query,
+                double_decoded_query,
+            ]
             for reason in (_matches_any(c) for c in candidates if c):
                 if reason:
                     await threat_detection_service.record(
