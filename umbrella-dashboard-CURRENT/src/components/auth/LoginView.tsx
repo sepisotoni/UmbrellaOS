@@ -166,6 +166,7 @@ export const LoginView: React.FC = () => {
           username: usernameInput.trim() || 'Administrator (Key)',
           email: null,
           avatar_url: null,
+          mfa_enabled: false,
           role_id: 'owner',
           role: 'owner',
           permissions: ['*'],

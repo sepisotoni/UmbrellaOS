@@ -28,6 +28,7 @@ from database import get_db
 from models import User, Session, DiscordOAuthPending
 from models.permissions import Role
 from api.middleware.auth import require_admin_key
+from api.middleware.session import require_session
 from api.dependencies.permissions import RoleChecker, require_permission
 from services import discord_service
 from services.discord_service import DiscordOAuthError
@@ -48,6 +49,7 @@ class UserSchema(BaseModel):
     permissions: list[str] = []
     avatar_url: str | None = None
     is_active: bool
+    mfa_enabled: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -92,6 +94,7 @@ async def _user_to_schema(user: User, db: AsyncSession) -> UserSchema:
         permissions=permissions,
         avatar_url=_compute_avatar_url(user.discord_id, getattr(user, "discord_avatar_hash", None)),
         is_active=user.is_active,
+        mfa_enabled=user.mfa_enabled,
         created_at=user.created_at,
         updated_at=user.updated_at,
     )
@@ -556,6 +559,85 @@ async def mfa_verify(
         user=await _user_to_schema(user, db),
         expires_in=SESSION_EXPIRY_DAYS * 24 * 3600,
     )
+
+
+# ---------------------------------------------------------------------------
+# MFA enrollment — enable / confirm / disable TOTP for authenticated users.
+# All three endpoints require a valid session token (not admin key) because
+# they operate on the caller's own account and we need a real user identity.
+# ---------------------------------------------------------------------------
+
+class MFABeginResponse(BaseModel):
+    provisioning_uri: str
+    """otpauth:// URI — render as a QR code in the dashboard."""
+    secret: str
+    """Base32 secret — shown as fallback for manual entry."""
+
+
+class MFAConfirmRequest(BaseModel):
+    code: str
+    """6-digit TOTP code from the authenticator app."""
+
+
+class MFADisableRequest(BaseModel):
+    code: str
+    """Current valid TOTP code — required to confirm intent before disabling."""
+
+
+@router.post("/mfa/enable", response_model=MFABeginResponse, status_code=200)
+async def mfa_enable(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_session),
+) -> MFABeginResponse:
+    """
+    Begin MFA enrollment: generate a TOTP secret and return the provisioning
+    URI (render as QR) and raw secret (for manual entry).
+    MFA is NOT active until the user calls /mfa/confirm with a valid code.
+    """
+    from services.mfa_service import MFAService
+    secret, uri = await MFAService.begin_enrollment(db, current_user)
+    await db.commit()
+    return MFABeginResponse(provisioning_uri=uri, secret=secret)
+
+
+@router.post("/mfa/confirm", status_code=200)
+async def mfa_confirm(
+    body: MFAConfirmRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_session),
+) -> dict:
+    """
+    Confirm MFA enrollment: validate the first TOTP code from the user's
+    authenticator app and mark MFA as active on their account.
+    """
+    from services.mfa_service import MFAService, MFAError
+    try:
+        await MFAService.confirm_enrollment(db, current_user, body.code)
+        await db.commit()
+    except MFAError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc))
+    return {"success": True, "message": "MFA enabled successfully"}
+
+
+@router.post("/mfa/disable", status_code=200)
+async def mfa_disable(
+    body: MFADisableRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_session),
+) -> dict:
+    """
+    Disable MFA: require the user to supply a current valid TOTP code before
+    removing MFA from their account, preventing social-engineering attacks
+    where an attacker with a stolen session token disables MFA silently.
+    """
+    from services.mfa_service import MFAService
+    if not current_user.mfa_enabled:
+        raise HTTPException(status_code=400, detail="MFA is not enabled on this account")
+    if not await MFAService.verify_code(current_user, body.code):
+        raise HTTPException(status_code=401, detail="Invalid TOTP code")
+    await MFAService.disable(db, current_user)
+    await db.commit()
+    return {"success": True, "message": "MFA disabled"}
 
 # ---------------------------------------------------------------------------
 # API Key management — REST facades over the identity.apikey.* capabilities

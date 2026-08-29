@@ -33,6 +33,7 @@ export interface UserSchema {
   permissions: string[];
   avatar_url: string | null;
   is_active: boolean;
+  mfa_enabled: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -52,6 +53,11 @@ export interface MFAVerifyResponse {
   token: string;
   user: UserSchema;
   expires_in: number;
+}
+
+export interface MFABeginResponse {
+  provisioning_uri: string;
+  secret: string;
 }
 
 /** Shape of the 403 detail body when MFA is required after Discord OAuth */
@@ -684,6 +690,27 @@ export class UmbrellaApiClient {
     return this.request<MFAVerifyResponse>('/api/v1/auth/mfa/verify', {
       method: 'POST',
       body: JSON.stringify({ mfa_token: mfaToken, code }),
+    });
+  }
+
+  /** Begin MFA enrollment — returns provisioning URI (QR) and raw secret. */
+  public async mfaEnable(): Promise<MFABeginResponse> {
+    return this.request<MFABeginResponse>('/api/v1/auth/mfa/enable', { method: 'POST' });
+  }
+
+  /** Confirm MFA enrollment with a valid TOTP code. */
+  public async mfaConfirm(code: string): Promise<{ success: boolean }> {
+    return this.request<{ success: boolean }>('/api/v1/auth/mfa/confirm', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    });
+  }
+
+  /** Disable MFA — requires a current valid TOTP code. */
+  public async mfaDisable(code: string): Promise<{ success: boolean }> {
+    return this.request<{ success: boolean }>('/api/v1/auth/mfa/disable', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
     });
   }
 

@@ -325,11 +325,12 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setCurrentUser({
           id: 'admin-key-holder', discord_id: '0',
           username: 'Administrator (Key)', email: null,
+          avatar_url: null, mfa_enabled: false,
           role_id: 'owner', role: 'owner', permissions: ['*'],
           is_active: true,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
-        } as any);
+        });
       }
     }
   }, [sessionToken, adminKey, setSessionToken]);
