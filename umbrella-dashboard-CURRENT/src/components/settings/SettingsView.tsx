@@ -56,7 +56,7 @@ interface FieldProps {
   saving: Record<string, boolean>;
   saved: Record<string, boolean>;
   errors: Record<string, string>;
-  onSave: (key: string) => void;
+  onSave: (key: string, explicitValue?: string) => void;
 }
 
 const SettingsField: React.FC<FieldProps> = ({ record, value, onChange, saving, saved, errors, onSave }) => {
@@ -98,8 +98,11 @@ const SettingsField: React.FC<FieldProps> = ({ record, value, onChange, saving, 
           <button
             type="button"
             onClick={() => {
-              onChange(record.key, value === 'true' ? 'false' : 'true');
-              setTimeout(() => onSave(record.key), 0);
+              const next = value === 'true' ? 'false' : 'true';
+              onChange(record.key, next);
+              // Pass the new value explicitly — onSave's closure may still
+              // hold the pre-click value since React state hasn't committed yet.
+              onSave(record.key, next);
             }}
             className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors cursor-pointer ${
               value === 'true' ? 'bg-indigo-600' : 'bg-slate-700'
@@ -154,7 +157,7 @@ interface TaskModelCardProps {
   config: TaskModelConfig;
   values: Record<string, string>;
   onChange: (key: string, val: string) => void;
-  onSave: (key: string) => Promise<void>;
+  onSave: (key: string, explicitValue?: string) => Promise<void>;
   saving: Record<string, boolean>;
   saved: Record<string, boolean>;
 }
@@ -369,8 +372,12 @@ export const SettingsView: React.FC = () => {
     setSaved((prev) => ({ ...prev, [key]: false }));
   };
 
-  const handleSave = useCallback(async (key: string) => {
-    const val = values[key];
+  const handleSave = useCallback(async (key: string, explicitValue?: string) => {
+    // Use explicitValue when provided (e.g. from toggle buttons that update state
+    // and call save in the same tick — the closure may still hold the pre-update
+    // value). Falls back to values[key] for text fields where the user has
+    // finished typing before save fires.
+    const val = explicitValue !== undefined ? explicitValue : values[key];
     if (val === undefined) return;
     setSaving((prev) => ({ ...prev, [key]: true }));
     setErrors((prev) => { const n = { ...prev }; delete n[key]; return n; });
@@ -666,18 +673,8 @@ export const SettingsView: React.FC = () => {
                       onClick={async () => {
                         const next = values['verification.enabled'] === 'true' ? 'false' : 'true';
                         handleChange('verification.enabled', next);
-                        // Save directly with the new value — don't rely on setTimeout+handleSave
-                        // because handleSave's useCallback closure may capture the pre-click value.
-                        setSaving((prev) => ({ ...prev, ['verification.enabled']: true }));
-                        try {
-                          await api.updateSetting('verification.enabled', next);
-                          setSaved((prev) => ({ ...prev, ['verification.enabled']: true }));
-                          setTimeout(() => setSaved((prev) => ({ ...prev, ['verification.enabled']: false })), 2500);
-                        } catch (err: any) {
-                          addToast({ type: 'error', title: 'Failed to save verification.enabled', message: err.message });
-                        } finally {
-                          setSaving((prev) => ({ ...prev, ['verification.enabled']: false }));
-                        }
+                        // Pass the new value explicitly so handleSave doesn't read the stale closure.
+                        await handleSave('verification.enabled', next);
                       }}
                       className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors cursor-pointer ${
                         values['verification.enabled'] === 'true' ? 'bg-indigo-600' : 'bg-slate-700'
