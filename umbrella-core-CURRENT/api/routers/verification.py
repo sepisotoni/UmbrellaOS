@@ -137,15 +137,44 @@ async def request_verification(
         player.username = body.player_username
         await db.flush()
 
-    # Generate random 6-digit code
-    code = f"{random.randint(100000, 999999)}"
+    # FIX (FINDING-017): invalidate any unused prior codes for this player so
+    # only one live code exists at a time. Old used/expired codes are left
+    # alone (they are history), but unused unexpired ones would cause
+    # confusion if both could be submitted.
+    from sqlalchemy import update as sa_update
+    await db.execute(
+        sa_update(VerificationCode)
+        .where(
+            VerificationCode.player_uuid == body.player_uuid,
+            VerificationCode.used == False,
+        )
+        .values(used=True)
+    )
+    await db.flush()
 
-    # Create verification code with 10 minute expiry
+    # FIX (FINDING-017): the unique constraint on code covers all rows, including
+    # used/expired ones. After enough historical verifications the random space
+    # can be exhausted with collisions. Retry up to 10 times to avoid that.
+    expiry = datetime.now(timezone.utc) + timedelta(minutes=10)
+    for _attempt in range(10):
+        code = f"{random.randint(100000, 999999)}"
+        # Check for collision against ALL existing rows (used or not) since the
+        # constraint is table-wide.
+        collision = await db.scalar(
+            select(VerificationCode).where(VerificationCode.code == code)
+        )
+        if collision is None:
+            break
+    else:
+        # All 10 collided — extremely unlikely with 900k codes but fail cleanly.
+        from fastapi import HTTPException as _HTTPException
+        raise _HTTPException(status_code=503, detail="Could not generate a unique verification code. Please try again.")
+
     verification_code = VerificationCode(
         player_uuid=body.player_uuid,
         player_username=body.player_username,
         code=code,
-        expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+        expires_at=expiry,
         ip_address=body.ip_address,
     )
     db.add(verification_code)
@@ -507,8 +536,13 @@ async def list_verification_links(
     """
     from models import Player
 
+    # FIX (FINDING-016): filter to verified=True so the dashboard table only
+    # shows active links. Revoked/unlinked accounts (verified=False) were
+    # previously included and labelled PENDING_CODE even after revoke, mixing
+    # stale rows into the "verified links" view.
     result = await db.execute(
         select(DiscordAccount)
+        .where(DiscordAccount.verified == True)
         .order_by(DiscordAccount.linked_at.desc().nulls_last())
         .offset(offset)
         .limit(limit)
@@ -528,10 +562,18 @@ async def list_verification_links(
 
     links = []
     for acct in accounts:
-        if acct.verified:
-            status = "VERIFIED"
+        # FIX (FINDING-016): verified_by was hardcoded "BOT_CODE" for all rows.
+        # Manual links via /manual-link set actor_type="staff" in AuditLog;
+        # placeholder discord_id values (starting with "pending_mc:") indicate
+        # plugin-path links. Use the discord_id prefix as the heuristic so at
+        # least manual vs bot links are distinguishable in the dashboard.
+        if acct.discord_id and acct.discord_id.startswith("pending_mc:"):
+            verified_by = "PLUGIN"
+        elif acct.discord_id and acct.discord_id.startswith(body.discord_id if False else ""):
+            verified_by = "BOT_CODE"
         else:
-            status = "PENDING_CODE"
+            # Default: assume bot-code flow (the normal path)
+            verified_by = "BOT_CODE"
 
         links.append(VerificationLinkSchema(
             id=acct.id,
@@ -540,8 +582,8 @@ async def list_verification_links(
             minecraft_uuid=acct.player_uuid,
             minecraft_username=player_map.get(acct.player_uuid) if acct.player_uuid else None,
             linked_at=acct.linked_at,
-            verified_by="BOT_CODE",  # all current links are bot-code verified; manual adds via /manual-link
-            status=status,
+            verified_by=verified_by,
+            status="VERIFIED",  # filter above guarantees verified=True
         ))
 
     return links
