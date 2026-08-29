@@ -172,3 +172,40 @@ Overall risk: **High** (secrets exposure + several 100%-fail write paths under P
 - **Webhook capability `id` vs `subscription_id`:** `cross-chat-findings/review-6-untested-surfaces-2026-08-17.md`. Capabilities now accept both field names. REST uses a path parameter. Not re-reported as a functional bug.
 - **Bridge live CRUD** in review-6: exercised `minecraft`/`discord` sources, not dashboard `DASHBOARD` broadcasts (FINDING-011 is new).
 - **Rate limiter / migration bootstrap / appeals / kick-ipban check constraints:** out of scope for this file set; already in `CRITICAL-FINDINGS-2026-08-17.md`.
+
+---
+
+## AI Subsystem Agent Triage (2026-08-29)
+
+Reviewed all 20 findings against AI subsystem scope (services/ai/, ai_service.py, ai_config_service.py, api/routers/ai_*.py, capabilities/knowledge.py, capabilities/investigation.py, models/ai*.py, dashboard AI components, discord bot AI cogs).
+
+| Finding | In AI Scope? | Verdict | Action |
+|---------|-------------|---------|--------|
+| FINDING-001 | ❌ No | settings.py router — other agent | Leave for settings agent |
+| FINDING-002 | ❌ No | settings.py router — other agent | Leave for settings agent |
+| FINDING-003 | ❌ No | settings.py router — other agent | Leave for settings agent |
+| FINDING-004 | ❌ No | knowledge.py REST router — other agent. Capability path (knowledge_cog → capabilities/knowledge.py → KnowledgeService.index_entry) passes real Discord snowflakes (≤19 digits, fits VARCHAR(32)) — capability is clean. | Leave for knowledge agent |
+| FINDING-005 | ⚠️ Partial | REST router perms are NOT mine. capabilities/knowledge.py permission keys (knowledge.entry.manage, knowledge.entry.search, knowledge.correction.review) are correct — verified, no changes needed. | Leave REST fix for knowledge agent |
+| FINDING-006 | ❌ No | knowledge.py REST router — other agent | Leave for knowledge agent |
+| FINDING-007 | ❌ No | knowledge.py REST router — other agent | Leave for knowledge agent |
+| FINDING-008 | ❌ No | webhooks — other agent | Leave for webhooks agent |
+| FINDING-009 | ❌ No | webhooks — other agent | Leave for webhooks agent |
+| FINDING-010 | ❌ No | webhooks — other agent | Leave for webhooks agent |
+| FINDING-011 | ❌ No | bridge — other agent | Leave for bridge agent |
+| FINDING-012 | ❌ No | bridge — other agent | Leave for bridge agent |
+| FINDING-013 | ❌ No | verification — other agent | Leave for verification agent |
+| FINDING-014 | ❌ No | verification — other agent | Leave for verification agent |
+| FINDING-015 | ❌ No | verification — other agent | Leave for verification agent |
+| FINDING-016 | ❌ No | verification — other agent | Leave for verification agent |
+| FINDING-017 | ❌ No | verification — other agent | Leave for verification agent |
+| FINDING-018 | ❌ No | verification — other agent | Leave for verification agent |
+| FINDING-019 | ❌ No | feature_flags — other agent | Leave for feature_flags agent |
+| FINDING-020 | ❌ No | settings_service docstring — other agent | Leave for settings agent |
+
+### Additional bugs found during AI audit (not in deepseek findings)
+
+| Bug | Severity | Fixed |
+|-----|----------|-------|
+| Bug 18: investigation_cog and knowledge_cog missing 503 friendly message | Minor | ✅ Fixed — commit 4d4bac4 |
+| Bug 19: Dual-042 migration branch split — `alembic upgrade head` fails on fresh DB | **CRITICAL** | ✅ Fixed — migration 045 (commit 5dd2ca7) |
+| Bug 20: ai.model description not updated in live DB rows | Minor | ✅ Fixed — migration 046 (commit 5dd2ca7) |
