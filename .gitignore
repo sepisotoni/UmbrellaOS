@@ -43,3 +43,4 @@ other-services/
 .env
 */.env
 **/.env
+umbrella-core-CURRENT/.venv/
