@@ -69,7 +69,14 @@ class UmbrellaBot(commands.Bot):
         # get_prefix(), and "!" matches the RemoteConfig default anyway.
         super().__init__(command_prefix="!", intents=intents)
         self.settings = settings
-        self.core = UmbrellaCoreClient(settings.umbrella_core_url, settings.umbrella_core_api_key)
+        # timeout=90s: the default 30s wraps the full round-trip including the
+        # upstream LLM call inside umbrella-core. Providers have their own 30s
+        # timeout, but orchestrator overhead (DB reads, constitution build, dual
+        # review, decision log write) adds ~5-10s on top. With 30s client timeout
+        # and 30s provider timeout, a slow-but-valid LLM response causes the bot
+        # to raise "Could not reach umbrella-core" before core even replies.
+        # 90s gives the provider its full 30s plus 60s of headroom.
+        self.core = UmbrellaCoreClient(settings.umbrella_core_url, settings.umbrella_core_api_key, timeout=90.0)
         # Populated by setup_hook after fetching from core's settings API.
         self.remote: RemoteConfig | None = None
 
