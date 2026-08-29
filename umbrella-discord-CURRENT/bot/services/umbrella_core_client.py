@@ -74,6 +74,25 @@ class UmbrellaCoreClient:
         'heartbeat blocked' warnings and gateway disconnects)."""
         return await asyncio.to_thread(self._make_auth_headers)
 
+    @staticmethod
+    def _parse_error(response: httpx.Response) -> tuple[str, str | None]:
+        """Parse an error response body into (message, code).
+
+        FastAPI wraps HTTPException as {"detail": "..."} but some older
+        endpoints and custom error handlers use {"error": "...", "code": "..."}.
+        Check both so callers always get a useful message regardless of which
+        shape the server returned. Falls back to raw response text when the
+        body is not JSON or neither key is present.
+        """
+        try:
+            body = response.json()
+            message = body.get("detail") or body.get("error") or response.text
+            code = body.get("code")
+        except ValueError:
+            message = response.text
+            code = None
+        return message, code
+
     async def invoke(
         self, capability_name: str, params: dict[str, Any], *, discord_user_id: str | None = None
     ) -> dict[str, Any]:
@@ -110,13 +129,7 @@ class UmbrellaCoreClient:
             raise UmbrellaCoreError(f"Could not reach umbrella-core: {exc}") from exc
 
         if response.status_code >= 400:
-            try:
-                body = response.json()
-                message = body.get("error", response.text)
-                code = body.get("code")
-            except ValueError:
-                message = response.text
-                code = None
+            message, code = UmbrellaCoreClient._parse_error(response)
             raise UmbrellaCoreError(message, status_code=response.status_code, code=code)
 
         try:
@@ -192,13 +205,7 @@ class UmbrellaCoreClient:
             raise UmbrellaCoreError(f"Could not reach umbrella-core: {exc}") from exc
 
         if response.status_code >= 400:
-            try:
-                body = response.json()
-                message = body.get("error", response.text)
-                code = body.get("code")
-            except ValueError:
-                message = response.text
-                code = None
+            message, code = UmbrellaCoreClient._parse_error(response)
             raise UmbrellaCoreError(message, status_code=response.status_code, code=code)
 
         try:
@@ -224,14 +231,8 @@ class UmbrellaCoreClient:
             raise UmbrellaCoreError(f"Could not reach umbrella-core: {exc}") from exc
 
         if response.status_code >= 400:
-            try:
-                body = response.json()
-                message_text = body.get("detail", body.get("error", response.text))
-                code = body.get("code")
-            except ValueError:
-                message_text = response.text
-                code = None
-            raise UmbrellaCoreError(message_text, status_code=response.status_code, code=code)
+            message, code = UmbrellaCoreClient._parse_error(response)
+            raise UmbrellaCoreError(message, status_code=response.status_code, code=code)
 
         try:
             return response.json()
@@ -256,13 +257,7 @@ class UmbrellaCoreClient:
             raise UmbrellaCoreError(f"Could not reach umbrella-core: {exc}") from exc
 
         if response.status_code >= 400:
-            try:
-                body = response.json()
-                message = body.get("detail", body.get("error", response.text))
-                code = body.get("code")
-            except ValueError:
-                message = response.text
-                code = None
+            message, code = UmbrellaCoreClient._parse_error(response)
             raise UmbrellaCoreError(message, status_code=response.status_code, code=code)
 
         try:
