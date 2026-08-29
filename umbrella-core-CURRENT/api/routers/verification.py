@@ -17,7 +17,6 @@ from pydantic import BaseModel
 from database import get_db
 from models import VerificationCode, DiscordAccount, AuditLog
 from api.middleware.auth import require_admin_key, require_plugin_key
-from api.middleware.session import require_admin_key_or_session
 from api.dependencies.permissions import require_permission
 
 router = APIRouter(prefix="/api/v1/verification", tags=["verification"])
@@ -571,7 +570,7 @@ class PluginVerifyCodeResponse(BaseModel):
 @router.get("/count")
 async def get_verification_count(
     db: AsyncSession = Depends(get_db),
-    _auth=Depends(require_admin_key_or_session),
+    _auth=Depends(require_permission("verification.link.view")),
 ) -> dict:
     """Return total verified account count — lightweight alternative to fetching all links."""
     from sqlalchemy import func as sql_func

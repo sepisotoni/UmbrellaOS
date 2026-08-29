@@ -1,22 +1,17 @@
 """
 api/middleware/auth.py — API key and session authentication.
 
-Phase 1 implements simple shared-secret auth for the plugin and
-an X-Admin-Key header for dashboard/admin calls.
-Full Discord OAuth + session tokens come in Phase 3.
+Three auth tiers, in order of trust:
 
-Key tiers (Phase 1):
-    X-Plugin-Key   — plugin-facing endpoints only
-    X-Admin-Key    — full access (must match SECRET_KEY in .env for now)
+    X-Plugin-Key   — Minecraft plugin-facing endpoints only (matches SECRET_KEY)
+    X-Admin-Key    — Full admin access (matches ADMIN_KEY). Dashboard and admin
+                     tools use this; also accepted as Bearer session token from
+                     the Discord OAuth flow.
+    X-Auth-MAC +   — PBKDF2-HMAC-SHA256 bot auth (Phase 16B). The Discord bot
+    X-Auth-Timestamp  exclusively uses this tier; the raw admin key is NOT
+                     distributed to the bot. 30-second timestamp window.
 
-Phase 3 will replace X-Admin-Key with proper session tokens.
-
-Phase 16B (Task A) adds require_admin_hmac_or_session: bot-facing routes
-accept X-Auth-MAC + X-Auth-Timestamp (PBKDF2-HMAC-SHA256 derived from the
-shared secret) as an alternative to the raw admin key. The raw key path
-(require_admin_key) is preserved unchanged — the dashboard and other
-callers continue using it. Only the bot's capability-invoke path and the
-new bot-registration endpoint use the HMAC tier.
+All secret comparisons use hmac.compare_digest to prevent timing attacks.
 """
 import hashlib
 import hmac
@@ -38,9 +33,15 @@ async def require_plugin_key(
     x_plugin_key: str | None = Security(plugin_key_header),
     x_admin_key: str | None = Security(admin_key_header),
 ) -> str:
-    """Accept X-Plugin-Key or X-Admin-Key (plugin key matches SECRET_KEY or ADMIN_KEY)."""
+    """Accept X-Plugin-Key or X-Admin-Key (plugin key matches SECRET_KEY or ADMIN_KEY).
+
+    Uses hmac.compare_digest for all secret comparisons to prevent timing attacks.
+    """
     key = x_plugin_key or x_admin_key
-    if key and (key == settings.secret_key or key == settings.admin_key):
+    if key and (
+        hmac.compare_digest(key, settings.secret_key)
+        or hmac.compare_digest(key, settings.admin_key)
+    ):
         return key
     raise HTTPException(status_code=401, detail="Invalid or missing plugin key")
 
@@ -50,8 +51,11 @@ async def require_admin_key(
     authorization: str | None = Header(None),
     db: AsyncSession = Depends(get_db),
 ) -> str:
-    """Accept X-Admin-Key or Bearer session token (dashboard OAuth)."""
-    if x_admin_key and x_admin_key == settings.admin_key:
+    """Accept X-Admin-Key or Bearer session token (dashboard OAuth).
+
+    Uses hmac.compare_digest for all secret comparisons to prevent timing attacks.
+    """
+    if x_admin_key and hmac.compare_digest(x_admin_key, settings.admin_key):
         return x_admin_key
     if authorization and authorization.startswith("Bearer "):
         token = authorization.removeprefix("Bearer ").strip()
@@ -87,24 +91,12 @@ async def require_admin_hmac_or_session(
         if not hmac.compare_digest(expected, x_auth_mac):
             raise HTTPException(status_code=401, detail="Invalid MAC")
         return "hmac"
-    # Accept plugin key — matches secret_key or admin_key
+    # Accept plugin key or admin key — both use compare_digest
     key = x_plugin_key or x_admin_key
-    if key and (key == settings.secret_key or key == settings.admin_key):
+    if key and (
+        hmac.compare_digest(key, settings.secret_key)
+        or hmac.compare_digest(key, settings.admin_key)
+    ):
         return "plugin"
     # Fall through to session token
     return await require_admin_key(x_admin_key, authorization, db)
-
-
-async def optional_auth(
-    x_plugin_key: str | None = Security(plugin_key_header),
-    x_admin_key: str | None = Security(admin_key_header),
-) -> dict:
-    """
-    Returns auth context without raising. Useful for endpoints that
-    behave differently based on auth level.
-    """
-    if x_admin_key and x_admin_key == settings.admin_key:
-        return {"type": "admin", "actor": "dashboard"}
-    if x_plugin_key and x_plugin_key == settings.secret_key:
-        return {"type": "plugin", "actor": "plugin"}
-    return {"type": "anonymous", "actor": "anonymous"}

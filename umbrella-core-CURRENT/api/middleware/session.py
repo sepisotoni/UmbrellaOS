@@ -4,6 +4,8 @@ api/middleware/session.py — Session token authentication.
 Validates Bearer tokens issued by the Discord OAuth flow.
 Used by dashboard users; plugin-to-core traffic continues to use X-Admin-Key.
 """
+import hmac
+
 from fastapi import Depends, Header, HTTPException, Security
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -61,14 +63,16 @@ async def require_admin_key_or_session(
     Admin/plugin keys are checked first and bypass role-permission checks (they
     return a str sentinel, which require_permission treats as pre-authorised).
     Session auth is used when no valid key is present.
+
+    Uses hmac.compare_digest for all secret comparisons to prevent timing attacks.
     """
-    if x_admin_key and x_admin_key == settings.admin_key:
+    if x_admin_key and hmac.compare_digest(x_admin_key, settings.admin_key):
         return x_admin_key
 
     # Plugin key (sent by the Minecraft plugin as X-Plugin-Key) gets the same
     # bypass as admin key so plugin-facing endpoints like /ai/copilot work without
     # a user session or role assignment.
-    if x_plugin_key and x_plugin_key == settings.secret_key:
+    if x_plugin_key and hmac.compare_digest(x_plugin_key, settings.secret_key):
         return x_plugin_key
 
     if authorization and authorization.startswith("Bearer "):

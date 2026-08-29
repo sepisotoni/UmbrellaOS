@@ -3,7 +3,7 @@ api/routers/mc_commands.py — Minecraft command execution endpoints.
 
 POST /api/v1/mc/command                — Queue a command for execution
                                           (admin/Discord-bot initiated,
-                                          X-Admin-Key)
+                                          X-Auth-MAC/HMAC or X-Admin-Key)
 GET  /api/v1/mc/commands/pending       — Get pending commands
                                           (plugin-initiated, X-Plugin-Key)
 POST /api/v1/mc/commands/{id}/complete — Mark command as completed
@@ -23,7 +23,7 @@ from datetime import datetime, timezone
 
 from database import get_db
 from models import MCCommand, AuditLog
-from api.middleware.auth import require_admin_key, require_plugin_key
+from api.middleware.auth import require_admin_hmac_or_session, require_plugin_key
 from api.middleware.audit import create_audit_log, AuditAction
 from uuid import uuid4
 
@@ -57,13 +57,14 @@ class MCCommandCompleteRequest(BaseModel):
 async def create_mc_command(
     body: MCCommandRequest,
     db: AsyncSession = Depends(get_db),
-    _auth: str = Depends(require_admin_key),
+    _auth: str = Depends(require_admin_hmac_or_session),
 ) -> MCCommandResponse:
     """
     Queue a Minecraft command for execution.
-    
-    The Discord bot calls this to request command execution.
-    The plugin polls pending commands and executes them.
+
+    Auth: require_admin_hmac_or_session — the Discord bot (PBKDF2 MAC),
+    raw X-Admin-Key (dashboard/admin tools), or a session token may enqueue
+    commands. The plugin itself uses X-Plugin-Key only for the poll/ack pair.
     """
     if not body.command or not body.command.strip():
         raise HTTPException(status_code=400, detail="Command cannot be empty")

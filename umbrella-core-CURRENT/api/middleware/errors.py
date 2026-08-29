@@ -6,12 +6,16 @@ Provides:
 - Error response schemas
 - Exception handlers for FastAPI
 """
+import logging
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
 from datetime import datetime, timezone
 from pydantic import BaseModel
 from typing import Any, Optional
+
+
+logger = logging.getLogger(__name__)
 
 
 class ErrorResponse(BaseModel):
@@ -97,6 +101,7 @@ def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(Exception)
     async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
         """Handle unexpected exceptions."""
+        logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
         error_response = ErrorResponse(
             success=False,
             error="Internal server error",
@@ -104,7 +109,7 @@ def register_error_handlers(app: FastAPI) -> None:
             status=500,
             timestamp=datetime.now(timezone.utc).isoformat(),
             path=str(request.url.path),
-            details=str(exc) if str(exc) else None
+            details=None  # never expose raw exception detail to clients
         )
         return JSONResponse(
             status_code=500,

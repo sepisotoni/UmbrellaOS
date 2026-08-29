@@ -8,11 +8,12 @@ Design decisions:
 - This replaces the hardcoded umbrella.helper / .mod / .admin
   Bukkit permissions from the old plugin — Core is now the authority.
 
-Default roles seeded by migration:
+Default roles seeded by services/roles_service.py:
     owner     — all permissions
-    admin     — all except manage_roles, manage_api_keys
-    moderator — ban, mute, kick, warn, lookup
-    helper    — kick, warn, lookup
+    admin     — all except roles.manage
+    moderator — moderation, appeals, investigation, knowledge, verification
+    helper    — players.view, punishments.view, appeals.view, investigation, knowledge.search
+    member    — appeals.view only
 """
 import uuid
 from datetime import datetime

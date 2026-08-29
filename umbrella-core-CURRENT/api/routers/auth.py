@@ -377,6 +377,33 @@ async def discord_callback(
             user.email = email
         await db.flush()
 
+    # MFA gate: if the user has TOTP enabled, refuse to issue a full session
+    # token until they supply a valid code. The dashboard must POST to
+    # /api/v1/auth/mfa/verify with the pre-session token to complete login.
+    # This prevents MFA from being silently bypassed at the OAuth callback step.
+    from services.mfa_service import MFAService
+    if user.mfa_enabled:
+        # Issue a short-lived (5-minute) pre-session token scoped only to MFA
+        # verification — it cannot be used for any other authenticated endpoint.
+        mfa_token = secrets.token_urlsafe(32)
+        mfa_pending_expires = datetime.now(timezone.utc) + timedelta(minutes=5)
+        mfa_session = Session(
+            user_id=user.id,
+            token=f"mfa:{mfa_token}",
+            expires_at=mfa_pending_expires,
+        )
+        db.add(mfa_session)
+        await db.delete(pending)
+        await db.flush()
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "mfa_required": True,
+                "mfa_token": mfa_token,
+                "message": "MFA verification required — POST to /api/v1/auth/mfa/verify",
+            },
+        )
+
     expires_at = datetime.now(timezone.utc) + timedelta(days=SESSION_EXPIRY_DAYS)
     session_token = secrets.token_urlsafe(32)
     session = Session(
@@ -400,15 +427,23 @@ async def discord_callback(
 
 @router.post("/logout")
 async def logout(
-    session_token: str = Query(..., description="Session token to revoke"),
+    authorization: str | None = Header(None),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """
     Logout: Revoke session token.
-    Phase 5: Accept session token from Authorization header or query.
+    Accepts session token from Authorization: Bearer <token> header only.
+    Token must NOT be passed as a query parameter to avoid it appearing in
+    access logs, browser history, and referrer headers.
     """
+    token: str | None = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.removeprefix("Bearer ").strip() or None
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing session token in Authorization header")
+
     result = await db.execute(
-        select(Session).options(selectinload(Session.user)).where(Session.token == session_token)
+        select(Session).options(selectinload(Session.user)).where(Session.token == token)
     )
     session = result.scalar_one_or_none()
 
@@ -423,14 +458,17 @@ async def logout(
 
 @router.get("/me", response_model=UserSchema)
 async def get_current_user_endpoint(
-    session_token: str | None = Query(None, description="Session token"),
     authorization: str | None = Header(None),
     db: AsyncSession = Depends(get_db),
 ) -> UserSchema:
-    """Get current authenticated user via Bearer header or session_token query."""
-    token = session_token
-    if not token and authorization and authorization.startswith("Bearer "):
-        token = authorization.removeprefix("Bearer ").strip()
+    """Get current authenticated user via Authorization: Bearer <token> header.
+
+    Token must be sent in the Authorization header only, never as a query
+    parameter, to avoid appearing in access logs and browser history.
+    """
+    token: str | None = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.removeprefix("Bearer ").strip() or None
     if not token:
         raise HTTPException(status_code=401, detail="Missing session token")
 
@@ -444,6 +482,80 @@ async def get_current_user_endpoint(
 
     return await _user_to_schema(session.user, db)
 
+
+
+# ---------------------------------------------------------------------------
+# MFA verification — exchanges a short-lived mfa: pre-session token + TOTP
+# code for a full session token. Called after /discord/callback returns 403
+# with mfa_required=True.
+# ---------------------------------------------------------------------------
+
+class MFAVerifyRequest(BaseModel):
+    mfa_token: str
+    code: str
+
+
+class MFAVerifyResponse(BaseModel):
+    token: str
+    user: UserSchema
+    expires_in: int
+
+
+@router.post("/mfa/verify", response_model=MFAVerifyResponse)
+async def mfa_verify(
+    body: MFAVerifyRequest,
+    db: AsyncSession = Depends(get_db),
+) -> MFAVerifyResponse:
+    """
+    Complete MFA login: exchange an mfa: pre-session token + TOTP code
+    for a full session token.
+
+    Flow:
+      1. /discord/callback returns HTTP 403 with mfa_required=True and a
+         short-lived mfa_token (valid 5 minutes, stored as "mfa:<token>").
+      2. The dashboard collects the TOTP code from the user and POSTs here.
+      3. We validate the TOTP, revoke the mfa: pre-session, and issue a
+         full SESSION_EXPIRY_DAYS session token.
+    """
+    from services.mfa_service import MFAService
+
+    # Look up the pending MFA session
+    mfa_session_result = await db.execute(
+        select(Session)
+        .options(selectinload(Session.user))
+        .where(Session.token == f"mfa:{body.mfa_token}")
+    )
+    mfa_session = mfa_session_result.scalar_one_or_none()
+
+    if mfa_session is None or not mfa_session.is_valid():
+        raise HTTPException(status_code=401, detail="Invalid or expired MFA token")
+
+    user = mfa_session.user
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Account is deactivated")
+
+    # Verify the TOTP code
+    if not await MFAService.verify_code(user, body.code):
+        raise HTTPException(status_code=401, detail="Invalid MFA code")
+
+    # Revoke the pre-session token and issue a full session
+    mfa_session.revoked = True
+    expires_at = datetime.now(timezone.utc) + timedelta(days=SESSION_EXPIRY_DAYS)
+    session_token = secrets.token_urlsafe(32)
+    session = Session(
+        user_id=user.id,
+        token=session_token,
+        expires_at=expires_at,
+    )
+    db.add(session)
+    await db.flush()
+    await db.refresh(user)
+
+    return MFAVerifyResponse(
+        token=session_token,
+        user=await _user_to_schema(user, db),
+        expires_in=SESSION_EXPIRY_DAYS * 24 * 3600,
+    )
 
 # ---------------------------------------------------------------------------
 # API Key management — REST facades over the identity.apikey.* capabilities

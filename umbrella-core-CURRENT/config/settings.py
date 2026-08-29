@@ -18,10 +18,6 @@ class Settings(BaseSettings):
     rate_limit_requests_per_window: int = 120
     rate_limit_window_seconds: int = 60
 
-    # Rate limiting (Phase 3) — per-client-IP, applied globally except /healthz
-    rate_limit_requests_per_window: int = 120
-    rate_limit_window_seconds: int = 60
-
     # Rate limiting (Phase 7) — additive per-API-key limit, layered on top of
     # the per-IP limit above rather than replacing it (see
     # docs/design/public-rest-api-and-webhooks.md, Decision 1). Only applied
