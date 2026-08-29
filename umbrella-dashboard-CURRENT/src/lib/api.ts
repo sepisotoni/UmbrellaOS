@@ -1016,15 +1016,15 @@ export class UmbrellaApiClient {
     return this.request<AITaskSchema[]>(`/api/v1/ai/tasks?limit=${limit}&offset=${offset}`);
   }
 
-  public async approveAITask(taskId: string, actionTaken: string = 'approve', reviewedBy: string = 'staff'): Promise<any> {
-    return this.request<any>(`/api/v1/ai/tasks/${encodeURIComponent(taskId)}/approve`, {
+  public async approveAITask(taskId: number, actionTaken: string = 'approve', reviewedBy: string = 'staff'): Promise<any> {
+    return this.request<any>(`/api/v1/ai/tasks/${taskId}/approve`, {
       method: 'POST',
       body: JSON.stringify({ action_taken: actionTaken, reviewed_by: reviewedBy }),
     });
   }
 
-  public async denyAITask(taskId: string, reviewedBy: string = 'staff', reason: string = 'denied'): Promise<any> {
-    return this.request<any>(`/api/v1/ai/tasks/${encodeURIComponent(taskId)}/deny`, {
+  public async denyAITask(taskId: number, reviewedBy: string = 'staff', reason: string = 'denied'): Promise<any> {
+    return this.request<any>(`/api/v1/ai/tasks/${taskId}/deny`, {
       method: 'POST',
       body: JSON.stringify({ reviewed_by: reviewedBy, reason }),
     });

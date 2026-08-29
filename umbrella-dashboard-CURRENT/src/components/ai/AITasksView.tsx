@@ -65,13 +65,13 @@ export const AITasksView: React.FC = () => {
     }).catch(() => {});
   }, []);
 
-  const handleApproveTask = async (taskId: string) => {
+  const handleApproveTask = async (taskId: number) => {
     try {
       await api.approveAITask(taskId);
       addToast({
         type: 'success',
         title: 'Task Approved',
-        message: `Task ${taskId.slice(0, 8)} marked as approved.`,
+        message: `Task #${taskId} marked as approved.`,
       });
       fetchTasks();
     } catch (err: any) {
@@ -83,13 +83,13 @@ export const AITasksView: React.FC = () => {
     }
   };
 
-  const handleDenyTask = async (taskId: string) => {
+  const handleDenyTask = async (taskId: number) => {
     try {
       await api.denyAITask(taskId);
       addToast({
         type: 'success',
         title: 'Task Denied',
-        message: `Task ${taskId.slice(0, 8)} rejected.`,
+        message: `Task #${taskId} rejected.`,
       });
       fetchTasks();
     } catch (err: any) {
