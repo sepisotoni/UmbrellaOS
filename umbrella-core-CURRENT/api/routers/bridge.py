@@ -147,18 +147,8 @@ async def receive_bridge_message(
             forwarded = True
             targets = ["minecraft"]
         elif body.source == "DASHBOARD":
-            # FIX-F011: DASHBOARD broadcasts are forwarded in partial mode too,
-            # respecting body.scope as a direction hint.
-            scope = (body.scope or "").lower()
-            if scope == "minecraft":
-                forwarded = True
-                targets = ["minecraft"]
-            elif scope == "discord":
-                forwarded = True
-                targets = ["discord"]
-            else:
-                forwarded = True
-                targets = ["minecraft"]  # partial: MC only unless scoped
+            forwarded = True
+            targets = ["minecraft", "discord"]
 
     elif bridge_mode == "full":
         mc_to_discord_val = await db.scalar(
@@ -189,27 +179,8 @@ async def receive_bridge_message(
             targets = ["minecraft"]
 
         elif body.source == "DASHBOARD":
-            # FIX-F011: DASHBOARD broadcasts forward to both directions in full
-            # mode, filtered by body.scope and the per-direction toggle.
-            scope = (body.scope or "").lower()
-            if scope == "minecraft":
-                if discord_to_mc:
-                    forwarded = True
-                    targets = ["minecraft"]
-            elif scope == "discord":
-                if mc_to_discord:
-                    forwarded = True
-                    targets = ["discord"]
-            else:
-                # No scope hint → broadcast to both directions (respect toggles)
-                t = []
-                if mc_to_discord:
-                    t.append("discord")
-                if discord_to_mc:
-                    t.append("minecraft")
-                if t:
-                    forwarded = True
-                    targets = t
+            forwarded = True
+            targets = ["minecraft", "discord"]
 
     await db.commit()
     await db.refresh(chat_message)
@@ -292,15 +263,10 @@ async def update_bridge_settings(
     actor = "dashboard"
 
     async def _update_setting(key: str, value: str, description: str) -> None:
-        """Route through SettingsService.update if row exists, else insert."""
-        result = await SettingsService.update(db=db, key=key, new_value=value, actor=actor)
-        if result is None:
-            # Row doesn't exist yet — insert with safe defaults
-            db.add(Setting(
-                key=key, value=value, category="bridge",
-                description=description, sensitive=False, requires_restart=False,
-            ))
-            await db.flush()
+        """Route through SettingsService so audit log, sensitivity, and env sync apply."""
+        await SettingsService.update(
+            db=db, key=key, new_value=value, actor=actor, create_if_missing=True,
+        )
 
     if body.mode is not None:
         await _update_setting("bridge.mode", body.mode, "Bridge mode")

@@ -394,21 +394,30 @@ async def manual_link(
     UUID gets updated to the real value on the player's next join.
     """
     from models import Player
-    import uuid as uuid_lib
 
-    # Find or create a Player record for this username
+    # Align with resolve_pending: DiscordAccount.player_uuid == pending:{username}
+    # (case-insensitive). Player.uuid must also be that marker so the FK
+    # discord_accounts.player_uuid → players.uuid holds. A UUID4 on Player
+    # with pending:{username} on DiscordAccount would violate the FK.
+    # pending:{username} fits VARCHAR(36) (MC names are ≤16 chars).
+    pending_marker = f"pending:{body.mc_username}"
+    if len(pending_marker) > 36:
+        pending_marker = pending_marker[:36]
+
     player = await db.scalar(select(Player).where(Player.username == body.mc_username))
     if player is None:
-        # Create a placeholder — the plugin will overwrite the UUID on first join
-        placeholder_uuid = f"manual-{uuid_lib.uuid4()}"
         player = Player(
-            uuid=placeholder_uuid,
+            uuid=pending_marker,
             username=body.mc_username,
         )
         db.add(player)
         await db.flush()
-    
-    player_uuid = player.uuid
+        player_uuid = pending_marker
+    elif player.uuid.startswith("pending:"):
+        player_uuid = player.uuid
+    else:
+        # Already have a real Minecraft UUID — link immediately, no pending resolve.
+        player_uuid = player.uuid
 
     # Find or update the DiscordAccount record
     existing = await db.scalar(
@@ -438,7 +447,13 @@ async def manual_link(
     )
     db.add(audit)
     await db.flush()
-    return {"success": True, "message": f"Linked {body.discord_id} to {body.mc_username}. UUID resolves on next join."}
+    pending = player_uuid.lower().startswith("pending:")
+    msg = (
+        f"Linked {body.discord_id} to {body.mc_username}. UUID resolves on next join."
+        if pending
+        else f"Linked {body.discord_id} to {body.mc_username}."
+    )
+    return {"success": True, "message": msg}
 
 
 @router.delete("/unlink/{discord_id}")
@@ -494,6 +509,14 @@ async def resolve_pending(
     )
     if not account:
         return {"resolved": False}
+
+    from models import Player
+    real_player = await db.scalar(select(Player).where(Player.uuid == body.uuid))
+    if real_player is None:
+        db.add(Player(uuid=body.uuid, username=body.username))
+        await db.flush()
+    elif body.username and real_player.username != body.username:
+        real_player.username = body.username
 
     account.player_uuid = body.uuid
     audit = AuditLog(
@@ -567,7 +590,9 @@ async def list_verification_links(
         # placeholder discord_id values (starting with "pending_mc:") indicate
         # plugin-path links. Use the discord_id prefix as the heuristic so at
         # least manual vs bot links are distinguishable in the dashboard.
-        if acct.discord_id and acct.discord_id.startswith("pending_mc:"):
+        if acct.discord_id and (
+            acct.discord_id.startswith("pending_mc:") or acct.discord_id.startswith("pmc:")
+        ):
             verified_by = "PLUGIN"
         elif acct.discord_id and acct.discord_id.startswith(body.discord_id if False else ""):
             verified_by = "BOT_CODE"
@@ -704,6 +729,12 @@ async def plugin_verify_code(
             message="Code not found. Please generate a verification code in Discord first.",
         )
 
+    if vc.player_uuid != player_uuid:
+        raise HTTPException(
+            status_code=403,
+            detail="Verification code does not belong to this Minecraft account.",
+        )
+
     # Mark code used
     vc.used = True
 
@@ -727,7 +758,7 @@ async def plugin_verify_code(
         # No pre-existing account — create one. discord_id unknown here; use
         # a placeholder that the bot can fill in on next interaction.
         discord_acct = DiscordAccount(
-            discord_id=f"pending_mc:{player_uuid}",
+            discord_id=f"pmc:{str(player_uuid)[:28]}",
             player_uuid=player_uuid,
             verified=True,
             linked_at=datetime.now(timezone.utc),

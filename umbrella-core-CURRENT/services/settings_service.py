@@ -292,30 +292,58 @@ class SettingsService:
         return await db.scalar(select(Setting.value).where(Setting.key == key))
 
     @staticmethod
+    def _metadata_for_key(key: str) -> tuple[str, str, bool, bool]:
+        """Return (category, description, sensitive, requires_restart) for a key."""
+        for default_key, _value, category, description, sensitive, requires_restart in DEFAULT_SETTINGS:
+            if default_key == key:
+                return category, description, sensitive, requires_restart
+        category = key.split(".")[0] if "." in key else "general"
+        return category, f"Auto-created: {key}", False, False
+
+    @staticmethod
     async def update(
         db: AsyncSession,
         key: str,
         new_value: str,
         actor: str,
         actor_type: str = "staff",
+        create_if_missing: bool = False,
     ) -> Optional[dict]:
         """
         Update a setting value. Writes an audit log entry.
         Returns the updated setting dict (masked if sensitive), or None if not found.
+
+        When create_if_missing=True (POST upsert), a missing key is inserted using
+        DEFAULT_SETTINGS metadata when known so sensitivity flags, audit, and env
+        sync apply the same way as an update of an existing row.
         """
         setting = await db.scalar(select(Setting).where(Setting.key == key))
+        created = False
         if setting is None:
-            return None
+            if not create_if_missing:
+                return None
+            category, description, sensitive, requires_restart = SettingsService._metadata_for_key(key)
+            setting = Setting(
+                key=key,
+                value=new_value,
+                category=category,
+                description=description,
+                sensitive=sensitive,
+                requires_restart=requires_restart,
+            )
+            db.add(setting)
+            created = True
+            old_value = None
+        else:
+            old_value = setting.value
+            setting.value = new_value
+            db.add(setting)
 
-        old_value = setting.value
-        setting.value = new_value
-        db.add(setting)
-
-        # Audit every settings change
+        # Audit every settings change (including first insert)
         log = AuditLog(
             actor=actor,
             actor_type=actor_type,
-            action="settings.update",
+            action="settings.create" if created else "settings.update",
             target=key,
             details_json=json.dumps({
                 "key": key,

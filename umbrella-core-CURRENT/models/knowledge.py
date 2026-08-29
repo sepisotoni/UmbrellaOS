@@ -49,7 +49,7 @@ class KnowledgeEntry(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     channel_id: Mapped[str] = mapped_column(String(32), index=True)
     channel_name: Mapped[str] = mapped_column(String(200))
-    discord_message_id: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    discord_message_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     author_id: Mapped[str] = mapped_column(String(32))
     author_name: Mapped[str] = mapped_column(String(200))
     content: Mapped[str] = mapped_column(Text)

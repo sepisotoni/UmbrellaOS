@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from database import get_db
 from services import SettingsService
-from api.dependencies.permissions import require_owner
+from api.dependencies.permissions import require_owner, require_permission
 from api.middleware.auth import require_admin_hmac_or_session
 from models import User
 
@@ -17,15 +17,21 @@ class SettingUpdate(BaseModel):
     value: str
 
 
+def _unmask_settings(auth: str) -> bool:
+    """Dashboard sessions must never see raw secrets. Admin key, HMAC, and plugin callers may."""
+    return auth != "session"
+
+
 @router.get("")
 async def list_settings(
     db: AsyncSession = Depends(get_db),
     # GET: accept PBKDF2 MAC (bot) or dashboard session in addition to raw admin key
     auth: str = Depends(require_admin_hmac_or_session),
+    _perm=Depends(require_permission("settings.view")),
 ) -> list[dict]:
     """Return all settings. Bot callers (PBKDF2 MAC) and admin-key callers get
     unmasked values; dashboard session callers get sensitive values masked."""
-    unmasked = isinstance(auth, str)
+    unmasked = _unmask_settings(auth)
     return await SettingsService.get_all(db, unmasked=unmasked)
 
 
@@ -35,9 +41,10 @@ async def get_setting(
     db: AsyncSession = Depends(get_db),
     # GET: accept PBKDF2 MAC (bot) or dashboard session in addition to raw admin key
     auth: str = Depends(require_admin_hmac_or_session),
+    _perm=Depends(require_permission("settings.view")),
 ) -> dict:
     # PBKDF2 / admin-key callers (bot, plugin) get the real value; dashboard users get masked
-    unmasked = isinstance(auth, str)
+    unmasked = _unmask_settings(auth)
     setting = await SettingsService.get_by_key(db, key, unmasked=unmasked)
     if setting is None:
         raise HTTPException(status_code=404, detail=f"Setting '{key}' not found")
@@ -61,27 +68,13 @@ async def create_or_update_setting(
     actor = auth.username if isinstance(auth, User) else "dashboard"
     if body.value == "***":
         raise HTTPException(status_code=400, detail="Cannot save masked secret placeholder")
-    from models.setting import Setting
-    from sqlalchemy import select
-    existing = await db.scalar(select(Setting).where(Setting.key == key))
-    if existing is None:
-        # Derive category from the key prefix (e.g. "verification.dm_prompt" -> "verification")
-        category = key.split(".")[0] if "." in key else "general"
-        new_setting = Setting(
-            key=key,
-            value=body.value,
-            category=category,
-            description=f"Auto-created: {key}",
-            sensitive=False,
-            requires_restart=False,
-        )
-        db.add(new_setting)
-        await db.commit()
-        await db.refresh(new_setting)
-        from services import SettingsService
-        return SettingsService._to_dict(new_setting, unmasked=False)
     updated = await SettingsService.update(
-        db=db, key=key, new_value=body.value, actor=actor, actor_type="staff",
+        db=db,
+        key=key,
+        new_value=body.value,
+        actor=actor,
+        actor_type="staff",
+        create_if_missing=True,
     )
     return updated
 

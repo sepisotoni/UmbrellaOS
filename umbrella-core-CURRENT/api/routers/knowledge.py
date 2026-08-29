@@ -34,6 +34,7 @@ from models.audit_log import AuditLog
 from models.knowledge import KnowledgeEntry, KnowledgeReviewStatus
 from services.knowledge.repository import KnowledgeRepository
 from services.knowledge.service import KnowledgeService
+from api.dependencies.permissions import require_permission
 from api.middleware.auth import require_admin_hmac_or_session
 
 router = APIRouter(prefix="/api/v1/knowledge", tags=["knowledge"])
@@ -128,6 +129,7 @@ async def list_knowledge(
     limit: int = Query(default=20, ge=1, le=50),
     status: str | None = Query(default=None, description="approved | pending | rejected"),
     auth: User | str = Depends(require_admin_hmac_or_session),
+    _perm=Depends(require_permission("knowledge.entry.search")),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """
@@ -176,6 +178,7 @@ async def list_knowledge(
 async def create_knowledge(
     body: KnowledgeCreateRequest,
     auth: User | str = Depends(require_admin_hmac_or_session),
+    _perm=Depends(require_permission("knowledge.entry.manage")),
     db: AsyncSession = Depends(get_db),
 ) -> KnowledgeEntrySchema:
     """
@@ -185,15 +188,16 @@ async def create_knowledge(
 
     FIX (FINDING-004): previous code used f"dashboard-{uuid.uuid4()}" as the
     discord_message_id (46 chars) against a String(32) column — guaranteed
-    truncation error on Postgres. Now uses a plain 32-hex-char UUID with no prefix.
+    truncation error on Postgres. Uses dash- + 26 hex chars (exactly 32);
+    the column is also widened to String(64) (migration 044).
 
     FIX (FINDING-007): now writes an AuditLog row on create.
     """
     category = body.category or "general"
     full_content = f"{body.title}\n\n{body.content}" if body.title else body.content
 
-    # FIX-F004: 32-char hex UUID fits String(32) exactly; no prefix.
-    dashboard_msg_id = uuid.uuid4().hex  # 32 hex chars, no dashes
+    # FIX-F004: exactly 32 chars ("dash-" + 26 hex). Column is String(64).
+    dashboard_msg_id = f"dash-{uuid.uuid4().hex[:26]}"
 
     entry = KnowledgeEntry(
         channel_id="dashboard",
@@ -226,6 +230,7 @@ async def create_knowledge(
 @router.get("/pending", response_model=dict)
 async def list_pending(
     auth: User | str = Depends(require_admin_hmac_or_session),
+    _perm=Depends(require_permission("knowledge.correction.review")),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """List all PENDING entries (corrections awaiting review)."""
@@ -237,6 +242,7 @@ async def list_pending(
 async def get_knowledge_entry(
     entry_id: str,
     auth: User | str = Depends(require_admin_hmac_or_session),
+    _perm=Depends(require_permission("knowledge.entry.search")),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Return a single entry by ID plus its full version history."""
@@ -253,6 +259,7 @@ async def update_knowledge_entry(
     entry_id: str,
     body: KnowledgeUpdateRequest,
     auth: User | str = Depends(require_admin_hmac_or_session),
+    _perm=Depends(require_permission("knowledge.entry.manage")),
     db: AsyncSession = Depends(get_db),
 ) -> KnowledgeEntrySchema:
     """Update entry content. Snapshots the prior content as a version first.
@@ -283,6 +290,7 @@ async def update_knowledge_entry(
 async def delete_knowledge_entry(
     entry_id: str,
     auth: User | str = Depends(require_admin_hmac_or_session),
+    _perm=Depends(require_permission("knowledge.entry.manage")),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Hard-delete a knowledge entry.
@@ -310,6 +318,7 @@ async def delete_knowledge_entry(
 async def approve_knowledge_entry(
     entry_id: str,
     auth: User | str = Depends(require_admin_hmac_or_session),
+    _perm=Depends(require_permission("knowledge.correction.review")),
     db: AsyncSession = Depends(get_db),
 ) -> KnowledgeEntrySchema:
     """Approve a pending correction.
@@ -350,6 +359,7 @@ async def approve_knowledge_entry(
 async def reject_knowledge_entry(
     entry_id: str,
     auth: User | str = Depends(require_admin_hmac_or_session),
+    _perm=Depends(require_permission("knowledge.correction.review")),
     db: AsyncSession = Depends(get_db),
 ) -> KnowledgeEntrySchema:
     """Reject a pending correction.
