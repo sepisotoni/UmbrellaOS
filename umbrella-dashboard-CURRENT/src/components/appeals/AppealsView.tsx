@@ -17,7 +17,10 @@ import {
 export const AppealsView: React.FC = () => {
   const { selectedAppealId, setSelectedAppealId, navigateToPlayer } = useDashboard();
   const [appeals, setAppeals] = useState<AppealSchema[]>([]);
-  const [statusFilter, setStatusFilter] = useState<string>('pending');
+  // AUDIT-2026-08-29 fix: appeals are created with status "open" (never
+  // "pending" — see api/routers/appeals.py create_appeal), so a default of
+  // 'pending' never matched anything and the default tab was always empty.
+  const [statusFilter, setStatusFilter] = useState<string>('open');
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -74,11 +77,16 @@ export const AppealsView: React.FC = () => {
 
       {/* Filter Bar */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1">
+        {/* AUDIT-2026-08-29 fix: filter ids must match the exact lowercase
+            values ck_appeals_status permits and close_appeal now writes
+            (api/routers/appeals.py) — 'open' not 'pending', and lowercase
+            'accepted'/'rejected'/'reduced' not uppercase, or these filters
+            silently return zero results. */}
         {[
-          { id: 'pending', label: 'Pending Review' },
-          { id: 'ACCEPTED', label: 'Accepted' },
-          { id: 'REJECTED', label: 'Rejected' },
-          { id: 'REDUCED', label: 'Sentence Reduced' },
+          { id: 'open', label: 'Pending Review' },
+          { id: 'accepted', label: 'Accepted' },
+          { id: 'rejected', label: 'Rejected' },
+          { id: 'reduced', label: 'Sentence Reduced' },
           { id: 'all', label: 'All Cases' },
         ].map((f) => (
           <button
@@ -162,9 +170,9 @@ export const AppealsView: React.FC = () => {
                       <td className="py-3">
                         <span
                           className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${
-                            app.status === 'pending' || app.status === 'PENDING'
+                            app.status === 'open'
                               ? 'bg-amber-950/80 text-amber-300 border border-amber-800/40'
-                              : app.status === 'ACCEPTED'
+                              : app.status === 'accepted'
                               ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-800/40'
                               : 'bg-purple-950/80 text-purple-300 border border-purple-800/40'
                           }`}

@@ -40,7 +40,12 @@ export const AppealDetailPanel: React.FC<AppealDetailPanelProps> = ({
   const [showReduceDatePicker, setShowReduceDatePicker] = useState<boolean>(false);
   const [isSubmittingAction, setIsSubmittingAction] = useState<boolean>(false);
 
-  const isClosed = appeal.status !== 'pending' && appeal.status !== 'PENDING';
+  // AUDIT-2026-08-29 fix: the backend creates appeals with status "open"
+  // (api/routers/appeals.py create_appeal), never "pending" — this check
+  // never matched, so isClosed was always true and every freshly-submitted
+  // appeal hid its staff decision buttons. "open" is the only non-closed
+  // value the backend ever produces (see ck_appeals_status).
+  const isClosed = appeal.status !== 'open';
 
   const handleTriggerAI = async () => {
     setAiReviewLoading(true);

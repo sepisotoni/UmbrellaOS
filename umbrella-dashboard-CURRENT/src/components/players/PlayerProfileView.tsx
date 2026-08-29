@@ -154,7 +154,10 @@ export const PlayerProfileView: React.FC<PlayerProfileViewProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-lg font-bold text-white font-mono">{player.username}</h1>
-                {verification?.status === 'VERIFIED' ? (
+                {/* AUDIT-2026-08-29 fix: VerificationSchema.status is always
+                    lowercase "verified"/"unverified" (api/routers/players.py) —
+                    comparing to 'VERIFIED' never matched. */}
+                {verification?.status === 'verified' ? (
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-950/80 text-emerald-300 border border-emerald-800/40">
                     <CheckCircle2 className="h-3 w-3" />
                     Verified
