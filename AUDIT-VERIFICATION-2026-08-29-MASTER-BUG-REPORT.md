@@ -125,14 +125,14 @@ instructions; this is investigation-only.
 | 54–57 | (sensitive settings masking, permission-change audit, webhook secret re-exposure, `.env` sync opt-in flags) | ❓ UNVERIFIED | Not checked. |
 | 58 | Missing cascade delete / relationship in `models/ai.py` | ✅ TRUE (as literally stated) | `created_by` column exists with no `ForeignKey`/`relationship()` — may be intentional if it stores a Discord ID rather than a DB FK, didn't confirm intent either way. |
 | 59 | Missing relationships in `models/moderation_intelligence.py` | ✅ TRUE | Confirmed — `ForeignKey` constraints exist (e.g. to `moderation_reports.id`), but no `relationship()` ORM attributes anywhere in the file for eager/lazy-loading convenience. |
-| 60 | Missing indexes in `plugin_execution` | ✅ TRUE | Confirmed — `actor_id` and `entrypoint` both defined without `index=True`, while sibling columns (`plugin_id`, `outcome`, `created_at`) do have it. |
+| 60 | Missing indexes in `plugin_execution` | ✅ TRUE — ✅ **FIXED** (`92aad30`) | Confirmed — `actor_id` and `entrypoint` both defined without `index=True`, while sibling columns (`plugin_id`, `outcome`, `created_at`) do have it. |
 | 61 | Text column for JSON in `plugin_kv`, no validation | ❓ UNVERIFIED | Not checked. |
-| 62 | Missing indexes in `audit_log` | ✅ TRUE | Confirmed — `actor_type` and `target` both lack `index=True`, while `action` and the timestamp column do have it. |
-| 63 | Missing expiry index in `memory` | ✅ TRUE | Confirmed — `expires_at` column has no `index=True`. |
-| 64 | No FK in `anticheat_violation` | ✅ TRUE | Confirmed — `player_uuid` is `String(36), index=True` but has no `ForeignKey("players.uuid")`. |
+| 62 | Missing indexes in `audit_log` | ✅ TRUE — ✅ **FIXED** (`92aad30`) | Confirmed — `actor_type` and `target` both lack `index=True`, while `action` and the timestamp column do have it. |
+| 63 | Missing expiry index in `memory` | ✅ TRUE — ✅ **FIXED** (`a24477b`) | Confirmed — `expires_at` column has no `index=True`. |
+| 64 | No FK in `anticheat_violation` | ✅ TRUE — ✅ **FIXED** (`a24477b`) | Confirmed — `player_uuid` is `String(36), index=True` but has no `ForeignKey("players.uuid")`. |
 | 65 | Missing FK in `server_metrics` | ❌ FALSE (implied "no cleanup" is wrong) | Didn't verify the FK claim specifically, but the report's broader framing of this table lacking any lifecycle management is wrong: `services/operational_intelligence/metrics.py::purge_old_snapshots` runs a scheduled retention sweep against `settings.server_metric_retention_hours` (168h default), invoked from `sampler_loop.py`. |
 | 66–71 | (batch auditing, security event retention, webhook retry, masked audit values, trace sampling, console line cleanup) | ❓ UNVERIFIED | Not checked. |
-| 72 | Duplicate `NoParams` classes "in every file" | ⚠️ PARTIALLY TRUE | Found in 3 files in `capabilities/`, not "every file" — real duplication, but the claim overstates its extent. |
+| 72 | Duplicate `NoParams` classes "in every file" | ⚠️ PARTIALLY TRUE — ✅ **FIXED** (`18baeb1`) | Found in 3 files in `capabilities/`, not "every file" — real duplication, but the claim overstates its extent. |
 | 73 | Duplicate `_resolve_actor` pattern "in multiple files" | ❌ FALSE | Only one definition found (`capabilities/marketplace.py`) across `capabilities/`, `services/`, and `api/`. |
 | 74 | No context memoization | ✅ TRUE | Confirmed — `DashboardContext.tsx`'s `<DashboardContext.Provider value={{...}}>` builds a brand-new object literal inline on every render, not wrapped in `useMemo`. Every consumer re-renders on every provider re-render regardless of which field changed. This is a real, verifiable perf bug. |
 | 75–81 | (response caching, sidebar persistence, unsaved-changes warnings ×2, staff role validation, verification link validation, broadcast rate limiting) | ❓ UNVERIFIED | Not checked. |
@@ -143,7 +143,7 @@ instructions; this is investigation-only.
 
 | # | Bug | Verdict | Evidence |
 |---|-----|---------|----------|
-| 85 | Unused import `ALL_TOOLS` | ✅ TRUE | Confirmed — imported in `capabilities/investigation.py:19`, never referenced anywhere else in the file. |
+| 85 | Unused import `ALL_TOOLS` | ✅ TRUE — ✅ **FIXED** (`18baeb1`) | Confirmed — imported in `capabilities/investigation.py:19`, never referenced anywhere else in the file. |
 | 94–105 | (React.memo, useCallback/useMemo, error handling consistency, loading states, ARIA, ANSI colors, large SVGs/images, modal lazy loading, fuzzy search, keyboard nav, debouncing) | ⚠️ NOTE, mostly ❓ UNVERIFIED | Spot-checked `DashboardContext.tsx` specifically for #95 ("missing useCallback/useMemo") — this one is actually **partially false**: the file does use `useCallback` in several places (`setDoodleOpacity`, `handleToggleDoodles`, `setSelectedBrand`, etc.), contradicting a blanket "missing" claim for at least this file. Didn't check the rest. |
 | 108 | TS strict mode disabled | ✅ TRUE | Confirmed — `tsconfig.json` has no `"strict"` key at all (defaults to `false`). |
 | 109 | Path alias points to root, not `./src` | ✅ TRUE (and inconsistent with tsconfig) | Confirmed — `vite.config.ts`: `'@': path.resolve(__dirname, '.')`. Notably, `tsconfig.json`'s own `paths` mapping is *correct* (`"@/*": ["./src/*"]`), meaning type-checking/IDE resolution and the actual Vite bundler disagree — real, previously-unflagged bug distinct from what the report even claims. |
