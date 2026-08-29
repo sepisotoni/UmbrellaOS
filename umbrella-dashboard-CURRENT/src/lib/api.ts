@@ -1012,8 +1012,10 @@ export class UmbrellaApiClient {
   // --------------------------------------------------------------------------
   // AI Tasks & Intelligence
   // --------------------------------------------------------------------------
-  public async getAITasks(limit: number = 50, offset: number = 0): Promise<AITaskSchema[]> {
-    return this.request<AITaskSchema[]>(`/api/v1/ai/tasks?limit=${limit}&offset=${offset}`);
+  public async getAITasks(limit: number = 50, skip: number = 0): Promise<AITaskSchema[]> {
+    // Router uses `skip` (not `offset`) for pagination — FastAPI silently ignores
+    // unknown query params, so sending `offset` always returned the first page.
+    return this.request<AITaskSchema[]>(`/api/v1/ai/tasks?limit=${limit}&skip=${skip}`);
   }
 
   public async approveAITask(taskId: number, actionTaken: string = 'approve', reviewedBy: string = 'staff'): Promise<any> {

@@ -68,7 +68,7 @@ DEFAULT_SETTINGS: list[tuple] = [
     ("rcon.password",          "",          "rcon", "Minecraft RCON password",  True,  False),
     ("ai.openrouter_key",      "",     "ai",     "OpenRouter API key",          True,  False),
     ("ai.openrouter_enabled",  "true", "ai",     "Use OpenRouter as a model provider", False, False),
-    ("ai.model",               "openai/gpt-4o-mini", "ai", "AI model string",  False, False),
+    ("ai.model",               "openai/gpt-4o-mini", "ai", "[DEPRECATED] Legacy model string — no effect. Model selection uses the AI Models table (ai_model_configs).",  False, False),
     ("ai.anthropic_api_key",   "",     "ai",     "Anthropic API key",          True,  False),
     ("ai.anthropic_enabled",   "true", "ai",     "Use Anthropic as a model provider",  False, False),
     ("ai.gemini_api_key",      "",     "ai",     "Google Gemini API key",       True,  False),
