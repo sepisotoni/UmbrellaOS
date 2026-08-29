@@ -19,6 +19,7 @@ POST   /api/v1/knowledge/{entry_id}/reject  — reject pending correction
 """
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import datetime
 
@@ -29,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
 from models import User
+from models.audit_log import AuditLog
 from models.knowledge import KnowledgeEntry, KnowledgeReviewStatus
 from services.knowledge.repository import KnowledgeRepository
 from services.knowledge.service import KnowledgeService
@@ -92,6 +94,30 @@ async def _get_or_404(db: AsyncSession, entry_id: str) -> KnowledgeEntry:
     return entry
 
 
+async def _audit(
+    db: AsyncSession,
+    *,
+    actor: str,
+    actor_type: str,
+    action: str,
+    target: str,
+    details: dict | None = None,
+) -> None:
+    """Write an AuditLog row for a knowledge mutation.
+
+    FIX (FINDING-007): knowledge create/patch/delete/approve/reject previously
+    flushed with no audit trail. Every state-changing operation now records
+    who did what and to which entry.
+    """
+    db.add(AuditLog(
+        actor=actor,
+        actor_type=actor_type,
+        action=action,
+        target=target,
+        details_json=json.dumps(details or {}),
+    ))
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -107,7 +133,13 @@ async def list_knowledge(
     """
     List/search knowledge entries.
     Default: approved + non-superseded (via KnowledgeRepository.search).
-    With ?status=: filter by that review_status instead.
+    With ?status=: filter by that review_status, still excluding superseded rows
+    so the dashboard never shows obsolete copies as current entries.
+
+    FIX (FINDING-006): previous ?status= filter only matched review_status and
+    ignored superseded_by_id, so filtering to 'approved' returned obsolete rows
+    that had been replaced by a newer approved correction. Now both branches
+    apply the superseded guard so results are consistent.
     """
     if status is not None:
         try:
@@ -121,6 +153,9 @@ async def list_knowledge(
             .where(
                 KnowledgeEntry.content.ilike(like),
                 KnowledgeEntry.review_status == status_enum,
+                # FIX-F006: exclude superseded rows in the status-filtered path,
+                # matching the default search() path's non-superseded guard.
+                KnowledgeEntry.superseded_by_id.is_(None),
             )
             .order_by(KnowledgeEntry.created_at.desc())
             .limit(limit)
@@ -147,18 +182,23 @@ async def create_knowledge(
     Create a new knowledge entry directly (staff-submitted, auto-approved).
     Uses synthetic discord field values so index_entry() is satisfied.
     The channel_name field serves as the category in the dashboard.
+
+    FIX (FINDING-004): previous code used f"dashboard-{uuid.uuid4()}" as the
+    discord_message_id (46 chars) against a String(32) column — guaranteed
+    truncation error on Postgres. Now uses a plain 32-hex-char UUID with no prefix.
+
+    FIX (FINDING-007): now writes an AuditLog row on create.
     """
     category = body.category or "general"
-    # Combine title + content so the content field carries both
     full_content = f"{body.title}\n\n{body.content}" if body.title else body.content
 
-    # index_entry() checks is_knowledge_channel() — bypass by inserting directly
-    # (dashboard entries aren't from a Discord channel, so the channel check
-    # would always return None).
+    # FIX-F004: 32-char hex UUID fits String(32) exactly; no prefix.
+    dashboard_msg_id = uuid.uuid4().hex  # 32 hex chars, no dashes
+
     entry = KnowledgeEntry(
         channel_id="dashboard",
         channel_name=category,
-        discord_message_id=f"dashboard-{uuid.uuid4()}",
+        discord_message_id=dashboard_msg_id,
         author_id=_actor_id(auth),
         author_name=_actor_name(auth),
         content=full_content,
@@ -168,6 +208,18 @@ async def create_knowledge(
     db.add(entry)
     await db.flush()
     await db.refresh(entry)
+
+    # FIX-F007: audit create
+    await _audit(
+        db,
+        actor=_actor_name(auth),
+        actor_type="staff" if isinstance(auth, User) else "admin",
+        action="knowledge.create",
+        target=entry.id,
+        details={"channel_name": category, "content_length": len(full_content)},
+    )
+    await db.flush()
+
     return KnowledgeEntrySchema.model_validate(entry)
 
 
@@ -203,13 +255,27 @@ async def update_knowledge_entry(
     auth: User | str = Depends(require_admin_hmac_or_session),
     db: AsyncSession = Depends(get_db),
 ) -> KnowledgeEntrySchema:
-    """Update entry content. Snapshots the prior content as a version first."""
+    """Update entry content. Snapshots the prior content as a version first.
+
+    FIX (FINDING-007): now writes an AuditLog row on update.
+    """
     entry = await _get_or_404(db, entry_id)
     if entry.content != body.content:
         await KnowledgeRepository.snapshot_version(db, entry, edited_by=_actor_id(auth))
         entry.content = body.content
         await db.flush()
         await db.refresh(entry)
+
+        # FIX-F007: audit update
+        await _audit(
+            db,
+            actor=_actor_name(auth),
+            actor_type="staff" if isinstance(auth, User) else "admin",
+            action="knowledge.update",
+            target=entry_id,
+        )
+        await db.flush()
+
     return KnowledgeEntrySchema.model_validate(entry)
 
 
@@ -219,8 +285,22 @@ async def delete_knowledge_entry(
     auth: User | str = Depends(require_admin_hmac_or_session),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Hard-delete a knowledge entry."""
+    """Hard-delete a knowledge entry.
+
+    FIX (FINDING-007): now writes an AuditLog row on delete.
+    """
     entry = await _get_or_404(db, entry_id)
+
+    # FIX-F007: audit before delete so we still have the target id
+    await _audit(
+        db,
+        actor=_actor_name(auth),
+        actor_type="staff" if isinstance(auth, User) else "admin",
+        action="knowledge.delete",
+        target=entry_id,
+        details={"channel_name": entry.channel_name},
+    )
+
     await db.delete(entry)
     await db.flush()
     return {"deleted": True}
@@ -232,11 +312,38 @@ async def approve_knowledge_entry(
     auth: User | str = Depends(require_admin_hmac_or_session),
     db: AsyncSession = Depends(get_db),
 ) -> KnowledgeEntrySchema:
-    """Approve a pending correction."""
-    entry = await KnowledgeService.approve(db, entry_id, reviewed_by=_actor_id(auth))
-    if entry is None:
+    """Approve a pending correction.
+
+    FIX (FINDING-006): now guards that the entry is PENDING before approving.
+    Approving an already-approved entry was a no-op that silently re-pointed
+    superseded_by_id, corrupting retrieval for the original entry.
+
+    FIX (FINDING-007): now writes an AuditLog row on approve.
+    """
+    entry = await _get_or_404(db, entry_id)
+
+    # FIX-F006: only approve entries that are actually pending
+    if entry.review_status != KnowledgeReviewStatus.PENDING:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Entry is '{entry.review_status.value}', not pending — cannot approve.",
+        )
+
+    approved = await KnowledgeService.approve(db, entry_id, reviewed_by=_actor_id(auth))
+    if approved is None:
         raise HTTPException(status_code=404, detail="Knowledge entry not found")
-    return KnowledgeEntrySchema.model_validate(entry)
+
+    # FIX-F007: audit approve
+    await _audit(
+        db,
+        actor=_actor_name(auth),
+        actor_type="staff" if isinstance(auth, User) else "admin",
+        action="knowledge.approve",
+        target=entry_id,
+    )
+    await db.flush()
+
+    return KnowledgeEntrySchema.model_validate(approved)
 
 
 @router.post("/{entry_id}/reject", response_model=KnowledgeEntrySchema)
@@ -245,8 +352,35 @@ async def reject_knowledge_entry(
     auth: User | str = Depends(require_admin_hmac_or_session),
     db: AsyncSession = Depends(get_db),
 ) -> KnowledgeEntrySchema:
-    """Reject a pending correction."""
-    entry = await KnowledgeService.reject(db, entry_id, reviewed_by=_actor_id(auth))
-    if entry is None:
+    """Reject a pending correction.
+
+    FIX (FINDING-006): now guards that the entry is PENDING before rejecting.
+    Rejecting a live approved entry previously marked it REJECTED and removed
+    it from search results without restoring the predecessor.
+
+    FIX (FINDING-007): now writes an AuditLog row on reject.
+    """
+    entry = await _get_or_404(db, entry_id)
+
+    # FIX-F006: only reject entries that are actually pending
+    if entry.review_status != KnowledgeReviewStatus.PENDING:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Entry is '{entry.review_status.value}', not pending — cannot reject.",
+        )
+
+    rejected = await KnowledgeService.reject(db, entry_id, reviewed_by=_actor_id(auth))
+    if rejected is None:
         raise HTTPException(status_code=404, detail="Knowledge entry not found")
-    return KnowledgeEntrySchema.model_validate(entry)
+
+    # FIX-F007: audit reject
+    await _audit(
+        db,
+        actor=_actor_name(auth),
+        actor_type="staff" if isinstance(auth, User) else "admin",
+        action="knowledge.reject",
+        target=entry_id,
+    )
+    await db.flush()
+
+    return KnowledgeEntrySchema.model_validate(rejected)
