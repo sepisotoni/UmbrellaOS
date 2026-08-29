@@ -72,7 +72,7 @@ DEFAULT_SETTINGS: list[tuple] = [
     ("ai.anthropic_api_key",   "",     "ai",     "Anthropic API key",          True,  False),
     ("ai.anthropic_enabled",   "true", "ai",     "Use Anthropic as a model provider",  False, False),
     ("ai.gemini_api_key",      "",     "ai",     "Google Gemini API key",       True,  False),
-    ("ai.gemini_enabled",      "false", "ai",    "Use Gemini as a model provider",     False, False),
+    ("ai.gemini_enabled",      "true",  "ai",    "Use Gemini as a model provider",     False, False),
     ("discord.ip_response",    "",     "discord", "Text the bot replies with when someone types !ip in Discord", False, False),
     ("server.name",            "UmbrellaMC", "server", "Server display name",  False, False),
     ("server.max_players",     "50",   "server", "Max player slots",            False, False),

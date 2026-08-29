@@ -22,6 +22,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column
@@ -48,6 +49,14 @@ class AIModelConfig(Base):
     on one task type don't affect its candidacy for another."""
 
     __tablename__ = "ai_model_configs"
+    # Required by migration 042's ON CONFLICT DO NOTHING and by the dashboard
+    # /config/tasks upsert logic — without this, PostgreSQL rejects any
+    # INSERT … ON CONFLICT (provider, model_name, task_type) with
+    # "there is no unique or exclusion constraint matching the ON CONFLICT
+    # specification".  The corresponding migration is 043_ai_model_configs_unique.
+    __table_args__ = (
+        UniqueConstraint("provider", "model_name", "task_type", name="uq_ai_model_configs_provider_model_task"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     provider: Mapped[str] = mapped_column(String(32), nullable=False)  # "openrouter" | "anthropic" | "gemini"
