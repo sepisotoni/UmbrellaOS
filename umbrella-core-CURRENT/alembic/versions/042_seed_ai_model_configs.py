@@ -88,6 +88,25 @@ def upgrade() -> None:
     is_postgres = bind.dialect.name == "postgresql"
 
     # ------------------------------------------------------------------ #
+    # Unique constraint required by ON CONFLICT below                     #
+    # ------------------------------------------------------------------ #
+    # PostgreSQL requires a matching unique index or constraint for any
+    # ON CONFLICT (col1, col2, col3) clause. Without this, the INSERT
+    # below errors: "there is no unique or exclusion constraint matching
+    # the ON CONFLICT specification". Creating it here (before the INSERT)
+    # keeps the two steps in one atomic migration; migration 043 adds the
+    # same constraint under the same name for DBs that ran 042 before this
+    # fix was applied (idempotent via CREATE … IF NOT EXISTS pattern).
+    if is_postgres:
+        op.execute(sa.text(
+            "ALTER TABLE ai_model_configs "
+            "ADD CONSTRAINT IF NOT EXISTS uq_ai_model_configs_provider_model_task "
+            "UNIQUE (provider, model_name, task_type)"
+        ))
+    # SQLite has no ALTER TABLE ADD CONSTRAINT, but also has no ON CONFLICT
+    # index_elements requirement — it falls back to the per-row path below.
+
+    # ------------------------------------------------------------------ #
     # Seed ai_model_configs                                               #
     # ------------------------------------------------------------------ #
     ai_model_configs = sa.table(
