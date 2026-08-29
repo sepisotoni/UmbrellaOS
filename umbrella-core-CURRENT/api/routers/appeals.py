@@ -119,7 +119,10 @@ async def list_appeals(
     if player_uuid:
         query = query.where(Appeal.player_uuid == player_uuid)
 
-    query = query.offset(skip).limit(limit)
+    # FIX: add deterministic ordering so pagination is stable across pages.
+    # Without ORDER BY, the DB can return rows in any order, so offset/limit
+    # may skip or repeat rows between pages.
+    query = query.order_by(Appeal.created_at.desc()).offset(skip).limit(limit)
 
     result = await db.execute(query)
     appeals = result.scalars().all()

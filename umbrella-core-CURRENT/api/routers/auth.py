@@ -248,6 +248,21 @@ async def delete_user(
         raise HTTPException(status_code=404, detail=f"User '{user_id}' not found")
 
     user.is_active = False
+
+    # FIX: revoke all active sessions for the deactivated user so they
+    # cannot continue using a valid session token after deactivation.
+    # Without this, a deactivated user stays logged in until their
+    # session naturally expires (up to 7 days).
+    sessions_result = await db.execute(
+        select(Session).where(
+            Session.user_id == user_id,
+            Session.revoked.is_(False),
+            Session.expires_at > datetime.now(timezone.utc),
+        )
+    )
+    for session in sessions_result.scalars().all():
+        session.revoked = True
+
     await db.flush()
 
 
