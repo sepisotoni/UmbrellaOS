@@ -165,6 +165,7 @@ export const LoginView: React.FC = () => {
           discord_id: '0',
           username: usernameInput.trim() || 'Administrator (Key)',
           email: null,
+          avatar_url: null,
           role_id: 'owner',
           role: 'owner',
           permissions: ['*'],

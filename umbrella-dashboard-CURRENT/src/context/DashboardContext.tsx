@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { api, UserSchema } from '../lib/api';
+import { api, UserSchema, MFAChallengeDetail } from '../lib/api';
 
 export type NavigationTab = 
   | 'overview'
@@ -106,6 +106,10 @@ interface DashboardContextType {
   setSelectedBrand: (brand: 'os' | 'core' | 'bot' | 'dashboard') => void;
   discordInvite: string;
   setDiscordInvite: (url: string) => void;
+  // MFA challenge state — set when discord_callback returns mfa_required: true
+  mfaPending: { mfaToken: string } | null;
+  completeMfa: (totpCode: string) => Promise<void>;
+  dismissMfa: () => void;
 }
 
 const DashboardContext = createContext<DashboardContextType | null>(null);
@@ -167,6 +171,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   });
   const [adminKey, setAdminKeyState] = useState<string | null>(() => api.getAdminKey());
   const [currentUser, setCurrentUser] = useState<UserSchema | null>(null);
+  const [mfaPending, setMfaPending] = useState<{ mfaToken: string } | null>(null);
 
   // Restore persisted session token into the api client on first mount
   useEffect(() => {
@@ -274,6 +279,21 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           setActiveTab('overview');
         })
         .catch((err) => {
+          // Check for MFA challenge (backend returns 403 with mfa_required: true)
+          // ApiError carries .status (HTTP code) and .data (parsed JSON body)
+          if (err.status === 403) {
+            try {
+              // .data is the full parsed error body from core; .data.detail is the
+              // FastAPI detail object which may be an object (not just a string)
+              const detail: MFAChallengeDetail =
+                err.data?.detail ?? (typeof err.data === 'object' ? err.data : null);
+              if (detail?.mfa_required && detail?.mfa_token) {
+                setMfaPending({ mfaToken: detail.mfa_token });
+                setActiveTab('login');
+                return;
+              }
+            } catch { /* fall through to generic error */ }
+          }
           addToast({
             type: 'error',
             title: 'Discord Login Failed',
@@ -313,6 +333,25 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
     }
   }, [sessionToken, adminKey, setSessionToken]);
+
+  const completeMfa = useCallback(async (totpCode: string) => {
+    if (!mfaPending) return;
+    const res = await api.mfaVerify(mfaPending.mfaToken, totpCode);
+    setMfaPending(null);
+    setAdminKey(null);
+    setSessionToken(res.token);
+    setCurrentUser(res.user);
+    addToast({
+      type: 'success',
+      title: 'Authentication Successful',
+      message: `Welcome back, ${res.user.username}!`,
+    });
+    setActiveTab('overview');
+  }, [mfaPending, setSessionToken, setAdminKey, addToast]);
+
+  const dismissMfa = useCallback(() => {
+    setMfaPending(null);
+  }, []);
 
   const logout = useCallback(async () => {
     try {
@@ -392,6 +431,9 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setSelectedBrand,
         discordInvite,
         setDiscordInvite,
+        mfaPending,
+        completeMfa,
+        dismissMfa,
       }}
     >
       {children}

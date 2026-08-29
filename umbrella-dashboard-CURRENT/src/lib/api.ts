@@ -48,6 +48,19 @@ export interface DiscordOAuthCallbackResponse {
   expires_in: number;
 }
 
+export interface MFAVerifyResponse {
+  token: string;
+  user: UserSchema;
+  expires_in: number;
+}
+
+/** Shape of the 403 detail body when MFA is required after Discord OAuth */
+export interface MFAChallengeDetail {
+  mfa_required: true;
+  mfa_token: string;
+  message: string;
+}
+
 // Bot Guild Types
 export interface GuildChannel {
   id: string;
@@ -666,12 +679,21 @@ export class UmbrellaApiClient {
     return this.exchangeDiscordCode(code, state, redirectUri);
   }
 
+  /** Exchange a short-lived MFA pre-session token + TOTP code for a full session. */
+  public async mfaVerify(mfaToken: string, code: string): Promise<MFAVerifyResponse> {
+    return this.request<MFAVerifyResponse>('/api/v1/auth/mfa/verify', {
+      method: 'POST',
+      body: JSON.stringify({ mfa_token: mfaToken, code }),
+    });
+  }
+
   public async logout(): Promise<void> {
     // Hit core to revoke the session server-side before clearing local state
     if (this.sessionToken) {
       try {
-        await this.request<unknown>(`/api/v1/auth/logout?session_token=${encodeURIComponent(this.sessionToken)}`, {
+        await this.request<unknown>('/api/v1/auth/logout', {
           method: 'POST',
+          // Session token is sent as Authorization: Bearer <token> by request()
         });
       } catch {
         // Best-effort — clear local state regardless

@@ -363,7 +363,7 @@ export const StaffView: React.FC = () => {
                   <div className="text-[10px] font-mono uppercase text-slate-400 font-semibold">
                     Granted Permissions ({selectedRoleObj.permissions?.length || 0})
                   </div>
-                  {Object.entries(groupedPerms).map(([ns, perms]) => (
+                  {(Object.entries(groupedPerms) as [string, string[]][]).map(([ns, perms]) => (
                     <div key={ns} className="space-y-1">
                       <span className="text-[9px] uppercase font-mono text-slate-500 font-bold block">{ns}</span>
                       <div className="flex flex-wrap gap-1">

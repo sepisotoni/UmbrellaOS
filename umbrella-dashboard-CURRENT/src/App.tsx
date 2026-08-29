@@ -22,6 +22,7 @@ import { DiscordView } from './components/discord/DiscordView';
 import { LoginView } from './components/auth/LoginView';
 import { AccessDeniedView } from './components/auth/AccessDeniedView';
 import { NotFoundView } from './components/common/NotFoundView';
+import { MFAChallengeModal } from './components/auth/MFAChallengeModal';
 import { PunishModal } from './components/modals/PunishModal';
 import { BroadcastModal } from './components/modals/BroadcastModal';
 import { BrandShowcaseModal } from './components/common/BrandShowcaseModal';
@@ -247,6 +248,7 @@ const DashboardContent: React.FC = () => {
       />
 
       {/* Ban / Punishment Modal */}
+      <MFAChallengeModal />
       <PunishModal
         isOpen={isPunishModalOpen}
         onClose={() => setIsPunishModalOpen(false)}

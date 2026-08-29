@@ -75,10 +75,10 @@ const CreateModal: React.FC<CreateModalProps> = ({ onClose, onCreated }) => {
     setSubmitting(true);
     try {
       const entry = await api.createKnowledgeEntry({ title: title.trim(), content: content.trim(), category });
-      addToast({ type: 'success', message: 'Knowledge entry created.' });
+      addToast({ type: 'success', title: 'Success', message: 'Knowledge entry created.' });
       onCreated(entry);
     } catch (e: any) {
-      addToast({ type: 'error', message: e.message || 'Failed to create entry.' });
+      addToast({ type: 'error', title: 'Error', message: e.message || 'Failed to create entry.' });
     } finally {
       setSubmitting(false);
     }
@@ -184,11 +184,11 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ entry, onUpdated, onDeleted }
     setSaving(true);
     try {
       const updated = await api.updateKnowledgeEntry(entry.id, editContent);
-      addToast({ type: 'success', message: 'Entry updated.' });
+      addToast({ type: 'success', title: 'Success', message: 'Entry updated.' });
       setEditing(false);
       onUpdated(updated);
     } catch (e: any) {
-      addToast({ type: 'error', message: e.message || 'Failed to update.' });
+      addToast({ type: 'error', title: 'Error', message: e.message || 'Failed to update.' });
     } finally {
       setSaving(false);
     }
@@ -198,10 +198,10 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ entry, onUpdated, onDeleted }
     setDeleting(true);
     try {
       await api.deleteKnowledgeEntry(entry.id);
-      addToast({ type: 'success', message: 'Entry deleted.' });
+      addToast({ type: 'success', title: 'Entry Deleted', message: 'Entry deleted.' });
       onDeleted(entry.id);
     } catch (e: any) {
-      addToast({ type: 'error', message: e.message || 'Failed to delete.' });
+      addToast({ type: 'error', title: 'Error', message: e.message || 'Failed to delete.' });
       setDeleting(false);
       setConfirmDelete(false);
     }
@@ -227,10 +227,10 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ entry, onUpdated, onDeleted }
       const updated = action === 'approve'
         ? await api.approveKnowledge(entry.id)
         : await api.rejectKnowledge(entry.id);
-      addToast({ type: 'success', message: `Entry ${action}d.` });
+      addToast({ type: 'success', title: 'Success', message: `Entry ${action}d.` });
       onUpdated(updated);
     } catch (e: any) {
-      addToast({ type: 'error', message: e.message || `Failed to ${action}.` });
+      addToast({ type: 'error', title: 'Error', message: e.message || `Failed to ${action}.` });
     } finally {
       setReviewing(null);
     }

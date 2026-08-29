@@ -122,7 +122,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
             {Object.entries(groupedPermissions).length === 0 ? (
               <span className="text-xs text-slate-500 font-mono">No explicit permissions assigned</span>
             ) : (
-              Object.entries(groupedPermissions).map(([ns, perms]) => (
+              (Object.entries(groupedPermissions) as [string, string[]][]).map(([ns, perms]) => (
                 <div key={ns} className="space-y-1">
                   <div className="text-[9px] uppercase font-mono text-slate-600 font-bold">{ns}</div>
                   <div className="flex flex-wrap gap-1">
