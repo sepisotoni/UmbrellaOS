@@ -1,13 +1,17 @@
 """
 services/ai_service.py — AI moderation review service.
 
-Uses Anthropic Claude API to review flagged players, appeals, and chat messages.
+Uses the ModelRouter/ProviderFactory/Orchestrator stack (services/ai/) so
+that provider routing, key loading, health tracking, and failover all work
+correctly — the same path every other AI feature uses.
 
-P15 Tasks 4 & 5:
-  - review_appeal() now pulls full context: punishment history, GrimAC ±72hr
-    window, previous appeals, and sends a structured context string (not raw JSON).
-  - review_flagged_player() now pulls AnticheatViolation history (last 30 days)
-    and builds a structured GrimAC summary before sending to AI.
+Previously this file made direct httpx calls to the Anthropic API with a
+hardcoded model string, completely bypassing the routing layer.  That meant:
+- ai.openrouter_enabled / ai.gemini_enabled settings had no effect
+- Rotating the API key in the dashboard did nothing until a restart (it
+  re-read the key on startup only in the old code)
+- No failover: one provider down = all reviews fail
+- ai_model_configs health tracking was never updated for review calls
 
 AI is NEVER called automatically.  These functions are only invoked when staff
 explicitly clicks "AI Review" from the dashboard.  See PHASE15-SPEC §Important
@@ -18,11 +22,10 @@ a result.
 """
 import asyncio
 import json
-from collections import defaultdict
+from collections import defaultdict, Counter
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -30,7 +33,8 @@ from models import (
     AITask, Player, SuspicionEvent, Punishment, Appeal,
     AltGroup, AltGroupMember, DiscordAccount, ChatMessage,
 )
-from services.settings_service import SettingsService
+from services.ai.orchestrator import Orchestrator
+from services.ai.model_router import NoAvailableModelError
 
 # AnticheatViolation is provided by Backend A.
 try:
@@ -45,117 +49,9 @@ class AIServiceError(Exception):
     pass
 
 
-ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
-MODEL_NAME = "claude-haiku-4-5-20251001"
-
-
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
-
-async def _get_anthropic_api_key(db: AsyncSession) -> str:
-    """Get Anthropic API key from settings. Raises AIServiceError if not set."""
-    api_key = await SettingsService.get_value(db, "ai.anthropic_api_key")
-    if not api_key:
-        raise AIServiceError("Anthropic API key not configured. Set ai.anthropic_api_key in settings.")
-    return api_key
-
-
-async def _call_claude_with_system(
-    db: AsyncSession,
-    system_prompt: str,
-    user_content: str,
-) -> dict:
-    """
-    Call Claude API with a system prompt and user content.
-    Expects the model to return JSON only (enforced by system prompt).
-    Returns the raw parsed dict from the model response.
-    Raises AIServiceError on any failure — never returns a fabricated result.
-    """
-    api_key = await _get_anthropic_api_key(db)
-
-    headers = {
-        "x-api-key": api_key,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-    }
-
-    payload = {
-        "model": MODEL_NAME,
-        "max_tokens": 1024,
-        "system": system_prompt,
-        "messages": [
-            {"role": "user", "content": user_content},
-        ],
-    }
-
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.post(ANTHROPIC_API_URL, json=payload, headers=headers)
-        if response.status_code != 200:
-            raise AIServiceError(
-                f"Anthropic API error: {response.status_code} {response.text}"
-            )
-
-    data = response.json()
-    content_text = data.get("content", [{}])[0].get("text", "")
-
-    # Strip markdown fences if the model wraps its JSON
-    clean = content_text.strip()
-    if clean.startswith("```"):
-        clean = clean.split("```", 2)[1]
-        if clean.startswith("json"):
-            clean = clean[4:]
-        clean = clean.rsplit("```", 1)[0].strip()
-
-    try:
-        return json.loads(clean)
-    except json.JSONDecodeError as exc:
-        raise AIServiceError(
-            f"AI returned non-JSON response: {content_text[:300]}"
-        ) from exc
-
-
-async def _call_claude(db: AsyncSession, prompt: str) -> dict:
-    """
-    Legacy single-prompt call used by review_chat_message.
-    Returns summary / recommendation / confidence dict.
-    """
-    api_key = await _get_anthropic_api_key(db)
-
-    headers = {
-        "x-api-key": api_key,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-    }
-
-    payload = {
-        "model": MODEL_NAME,
-        "max_tokens": 1024,
-        "messages": [{"role": "user", "content": prompt}],
-    }
-
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.post(ANTHROPIC_API_URL, json=payload, headers=headers)
-        if response.status_code != 200:
-            raise AIServiceError(f"Anthropic API error: {response.status_code} {response.text}")
-
-    data = response.json()
-    content = data.get("content", [{}])[0].get("text", "")
-
-    try:
-        parsed = json.loads(content)
-        return {
-            "summary": parsed.get("summary", content[:500]),
-            "recommendation": parsed.get("recommendation", "review"),
-            "confidence": float(parsed.get("confidence", 0.5)),
-        }
-    except json.JSONDecodeError:
-        return {
-            "summary": content[:500],
-            "recommendation": "review",
-            "confidence": 0.5,
-        }
-
 
 def _fmt_dt(dt: datetime | None) -> str:
     if dt is None:
@@ -191,6 +87,62 @@ def _build_anticheat_summary(violations: list) -> str:
     return "\n".join(lines)
 
 
+async def _orchestrate(
+    db: AsyncSession,
+    task_type: str,
+    system_prompt: str,
+    user_content: str,
+    requested_by: str = "ai_service",
+) -> dict:
+    """
+    Route a prompt through the Orchestrator (ModelRouter → ProviderFactory →
+    provider.generate()) and parse the AI's JSON response.
+
+    Uses task_type to select the correct AIModelConfig rows, so provider
+    routing, key loading, health tracking, and failover all work.
+
+    Raises AIServiceError on orchestrator failure or non-JSON response.
+    """
+    # The constitution's system prompt wraps the task prompt automatically
+    # inside Orchestrator.run() via ConstitutionService.build_system_prompt().
+    # For review tasks we supply a structured JSON-enforcing prompt as the
+    # task prompt so the constitution appears before it in the final system
+    # prompt (tier ordering: PLATFORM_SAFETY < CORE_PLATFORM < TASK).
+    combined_prompt = f"{system_prompt}\n\n{user_content}"
+
+    try:
+        result = await Orchestrator.run(
+            db=db,
+            task_type=task_type,
+            task_prompt=combined_prompt,
+            requested_by=requested_by,
+            require_dual_review=False,  # review tasks are staff-confirmed; no need for dual review
+        )
+    except NoAvailableModelError as exc:
+        raise AIServiceError(
+            f"No AI provider available for task_type={task_type!r}: {exc}"
+        ) from exc
+    except Exception as exc:
+        raise AIServiceError(f"AI orchestrator error: {exc}") from exc
+
+    content_text = result.text
+
+    # Strip markdown fences if the model wraps its JSON
+    clean = content_text.strip()
+    if clean.startswith("```"):
+        clean = clean.split("```", 2)[1]
+        if clean.startswith("json"):
+            clean = clean[4:]
+        clean = clean.rsplit("```", 1)[0].strip()
+
+    try:
+        return json.loads(clean)
+    except json.JSONDecodeError as exc:
+        raise AIServiceError(
+            f"AI returned non-JSON response: {content_text[:300]}"
+        ) from exc
+
+
 # ---------------------------------------------------------------------------
 # P15 Task 5 — Player review with GrimAC history
 # ---------------------------------------------------------------------------
@@ -208,11 +160,8 @@ async def review_flagged_player(
     - Punishment history
     - Suspicion events (last 10)
 
-    Builds a structured summary (< 500 tokens) and sends to Claude with a
-    dedicated system prompt.  Saves full AI result to AITask.evidence and
-    stores ai_recommendation / ai_confidence.
-
-    Raises AIServiceError on failure — never fakes a result.
+    Routes through the ModelRouter (provider_factory + health tracking)
+    using task_type="moderation_review".  Raises AIServiceError on failure.
     """
     # Fetch player
     player = await db.scalar(select(Player).where(Player.uuid == player_uuid))
@@ -259,11 +208,10 @@ async def review_flagged_player(
     )
 
     # Build punishment breakdown
-    from collections import Counter
     ptype_counts = Counter(p.type for p in punishments)
     punishment_breakdown = ", ".join(f"{v}x {k}" for k, v in ptype_counts.items()) or "none"
 
-    # Build VL escalation timeline (when VL crossed 5, 10, 20)
+    # Build VL escalation timeline
     vl_milestones: list[str] = []
     for v in reversed(violations):  # chronological
         for threshold in (5, 10, 20, 50):
@@ -286,7 +234,6 @@ async def review_flagged_player(
 
     anticheat_section = _build_anticheat_summary(violations)
 
-    # Build context string
     context_str = f"""PLAYER REVIEW CONTEXT
 =====================
 Player: {player.username} ({player.uuid})
@@ -318,7 +265,10 @@ Punishment History:
         "}"
     )
 
-    ai_result = await _call_claude_with_system(db, system_prompt, context_str)
+    ai_result = await _orchestrate(
+        db, "moderation_review", system_prompt, context_str,
+        requested_by=f"player_review:{player_uuid}",
+    )
 
     # Build evidence blob for AITask
     evidence = {
@@ -333,7 +283,6 @@ Punishment History:
         "ai_result": ai_result,
     }
 
-    # Map AI result to AITask fields
     recommendation = ai_result.get("recommendation", "MONITOR")
     confidence = float(ai_result.get("confidence", 0.5))
     reasoning = ai_result.get("reasoning", "")
@@ -369,20 +318,10 @@ async def review_appeal(
     """
     AI review of an appeal.
 
-    Pulls full context:
-    1. Appeal + original punishment
-    2. Player's full punishment history
-    3. AnticheatViolation records in ±72hr window around punishment.created_at
-    4. Player's previous appeals
-
-    Builds a structured context string and sends to Claude with a dedicated
-    system prompt.  Saves AI result to appeal.ai_review_result and sets
-    appeal.ai_review_status.
-
+    Routes through the ModelRouter using task_type="appeal_review".
     Raises AIServiceError on failure — sets ai_review_status=FAILED and
     re-raises so caller can return 503.  Never fakes a result.
     """
-    # Fetch appeal
     appeal = await db.scalar(select(Appeal).where(Appeal.id == appeal_id))
     if not appeal:
         raise AIServiceError(f"Appeal not found: {appeal_id}")
@@ -465,12 +404,9 @@ async def _do_appeal_review(appeal: Appeal, db: AsyncSession) -> AITask:
         violations = list(violations_result.scalars().all())
         anticheat_section = _build_anticheat_summary(violations)
 
-    # Punishment breakdown
-    from collections import Counter
     ptype_counts = Counter(p.type for p in all_punishments)
     punishment_breakdown = ", ".join(f"{v}x {k}" for k, v in ptype_counts.items()) or "none"
 
-    # Previous appeals summary
     if prev_appeals:
         prev_appeal_lines = []
         for pa in prev_appeals[:5]:
@@ -520,9 +456,11 @@ Appeal Statement:
         "}"
     )
 
-    ai_result = await _call_claude_with_system(db, system_prompt, context_str)
+    ai_result = await _orchestrate(
+        db, "appeal_review", system_prompt, context_str,
+        requested_by=f"appeal_review:{appeal_id}",
+    )
 
-    # Save to appeal record
     appeal.ai_review_result = json.dumps(ai_result)
     appeal.ai_review_status = "COMPLETED"
 
@@ -558,7 +496,7 @@ Appeal Statement:
 
 
 # ---------------------------------------------------------------------------
-# Chat review — unchanged from original
+# Chat review — now also routed through ModelRouter
 # ---------------------------------------------------------------------------
 
 async def review_chat_message(
@@ -567,9 +505,7 @@ async def review_chat_message(
 ) -> AITask:
     """
     AI review of a chat message.
-    Fetches ChatMessage, player history.
-    Calls Claude API to assess if message violates rules.
-    Creates AITask with task_type=chat_review.
+    Routes through the ModelRouter using task_type="chat_review".
     """
     message = await db.scalar(select(ChatMessage).where(ChatMessage.id == message_id))
     if not message:
@@ -612,20 +548,18 @@ async def review_chat_message(
         ],
     }
 
-    prompt = f"""You are a Minecraft server moderator AI assistant. Review the following chat message and assess if it violates server rules.
+    system_prompt = (
+        "You are a Minecraft server moderator AI assistant. "
+        "Review the following chat message and assess if it violates server rules. "
+        "Return JSON only with keys: summary (str), recommendation (mute|warn|delete|no_action), confidence (float 0-1)."
+    )
 
-Message Context:
-{json.dumps(context, indent=2)}
+    user_content = json.dumps(context, indent=2)
 
-Respond with a JSON object containing:
-- summary: A brief summary of the message and any rule violations (1-2 sentences)
-- recommendation: One of: "mute", "warn", "delete", "no_action"
-- confidence: A float between 0.0 and 1.0 indicating your confidence in this recommendation
-
-Example response:
-{{"summary": "Message contains hate speech directed at another player", "recommendation": "mute", "confidence": 0.95}}"""
-
-    ai_response = await _call_claude(db, prompt)
+    ai_response = await _orchestrate(
+        db, "chat_review", system_prompt, user_content,
+        requested_by=f"chat_review:{message_id}",
+    )
 
     task = AITask(
         task_type="chat_review",
@@ -633,9 +567,9 @@ Example response:
         player_uuid=message.player_uuid,
         created_at=datetime.now(timezone.utc),
         expires_at=datetime.now(timezone.utc) + timedelta(hours=48),
-        ai_summary=ai_response["summary"],
-        ai_recommendation=ai_response["recommendation"],
-        ai_confidence=ai_response["confidence"],
+        ai_summary=ai_response.get("summary", "")[:500],
+        ai_recommendation=ai_response.get("recommendation", "review"),
+        ai_confidence=float(ai_response.get("confidence", 0.5)),
         evidence=json.dumps(context),
     )
     db.add(task)

@@ -385,7 +385,7 @@ export interface AltGroupSchema {
 
 // AI Tasks & Intelligence
 export interface AITaskSchema {
-  id: string;
+  id: number;  // backend AITask.id is Integer autoincrement, not a UUID string
   task_type: string;
   status: string;
   player_uuid: string | null;
