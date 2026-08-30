@@ -111,11 +111,101 @@ async def test_mfa_enrollment_full_round_trip_via_rest(client, db_session):
     assert confirm_response.status_code == 200
     assert confirm_response.json()["enabled"] is True
 
+    # SECURITY FIX 2026-08-30: identity.mfa.disable now requires a valid
+    # current TOTP code (previously took no params and disabled MFA
+    # unconditionally for the caller's session — see capabilities/identity.py
+    # DisableMFAParams docstring for the full reasoning). Updated this test
+    # to supply a fresh code rather than an empty body.
+    disable_code = pyotp.TOTP(secret).now()
     disable_response = await client.post(
-        "/api/v1/capabilities/identity.mfa.disable/invoke", json={}, headers=headers
+        "/api/v1/capabilities/identity.mfa.disable/invoke",
+        json={"code": disable_code},
+        headers=headers,
     )
     assert disable_response.status_code == 200
     assert disable_response.json()["disabled"] is True
+
+
+@pytest.mark.asyncio
+async def test_mfa_disable_without_code_is_rejected(client, db_session):
+    """
+    identity.mfa.disable must reject requests with no code (422, missing
+    required field) — this is the exact fix for the bug where any valid
+    session token, stolen or otherwise, could disable MFA with zero
+    verification of the account's actual TOTP secret.
+    """
+    headers = await session_headers_for_role(db_session, "owner", suffix="-mfa-nocode")
+    begin_response = await client.post(
+        "/api/v1/capabilities/identity.mfa.begin_enrollment/invoke", json={}, headers=headers
+    )
+    secret = begin_response.json()["secret"]
+    code = pyotp.TOTP(secret).now()
+    await client.post(
+        "/api/v1/capabilities/identity.mfa.confirm_enrollment/invoke",
+        json={"code": code},
+        headers=headers,
+    )
+
+    resp = await client.post(
+        "/api/v1/capabilities/identity.mfa.disable/invoke", json={}, headers=headers
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_mfa_disable_with_wrong_code_is_rejected(client, db_session):
+    """identity.mfa.disable must reject a wrong TOTP code with 401, not disable MFA."""
+    headers = await session_headers_for_role(db_session, "owner", suffix="-mfa-wrongcode")
+    begin_response = await client.post(
+        "/api/v1/capabilities/identity.mfa.begin_enrollment/invoke", json={}, headers=headers
+    )
+    secret = begin_response.json()["secret"]
+    code = pyotp.TOTP(secret).now()
+    await client.post(
+        "/api/v1/capabilities/identity.mfa.confirm_enrollment/invoke",
+        json={"code": code},
+        headers=headers,
+    )
+
+    resp = await client.post(
+        "/api/v1/capabilities/identity.mfa.disable/invoke",
+        json={"code": "000000"},
+        headers=headers,
+    )
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_mfa_confirm_code_never_appears_in_audit_log(client, db_session):
+    """
+    The raw TOTP code passed to identity.mfa.confirm_enrollment must never
+    be persisted to the audit log — registry.call() dumps params.model_dump()
+    into AuditLog.details_json, and code has Field(exclude=True) specifically
+    to prevent this live credential from ending up in persistent storage.
+    """
+    from sqlalchemy import select
+    from models import AuditLog
+
+    headers = await session_headers_for_role(db_session, "owner", suffix="-mfa-audit")
+    begin_response = await client.post(
+        "/api/v1/capabilities/identity.mfa.begin_enrollment/invoke", json={}, headers=headers
+    )
+    secret = begin_response.json()["secret"]
+    code = pyotp.TOTP(secret).now()
+    await client.post(
+        "/api/v1/capabilities/identity.mfa.confirm_enrollment/invoke",
+        json={"code": code},
+        headers=headers,
+    )
+
+    async with db_session() as db:
+        result = await db.execute(
+            select(AuditLog).where(AuditLog.action == "identity.mfa.confirm_enrollment")
+        )
+        rows = result.scalars().all()
+        assert len(rows) >= 1
+        for row in rows:
+            assert code not in (row.details_json or ""), "raw TOTP code must never appear in audit log"
 
 
 @pytest.mark.asyncio

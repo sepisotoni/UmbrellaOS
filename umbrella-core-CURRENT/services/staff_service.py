@@ -54,6 +54,28 @@ async def manage_staff_role(
             raise StaffManageError("User already has the lowest role")
         if current_name == "owner" and actor_role_name != "owner":
             raise StaffManageError("Only owners can demote an owner", 403)
+        if current_name == "owner":
+            # Last-owner lockout guard: only owners can promote users back to
+            # owner (see the check above), so if this demotion would leave
+            # zero active users with the owner role, the org becomes
+            # permanently unable to grant owner to anyone ever again —
+            # nobody left is authorized to run the "promote to owner" branch.
+            # Refuse the demotion in that specific case; any other owner
+            # count (2+) is unaffected.
+            owner_role = current_role
+            remaining_owners = await db.scalar(
+                select(func.count(User.id)).where(
+                    User.role_id == owner_role.id,
+                    User.is_active == True,  # noqa: E712
+                    User.id != user.id,
+                )
+            )
+            if remaining_owners == 0:
+                raise StaffManageError(
+                    "Cannot demote the last remaining owner — promote another "
+                    "user to owner first",
+                    409,
+                )
         new_name = ROLE_LADDER[idx - 1]
 
     new_role = await _role_by_name(db, new_name)

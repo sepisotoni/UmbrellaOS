@@ -161,3 +161,63 @@ async def test_staff_manage_requires_roles_permission(client, db_session):
         headers={"Authorization": "Bearer admin-token"},
     )
     assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_staff_demote_blocks_last_owner(client, db_session):
+    """
+    Demoting the only remaining owner must be refused (409) — otherwise the
+    org permanently loses the ability to promote anyone back to owner, since
+    only owners can run the promote-to-owner branch of manage_staff_role.
+    Bug found + fixed 2026-08-30 in services/staff_service.py.
+    """
+    from sqlalchemy import select as sa_select
+    from models import User as UserModel
+
+    owner_headers = await _owner_headers(db_session)
+
+    # Find the sole owner just created by _owner_headers
+    async with db_session() as db:
+        owner_role = await db.scalar(select(Role).where(Role.name == "owner"))
+        owner_user = await db.scalar(
+            sa_select(UserModel).where(UserModel.role_id == owner_role.id)
+        )
+        owner_user_id = owner_user.id
+
+    response = await client.post(
+        "/api/v1/staff/manage",
+        json={"user_id": owner_user_id, "action": "demote"},
+        headers=owner_headers,
+    )
+    assert response.status_code == 409
+    assert "last remaining owner" in response.json()["detail"].lower()
+
+    # Confirm they're still owner in the DB
+    async with db_session() as db:
+        refreshed = await db.get(UserModel, owner_user_id)
+        role = await db.scalar(select(Role).where(Role.id == refreshed.role_id))
+        assert role.name == "owner"
+
+
+@pytest.mark.asyncio
+async def test_staff_demote_second_owner_succeeds(client, db_session):
+    """With 2+ owners present, demoting one of them must still work normally."""
+    from sqlalchemy import select as sa_select
+    from models import User as UserModel
+
+    owner_headers = await _owner_headers(db_session)
+
+    async with db_session() as db:
+        owner_role = await db.scalar(select(Role).where(Role.name == "owner"))
+        second_owner = UserModel(discord_id="owner-discord-2", username="owner_user_2", role_id=owner_role.id)
+        db.add(second_owner)
+        await db.commit()
+        second_owner_id = second_owner.id
+
+    response = await client.post(
+        "/api/v1/staff/manage",
+        json={"user_id": second_owner_id, "action": "demote"},
+        headers=owner_headers,
+    )
+    assert response.status_code == 200
+    assert response.json()["new_role"] == "admin"

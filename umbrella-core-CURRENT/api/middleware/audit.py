@@ -1,10 +1,26 @@
 """
-api/middleware/audit.py — Audit logging for all API actions.
+api/middleware/audit.py — Legacy audit logging helpers.
 
 Provides:
-- Audit log creation helper
-- Automatic audit middleware
-- Action tracking
+- create_audit_log() / log_action() — manual audit log helpers, still used
+  by some routers (e.g. staff, roles) for actions outside the Capability
+  Registry.
+- AuditContext — batch helper for grouping several audit writes together.
+
+Despite the module name, there is no Starlette/FastAPI middleware class
+here and no automatic per-request audit logging — every write is an
+explicit call site choosing to log. Automatic auditing exists, but lives
+in registry/registry.py's CapabilityRegistry.call(), which audits every
+`@capability`-decorated handler's success/failure automatically without
+the handler needing to call anything here. New capability-registry work
+should audit_category= via that mechanism rather than adding call sites
+to this module.
+
+`details` is a free-form dict serialized as-is into details_json — this
+module performs NO automatic redaction of secrets. Callers are responsible
+for masking sensitive values before passing them in (see
+services/settings_service.py's own update() for the pattern: replace with
+"***" when the underlying field is marked sensitive).
 """
 from sqlalchemy.ext.asyncio import AsyncSession
 from models import AuditLog

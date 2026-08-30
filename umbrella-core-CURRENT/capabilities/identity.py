@@ -150,7 +150,12 @@ async def begin_mfa_enrollment(ctx: CallContext, params: BeginMFAEnrollmentParam
 
 
 class ConfirmMFAEnrollmentParams(BaseModel):
-    code: str
+    # exclude=True: registry.call() writes params.model_dump() verbatim into
+    # the audit log (see registry/registry.py record_audit_event calls) —
+    # a raw TOTP code is a live authentication credential and must never be
+    # persisted, even in an internal audit table. exclude=True makes
+    # model_dump() omit this field by default everywhere, not just here.
+    code: str = Field(..., exclude=True)
 
 
 class ConfirmMFAEnrollmentResult(BaseModel):
@@ -173,7 +178,20 @@ async def confirm_mfa_enrollment(ctx: CallContext, params: ConfirmMFAEnrollmentP
 
 
 class DisableMFAParams(BaseModel):
-    pass
+    # SECURITY FIX 2026-08-30: this capability previously took no params at
+    # all and disabled MFA unconditionally for whichever staff account the
+    # caller's session belonged to. required_permission=None means any
+    # authenticated caller may invoke it (by design — it's meant to be
+    # self-service). Combined with zero code verification, that meant
+    # anyone who obtained a victim's session token (stolen cookie, XSS,
+    # etc.) could silently disable MFA on the victim's account without ever
+    # knowing their TOTP secret — completely defeating MFA as a defense
+    # against exactly that class of attack. The REST router's own
+    # /auth/mfa/disable endpoint (api/routers/auth.py) already required a
+    # valid code for this reason; this parallel Capability Registry path
+    # did not, and was reachable via the generic REST adapter at
+    # POST /api/v1/capabilities/identity.mfa.disable/invoke.
+    code: str = Field(..., exclude=True)  # excluded from audit dump — see ConfirmMFAEnrollmentParams
 
 
 class DisableMFAResult(BaseModel):
@@ -182,7 +200,7 @@ class DisableMFAResult(BaseModel):
 
 @capability(
     name="identity.mfa.disable",
-    summary="Disable MFA for the current user.",
+    summary="Disable MFA for the current user. Requires a valid current TOTP code.",
     params_model=DisableMFAParams,
     result_model=DisableMFAResult,
     required_permission=None,
@@ -192,5 +210,9 @@ class DisableMFAResult(BaseModel):
 )
 async def disable_mfa(ctx: CallContext, params: DisableMFAParams) -> DisableMFAResult:
     user = await _current_staff_user(ctx)
+    if not user.mfa_enabled:
+        raise MFAError("MFA is not enabled on this account", 400)
+    if not await MFAService.verify_code(user, params.code):
+        raise MFAError("invalid TOTP code", 401)
     await MFAService.disable(ctx.db, user)
     return DisableMFAResult(disabled=True)
