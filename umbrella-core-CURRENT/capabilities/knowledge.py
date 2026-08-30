@@ -6,6 +6,7 @@ module docstring for the merge/idempotency-fix rationale.
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
+from capabilities.shared import NoParams
 
 from api.middleware.errors import ResourceNotFoundException
 from registry.context import CallContext
@@ -152,8 +153,6 @@ async def propose_correction(ctx: CallContext, params: ProposeCorrectionParams) 
 # --------------------------------------------------------------------------
 
 
-class NoParams(BaseModel):
-    pass
 
 
 class ListPendingResult(BaseModel):

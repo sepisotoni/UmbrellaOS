@@ -11,20 +11,19 @@ needs instead of a bespoke pre-filter.
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
+from capabilities.shared import NoParams
 
 from registry.context import CallContext
 from registry.decorator import capability
 from services.investigation.service import run_investigation
 from services.investigation.tools import (
-    ALL_TOOLS,
     InvestigationContext,
     KnownIssuesTool,
     LinkedAccountTool,
     MaintenanceStatusTool,
     PunishmentHistoryTool,
     RecentAnnouncementsTool,
-    WhitelistStatusTool,
-)
+    WhitelistStatusTool)
 
 
 class TargetUserParams(BaseModel):
@@ -34,8 +33,6 @@ class TargetUserParams(BaseModel):
         return self.target_user_id
 
 
-class NoParams(BaseModel):
-    pass
 
 
 class FindingResult(BaseModel):
@@ -102,8 +99,7 @@ _recent_announcements_tool = RecentAnnouncementsTool()
     required_permission="investigation.run",
     destructive=False,
     reversible=True,
-    audited=False,
-)
+    audited=False)
 async def recent_announcements(ctx: CallContext, params: RecentAnnouncementsParams) -> FindingResult:
     finding = await _recent_announcements_tool.run(ctx.db, InvestigationContext(target_user_id=None, question=params.question))
     return FindingResult(tool_key=finding.tool_key, finding_text=finding.finding_text, confidence=finding.confidence)
@@ -136,8 +132,7 @@ class InvestigationResult(BaseModel):
     result_model=InvestigationResult,
     required_permission="investigation.run",
     destructive=False,
-    reversible=True,
-)
+    reversible=True)
 async def run(ctx: CallContext, params: RunInvestigationParams) -> InvestigationResult:
     result = await run_investigation(
         ctx.db, requested_by=ctx.actor_id, target_user_id=params.target_user_id, question=params.question

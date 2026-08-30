@@ -51,8 +51,8 @@ class PluginExecutionRecord(Base):
     )
 
     plugin_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
-    entrypoint: Mapped[str] = mapped_column(String(256), nullable=False)
-    actor_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    entrypoint: Mapped[str] = mapped_column(String(256), nullable=False, index=True)
+    actor_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
 
     # success | error | timeout | resource_limit_kill
     outcome: Mapped[str] = mapped_column(String(32), nullable=False, index=True)

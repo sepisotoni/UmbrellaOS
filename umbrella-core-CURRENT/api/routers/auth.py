@@ -422,6 +422,21 @@ async def discord_callback(
             },
         )
 
+    # Session rotation: revoke any existing valid sessions for this user
+    # before issuing a new one. Prevents session fixation (attacker plants a
+    # known token, waits for the victim to authenticate — the old token would
+    # then be valid). We mark revoked=True rather than deleting so that audit
+    # trails are preserved. The new session is issued below.
+    existing_sessions_result = await db.execute(
+        select(Session).where(
+            Session.user_id == user.id,
+            Session.revoked.is_(False),
+        )
+    )
+    for old_session in existing_sessions_result.scalars().all():
+        old_session.revoked = True
+    await db.flush()
+
     expires_at = datetime.now(timezone.utc) + timedelta(days=SESSION_EXPIRY_DAYS)
     session_token = secrets.token_urlsafe(32)
     session = Session(

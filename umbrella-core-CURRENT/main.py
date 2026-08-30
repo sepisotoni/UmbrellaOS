@@ -15,7 +15,7 @@ import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from config import get_settings
+from config import get_settings, validate_secrets
 from database import get_db, create_tables, AsyncSessionLocal
 from services import SettingsService, RolesService
 from services.ai.constitution_service import ConstitutionService
@@ -77,6 +77,7 @@ from api.routers.bot_registration import router as bot_registration_router
 from api.routers.knowledge import router as knowledge_router
 
 settings = get_settings()
+validate_secrets(settings)
 
 
 @asynccontextmanager

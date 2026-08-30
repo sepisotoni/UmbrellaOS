@@ -14,22 +14,22 @@ code (api/routers/appeals.py), not here. This migration only adds the
 missing 'reduced' value.
 
 Originally filed as revision 042_add_reduced_appeal_status, branching off
-041 at the same time as a parallel migration (042_seed_ai_model_configs)
-also branched off 041 under the same number — leaving two heads
-(confirmed via `alembic heads`). Renumbered/rebased to 045 on top of the
-actual chain head (044_widen_knowledge_discord_message_id) to resolve the
-branch; the revision id is intentionally left unchanged from the original
-042 filing so any environment that already applied it under the old name
-is unaffected — only down_revision moves.
+041. Another parallel migration (042_seed_ai_model_configs) also branched
+off 041 under the same number at the same time, producing two heads
+(confirmed via `alembic heads`). That was resolved properly with a real
+Alembic merge revision (045_merge_042_branches, down_revision=(044, 042)),
+so this migration's own down_revision stays exactly as it originally was —
+041 — with the merge migration doing the reconciliation work instead of
+this file being renumbered/rebased.
 
 Revision ID: 042_add_reduced_appeal_status
-Revises:     044_widen_knowledge_discord_message_id
+Revises:     041_fix_ipban_player_uuid_and_punishment_nullable
 Create Date: 2026-08-29
 """
 from alembic import op
 
 revision = "042_add_reduced_appeal_status"
-down_revision = "044_widen_knowledge_discord_message_id"
+down_revision = "041_fix_ipban_player_uuid_and_punishment_nullable"
 branch_labels = None
 depends_on = None
 

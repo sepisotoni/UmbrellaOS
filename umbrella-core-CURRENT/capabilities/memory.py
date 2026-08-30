@@ -5,6 +5,7 @@ Moo-assistant's bot/services/memory_service.py.
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
+from capabilities.shared import NoParams
 
 from models.memory import MemoryScope
 from registry.context import CallContext
@@ -74,8 +75,6 @@ async def get_server_fact(ctx: CallContext, params: GetServerFactParams) -> GetS
     return GetServerFactResult(value=value)
 
 
-class NoParams(BaseModel):
-    pass
 
 
 class ListServerFactsResult(BaseModel):

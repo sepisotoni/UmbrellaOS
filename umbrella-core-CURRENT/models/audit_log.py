@@ -28,14 +28,14 @@ class AuditLog(Base):
     # Who performed the action
     actor: Mapped[str] = mapped_column(String(128), nullable=False)
     actor_type: Mapped[str] = mapped_column(
-        String(32), nullable=False, default="system"
+        String(32), nullable=False, default="system", index=True
     )  # staff | plugin | bot | system | ai
 
     # What happened
     action: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
 
     # Who/what was affected (optional)
-    target: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    target: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
 
     # Arbitrary JSON context — never null, use "{}" if empty
     details_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
