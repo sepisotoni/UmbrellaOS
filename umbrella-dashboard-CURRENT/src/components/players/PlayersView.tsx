@@ -93,7 +93,7 @@ export const PlayersView: React.FC<PlayersViewProps> = ({ onOpenBanModal }) => {
 
         <button
           id="players-refresh-btn"
-          onClick={() => fetchPlayers(searchQuery)}
+          onClick={() => fetchPlayers(searchQuery, page)}
           disabled={isLoading}
           className="inline-flex items-center gap-1.5 rounded-lg border border-[#1e1b4b] bg-[#0d1127] px-3 py-1.5 text-xs font-medium text-slate-300 hover:border-purple-500/40 hover:text-white transition cursor-pointer disabled:opacity-50"
         >
@@ -208,6 +208,37 @@ export const PlayersView: React.FC<PlayersViewProps> = ({ onOpenBanModal }) => {
           </div>
         )}
       </div>
+
+      {/* Pagination controls — AUDIT-2026-08-29 fix: this view previously
+          had no pagination at all (hardcoded limit: 100, no way to see
+          anyone past that). */}
+      {!isLoading && (players.length > 0 || page > 0) && (
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-xs text-slate-500 font-mono">
+            Page {page + 1} · {players.length} shown
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              id="players-prev-page-btn"
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={page === 0 || isLoading}
+              className="inline-flex items-center gap-1 rounded-lg border border-[#1e1b4b] bg-[#0d1127] px-3 py-1.5 text-xs font-medium text-slate-300 hover:border-purple-500/40 hover:text-white transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+              <span>Previous</span>
+            </button>
+            <button
+              id="players-next-page-btn"
+              onClick={() => setPage((p) => p + 1)}
+              disabled={!hasNextPage || isLoading}
+              className="inline-flex items-center gap-1 rounded-lg border border-[#1e1b4b] bg-[#0d1127] px-3 py-1.5 text-xs font-medium text-slate-300 hover:border-purple-500/40 hover:text-white transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <span>Next</span>
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
