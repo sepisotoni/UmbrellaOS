@@ -13,7 +13,7 @@ from sqlalchemy import select
 
 from models import Appeal, Player, Punishment, Session, User
 from models.permissions import Role
-from tests.conftest import ADMIN_HEADERS
+from tests.conftest import ADMIN_HEADERS, PLUGIN_HEADERS
 
 TEST_PLAYER_UUID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 
@@ -94,9 +94,16 @@ async def test_list_appeals_with_valid_auth(client, db_session, test_appeal):
 
 
 @pytest.mark.asyncio
-async def test_post_appeals_requires_no_auth_public_endpoint(client, db_session, test_player, test_punishment):
-    """POST /api/v1/appeals is a public endpoint - no auth required."""
-    response = await client.post(
+async def test_post_appeals_requires_plugin_key(client, db_session, test_player, test_punishment):
+    """POST /api/v1/appeals requires X-Plugin-Key (AUDIT-2026-08-29 fix — see
+    api/routers/appeals.py create_appeal docstring). The endpoint accepts
+    player_uuid directly from the request body with no ownership check, so a
+    truly unauthenticated version would let anyone forge an appeal for any
+    player against any punishment. This test previously asserted the OLD,
+    insecure 'no auth required' contract that predates that fix; updated to
+    match the corrected behaviour."""
+    # No auth at all -> rejected
+    unauth_response = await client.post(
         "/api/v1/appeals",
         json={
             "punishment_id": test_punishment["id"],
@@ -104,24 +111,44 @@ async def test_post_appeals_requires_no_auth_public_endpoint(client, db_session,
             "message": "Public appeal test",
         },
     )
+    assert unauth_response.status_code == 401
+
+    # With X-Plugin-Key -> succeeds. Appeal status is "open" on creation
+    # (Bug #9 fix in create_appeal: ck_appeals_status only allows
+    # open/accepted/denied/... — "pending" always violated the constraint).
+    response = await client.post(
+        "/api/v1/appeals",
+        json={
+            "punishment_id": test_punishment["id"],
+            "player_uuid": TEST_PLAYER_UUID,
+            "message": "Public appeal test",
+        },
+        headers=PLUGIN_HEADERS,
+    )
     assert response.status_code == 201
     data = response.json()
     assert data["message"] == "Public appeal test"
-    assert data["status"] == "pending"
+    assert data["status"] == "open"
 
 
 @pytest.mark.asyncio
 async def test_manage_appeal_patch_requires_appeals_manage(client, db_session, test_appeal):
+    """"approved" is not a valid appeal status — ck_appeals_status (migrations
+    039, 042) and VALID_APPEAL_STATUSES both only permit "accepted". Test was
+    asserting a value the DB constraint has never allowed; fixed to use the
+    actual valid value so this exercises the appeals.manage permission gate
+    it is named for, rather than always failing on the 400 validation check
+    before permission behaviour is even reached."""
     headers = await _session_headers_for_role(db_session, "owner")
     appeal_id = test_appeal["id"]
     response = await client.patch(
         f"/api/v1/appeals/{appeal_id}",
-        json={"status": "approved"},
+        json={"status": "accepted"},
         headers=headers,
     )
     assert response.status_code == 200
     data = response.json()
-    assert data["status"] == "approved"
+    assert data["status"] == "accepted"
 
 
 @pytest.mark.asyncio
