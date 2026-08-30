@@ -12,77 +12,68 @@ from datetime import datetime, timezone
 
 @pytest.mark.asyncio
 async def test_post_ai_config_request_creates_pending_action(
-    client: AsyncClient, db_session
+    client: AsyncClient, db_session, monkeypatch
 ):
-    """POST /ai/config/request creates a pending action."""
-    # Ensure OpenRouter API key is set for the test
-    async with db_session() as db:
-        from sqlalchemy import select
-        result = await db.execute(select(Setting).where(Setting.key == "ai.openrouter_key"))
-        setting = result.scalar_one_or_none()
-        if setting:
-            setting.value = "test-api-key"
-        else:
-            db.add(Setting(
-                key="ai.openrouter_key",
-                value="test-api-key",
-                category="ai",
-                description="Test",
-                sensitive=False,
-                requires_restart=False,
-            ))
-        await db.commit()
-    
-    # Mock the OpenRouter API call at the httpx level
+    """POST /ai/config/request creates a pending action.
+
+    Rewritten 2026-08-30 (AI subsystem audit, Bug 4): the endpoint no longer
+    calls OpenRouter directly via httpx — it routes through
+    Orchestrator.run(task_type='copilot'), which needs an ai_model_configs
+    row for that task type plus a real provider. Mock Orchestrator.run itself
+    rather than the old httpx call, since the httpx call this test used to
+    intercept doesn't exist in the code path anymore.
+    """
     import services.ai_config_service as ai_config_module
-    import httpx
-    
-    original_post = httpx.AsyncClient.post
-    
-    async def mock_post(self, url, **kwargs):
-        if "openrouter.ai" in url:
-            class MockResponse:
-                status_code = 200
-                def json(self):
-                    return {
-                        "choices": [
-                            {
-                                "message": {
-                                    "content": '{"test": "value"}'
-                                }
-                            }
-                        ]
-                    }
-            return MockResponse()
-        return await original_post(self, url, **kwargs)
-    
-    httpx.AsyncClient.post = mock_post
-    
-    try:
-        response = await client.post(
-            "/api/v1/ai/config/request",
-            json={
-                "action_type": "plugin_config",
-                "natural_language": "Set bridge mode to full"
-            },
-            headers={"X-Admin-Key": "test-secret-key"},
+    from services.ai.orchestrator import OrchestrationResult
+
+    async def fake_run(*, db, task_type, task_prompt, requested_by, require_dual_review=False):
+        assert task_type == "copilot"
+        return OrchestrationResult(
+            text='{"test": "value"}',
+            confidence=1.0,
+            escalated=False,
+            primary_provider="openrouter",
+            primary_model="openai/gpt-4o-mini",
+            secondary_provider=None,
+            secondary_model=None,
+            dual_review_agreement=None,
+            decision_log_id="test-decision-log-id",
         )
-        
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "pending"
-        assert data["action_type"] == "plugin_config"
-        assert data["natural_language_input"] == "Set bridge mode to full"
-    finally:
-        httpx.AsyncClient.post = original_post
+
+    monkeypatch.setattr(ai_config_module.Orchestrator, "run", fake_run)
+
+    response = await client.post(
+        "/api/v1/ai/config/request",
+        json={
+            "action_type": "plugin_config",
+            "natural_language": "Set bridge mode to full"
+        },
+        headers={"X-Admin-Key": "test-secret-key"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "pending"
+    assert data["action_type"] == "plugin_config"
+    assert data["natural_language_input"] == "Set bridge mode to full"
 
 
 @pytest.mark.asyncio
 async def test_post_ai_config_request_requires_api_key(
     client: AsyncClient, db_session
 ):
-    """POST /ai/config/request requires OpenRouter API key."""
-    # No API key set
+    """POST /ai/config/request with no provider configured returns 503.
+
+    Rewritten 2026-08-30 (AI subsystem audit, Bug 9): the old assertion was
+    400 with message 'OpenRouter API key required' — a leftover from the
+    direct-OpenRouter-httpx implementation that only ever checked one
+    provider's key. The current implementation routes through the
+    ModelRouter, which tries every enabled+keyed candidate for the task_type
+    across all providers; "nothing is configured" is a service-availability
+    problem (no eligible provider to serve the request), not a malformed
+    request, so it correctly returns 503, matching how every other AI
+    endpoint reports 'no provider available' (see ai_tasks.py, ai_copilot.py).
+    """
     response = await client.post(
         "/api/v1/ai/config/request",
         json={
@@ -91,9 +82,9 @@ async def test_post_ai_config_request_requires_api_key(
         },
         headers={"X-Admin-Key": "test-secret-key"},
     )
-    
-    assert response.status_code == 400
-    assert "OpenRouter API key required" in response.json()["detail"]
+
+    assert response.status_code == 503
+    assert "No AI provider available" in response.json()["detail"]
 
 
 @pytest.mark.asyncio

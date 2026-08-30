@@ -89,9 +89,16 @@ async def test_toggling_a_provider_off_removes_it_from_available_immediately(db_
 
 
 @pytest.mark.asyncio
-async def test_gemini_disabled_by_default(db_session):
+async def test_gemini_enabled_by_default(db_session):
+    """Bug 10 (2026-08-28 AI audit): ai.gemini_enabled used to default to
+    'false' while openrouter/anthropic defaulted to 'true', and migration 042
+    seeds Gemini as the priority-10 primary provider for most task types.
+    A disabled-by-default primary meant Gemini was silently skipped on every
+    routing call even with a valid key configured — routing always fell
+    through to failover (or 503'd if no failover was configured/keyed either).
+    Default changed to 'true' so a configured Gemini key works immediately,
+    consistent with the other two providers."""
     async with db_session() as db:
         await SettingsService.update(db, "ai.gemini_api_key", "sk-key", actor="test")
-        # Even with a key configured, gemini's seeded default is disabled.
-        assert "gemini" not in await ProviderFactory.available_providers(db)
-        assert await ProviderFactory.is_enabled(db, "gemini") is False
+        assert "gemini" in await ProviderFactory.available_providers(db)
+        assert await ProviderFactory.is_enabled(db, "gemini") is True
