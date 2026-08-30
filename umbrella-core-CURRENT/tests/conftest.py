@@ -19,6 +19,23 @@ Rate limiter hermetics (Critical Finding #1):
   The real RateLimiter and its fixed-window algorithm are tested separately
   in tests/test_rate_limit.py using a mock Redis client.
 """
+import os
+
+# AUDIT-2026-08-29 fix: main.py now calls validate_secrets(settings) at
+# module import time, which hard-fails if SECRET_KEY/ADMIN_KEY are still
+# the "change-me-in-production" default (a real, correct production
+# safety check another agent added). But it runs at import time — before
+# pytest ever gets to invoke the _test_secrets fixture's monkeypatch
+# below — so any test file that does `from main import app` at its own
+# module level (e.g. test_health.py) fails during collection, before a
+# single test even runs, unless SECRET_KEY/ADMIN_KEY are already valid in
+# the environment. conftest.py is always imported before sibling test
+# modules in its directory, so setting them here (before any import that
+# could reach config/settings.py's get_settings()) fixes it for every
+# test file, not just ones that already patch settings post-import.
+os.environ.setdefault("SECRET_KEY", "test-secret-key-not-the-insecure-default")
+os.environ.setdefault("ADMIN_KEY", "test-secret-key-not-the-insecure-default")
+
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport

@@ -19,6 +19,7 @@ from models.moderation_intelligence import (
     RecommendedAction,
     ReportStatus,
 )
+import services.bot_push_service as bot_push_service
 from services.ai.base import GenerationResult
 from services.ai.model_router import ModelRouter, RoutedGeneration
 from services.moderation_intelligence.repository import ModerationIntelRepository
@@ -71,6 +72,21 @@ async def test_analyze_report_escalates_on_disagreement(db_session, monkeypatch)
         '{"risk_score": 0.8, "recommended_action": "timeout", "evidence_summary": "Looks bad."}',
         '{"risk_score": 0.1, "recommended_action": "none", "evidence_summary": "Looks fine."}',
     )
+    # AUDIT-2026-08-29 fix: on escalation, the service fire-and-forgets a
+    # call to services.bot_push_service.push_event(), which opens its own
+    # DB session via the module-level AsyncSessionLocal (bound to the real
+    # DATABASE_URL) rather than using the db session this test already
+    # has — bypassing conftest.py's hermetic in-memory SQLite override
+    # entirely. Without a reachable Postgres this raised
+    # ConnectionRefusedError on 127.0.0.1:5432 instead of ever reaching the
+    # assertions below. This test only exercises the escalation *decision*
+    # logic, not push_event's own delivery behavior, so mock it out.
+    push_calls = []
+
+    async def fake_push_event(event, payload):
+        push_calls.append((event, payload))
+
+    monkeypatch.setattr(bot_push_service, "push_event", fake_push_event)
 
     async with db_session() as db:
         report = await ModerationIntelRepository.create_report(
@@ -93,6 +109,15 @@ async def test_analyze_report_falls_back_to_escalate_on_invalid_recommended_acti
     monkeypatch.setattr(get_settings(), "dual_review_enabled", False)
     text = '{"risk_score": 0.9, "recommended_action": "ban", "evidence_summary": "Model ignored instructions."}'
     _patch_generate(monkeypatch, text)
+    # AUDIT-2026-08-29 fix: same hermeticity gap as
+    # test_analyze_report_escalates_on_disagreement above — this path also
+    # escalates (falls back to ESCALATE on the invalid "ban" action), which
+    # fire-and-forgets bot_push_service.push_event() and its own
+    # production-DB session. Mock it for the same reason.
+    async def fake_push_event(event, payload):
+        pass
+
+    monkeypatch.setattr(bot_push_service, "push_event", fake_push_event)
 
     async with db_session() as db:
         report = await ModerationIntelRepository.create_report(

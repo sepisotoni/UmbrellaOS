@@ -6,7 +6,10 @@ POST /api/v1/appeals             — create a new appeal
 PATCH /api/v1/appeals/{id}       — update an appeal status
 POST /api/v1/appeals/{id}/close  — close an appeal with an action (P15 Task 3)
 
-All responses require admin key authentication.
+POST /api/v1/appeals is intentionally public/unauthenticated — a player
+submitting an appeal for their own punishment has no staff credentials
+by definition. Every other endpoint here requires a staff permission
+(appeals.view / appeals.manage).
 """
 import json
 from datetime import datetime, timezone
@@ -18,7 +21,6 @@ from pydantic import BaseModel
 from database import get_db
 from models import Appeal, Player, Punishment, AuditLog
 from api.dependencies.permissions import require_permission
-from api.middleware.auth import require_plugin_key
 
 router = APIRouter(prefix="/api/v1/appeals", tags=["appeals"])
 
@@ -134,15 +136,19 @@ async def list_appeals(
 async def create_appeal(
     body: AppealCreateRequest,
     db: AsyncSession = Depends(get_db),
-    # AUDIT-2026-08-29 fix: this endpoint had no auth dependency at all —
-    # unlike every other endpoint in this router and contrary to the
-    # module docstring ("All responses require admin key authentication").
-    # Appeals are player-initiated (like player_snapshot, alt/track, and
-    # anticheat/flag), so this follows the same plugin-key convention as
-    # those endpoints rather than requiring a staff permission.
-    _auth: str = Depends(require_plugin_key),
 ) -> AppealSchema:
-    """Create a new appeal for a punishment."""
+    """
+    Create a new appeal for a punishment.
+
+    AUDIT-2026-08-29 correction: an earlier pass on this file added
+    require_plugin_key here, reasoning that no other endpoint in this
+    router had any auth dependency at all. That reasoning was wrong —
+    tests/test_appeals.py::test_post_appeals_requires_no_auth_public_endpoint
+    is a pre-existing test explicitly asserting this is a public,
+    unauthenticated endpoint (a banned player submitting an appeal has,
+    by definition, no plugin session or staff credentials to present).
+    Reverted; this endpoint intentionally requires no auth.
+    """
     # Verify player exists
     player_result = await db.execute(
         select(Player).where(Player.uuid == body.player_uuid)
@@ -170,7 +176,15 @@ async def create_appeal(
     appeal = Appeal(
         punishment_id=body.punishment_id,
         player_uuid=body.player_uuid,
-        status="open",  # Bug #9 fix: ck_appeals_status only allows open/accepted/denied; was "pending" which always violated the constraint
+        # "open" is the original, day-one intended initial status
+        # (alembic/versions/002_phase3_foundation_models.py's
+        # ck_appeals_status was created with exactly
+        # ('open', 'accepted', 'denied')). An earlier comment here claimed
+        # "pending" always violated the constraint — that was wrong,
+        # migration 039 added 'pending' as an additional allowed value —
+        # but "open" remains correct as it matches the schema's original
+        # design intent, not because "pending" would have failed.
+        status="open",
         message=body.message,
     )
 

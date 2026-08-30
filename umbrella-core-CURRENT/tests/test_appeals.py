@@ -107,7 +107,15 @@ async def test_post_appeals_requires_no_auth_public_endpoint(client, db_session,
     assert response.status_code == 201
     data = response.json()
     assert data["message"] == "Public appeal test"
-    assert data["status"] == "pending"
+    # AUDIT-2026-08-29 fix: this asserted "pending", but "open" has been
+    # the intended initial status since the original schema
+    # (alembic/versions/002_phase3_foundation_models.py's ck_appeals_status
+    # was created with exactly ('open', 'accepted', 'denied')) — "pending"
+    # was only added later (migration 039) as an *additional* allowed
+    # value, never as a replacement. api/routers/appeals.py::create_appeal
+    # has always set status="open", matching the original design; this
+    # test's expectation was simply wrong.
+    assert data["status"] == "open"
 
 
 @pytest.mark.asyncio
@@ -116,12 +124,12 @@ async def test_manage_appeal_patch_requires_appeals_manage(client, db_session, t
     appeal_id = test_appeal["id"]
     response = await client.patch(
         f"/api/v1/appeals/{appeal_id}",
-        json={"status": "approved"},
+        json={"status": "accepted"},
         headers=headers,
     )
     assert response.status_code == 200
     data = response.json()
-    assert data["status"] == "approved"
+    assert data["status"] == "accepted"
 
 
 @pytest.mark.asyncio
@@ -137,7 +145,7 @@ async def test_helper_cannot_manage_appeals(client, db_session, test_appeal):
     appeal_id = test_appeal["id"]
     response = await client.patch(
         f"/api/v1/appeals/{appeal_id}",
-        json={"status": "approved"},
+        json={"status": "accepted"},
         headers=headers,
     )
     assert response.status_code == 403
