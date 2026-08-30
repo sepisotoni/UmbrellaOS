@@ -21,6 +21,7 @@ Create Date: 2026-08-28
 import uuid
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 revision = "042_seed_ai_model_configs"
@@ -173,10 +174,25 @@ def upgrade() -> None:
     # ------------------------------------------------------------------ #
     # Seed constitution_rules                                             #
     # ------------------------------------------------------------------ #
+    # tier must be typed as the existing Postgres enum (constitutiontier,
+    # created by migration 015) rather than a plain String — found via an
+    # end-to-end migration run against real Postgres: asyncpg refuses to
+    # implicitly cast a VARCHAR parameter to a custom enum column
+    # ("column is of type constitutiontier but expression is of type
+    # character varying"). create_type=False is required so SQLAlchemy
+    # references the existing type rather than trying to CREATE TYPE again.
+    if is_postgres:
+        tier_type = postgresql.ENUM(
+            "PLATFORM_SAFETY", "CORE_PLATFORM", "SERVER", "ROLE", "TASK",
+            name="constitutiontier", create_type=False,
+        )
+    else:
+        tier_type = sa.String
+
     constitution_rules = sa.table(
         "constitution_rules",
         sa.column("id",          sa.String),
-        sa.column("tier",        sa.String),
+        sa.column("tier",        tier_type),
         sa.column("title",       sa.String),
         sa.column("rule_text",   sa.Text),
         sa.column("is_seed_rule",sa.Boolean),
