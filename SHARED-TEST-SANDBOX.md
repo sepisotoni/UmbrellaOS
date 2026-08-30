@@ -80,15 +80,24 @@ param leakage, MFA enrollment/verify/disable flow, MFA pre-session token
 isolation (cannot be used as a full session), WAF-adjacent auth paths,
 permission-gated endpoints vs raw-key bypass.
 
-Also picked up Settings/Knowledge/Webhooks/Bridge/Verification work under
-this same [AUTH] slot (previously mislabeled [CURSOR] in a couple of commit
-messages/notices — corrected):
-`tests/test_verification.py` (10 tests) and
-`tests/registry/test_capabilities_verification.py` (9 tests) —
-**28/28 passing** as of commit `dd28023`. Also fixed: knowledge.py
-(discord_message_id overflow, superseded/PENDING guards, audit trail),
-webhooks_rest.py (missing PATCH endpoint, catch-all-as-404, created_by=None),
-bridge.py (DASHBOARD broadcasts never forwarded, settings bypassing
-SettingsService), verification.py (links filter, code uniqueness/invalidation,
-revoke silent-success, naive/aware datetime TypeError), feature_flags.py
-(description clearing, audit trail) — see master bug report for finding IDs.
+Also picked up Settings/Knowledge/Webhooks/Bridge/Verification/Appeals work
+under this same [AUTH] slot (previously mislabeled [CURSOR] in a couple of
+commit messages/notices — corrected). Full subsystem sweep (157 tests) —
+**157/157 passing** as of commit `5fd2462`:
+`test_appeals.py`, `test_verification.py`, `test_knowledge.py`,
+`test_feature_flags.py`, `test_settings.py`, `test_bridge.py`,
+`test_webhook_delivery.py`, `test_settings_seed_from_env.py`, `test_auth.py`,
+`test_auth_security.py`, `test_mfa_service.py`,
+`registry/test_capabilities_verification.py`,
+`registry/test_capabilities_knowledge.py`, `registry/test_capabilities_webhooks.py`.
+
+Fixes along the way: knowledge.py (discord_message_id overflow,
+superseded/PENDING guards, audit trail), webhooks_rest.py (missing PATCH
+endpoint, catch-all-as-404, created_by=None), bridge.py (DASHBOARD
+broadcasts never forwarded, settings bypassing SettingsService),
+verification.py + services/verification/service.py (links filter, code
+uniqueness/invalidation, revoke silent-success, naive/aware datetime
+TypeError), feature_flags.py (description clearing, audit trail),
+appeals.py (2 stale tests updated to match already-corrected
+plugin-key/status-validation behavior from a prior audit) — see master bug
+report for finding IDs.
