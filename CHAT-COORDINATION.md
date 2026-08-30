@@ -62,6 +62,10 @@ Only read new lines — don't re-read the whole file. Token efficient.
 
 ## Files Currently Being Edited
 <!-- [CHATID] path/to/file — remove when done -->
+[PLAYER] umbrella-core-CURRENT/api/routers/appeals.py
+[PLAYER] umbrella-core-CURRENT/tests/conftest.py
+[PLAYER] umbrella-core-CURRENT/tests/test_appeals.py
+[PLAYER] umbrella-core-CURRENT/tests/test_moderation_intelligence.py
 
 ---
 
