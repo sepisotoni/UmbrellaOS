@@ -212,18 +212,36 @@ app = FastAPI(
 # Register global error handlers
 register_error_handlers(app)
 
-# CORS — credentials=True is required so the browser can send Authorization: Bearer
-# Auth is header-based (X-Admin-Key / Bearer token) — not cookie-based.
-# allow_credentials=False + allow_origins=["*"] is the correct CORS config:
-# credentials=True with wildcard is invalid per spec and causes 400 preflights.
+# CORS — reviewed 2026-08-30 as part of the auth/permissions subsystem audit.
+# allow_origins=["*"] + allow_credentials=False is deliberate and correct for
+# this API, not a misconfiguration:
+#   - Auth is entirely header-based (X-Admin-Key / X-Plugin-Key / Bearer
+#     session token) — there is no cookie-based auth anywhere in this
+#     codebase (confirmed: zero response.set_cookie / Set-Cookie usage).
+#   - "credentials" in the CORS spec refers specifically to cookies, HTTP
+#     auth popups, and TLS client certs — NOT to an Authorization header a
+#     page's own JS explicitly attaches. A third-party page can only send a
+#     Bearer token it already possesses; wildcard CORS doesn't grant it that
+#     token, so this is not the classic "wildcard CORS + cookies" CSRF
+#     anti-pattern where the browser auto-attaches credentials the attacker
+#     never needs to know.
+#   - allow_credentials=True + allow_origins=["*"] is additionally invalid
+#     per the Fetch spec regardless — browsers reject that combination
+#     outright, so it wasn't an available alternative here anyway.
 # The settings.cors_origins list is kept for reference but not used here.
+#
+# NOTE: expose_headers previously listed "X-Session-Token", a header that
+# is never actually set by any endpoint — the session token is returned in
+# the JSON response body (see DiscordOAuthCallbackResponse.token /
+# MFAVerifyResponse.token in api/routers/auth.py), not a response header.
+# Removed as dead config; add it back only if a future endpoint actually
+# sets that header.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["X-Session-Token"],
 )
 
 # Rate limiting (Phase 3) — per-client-IP, Redis-backed. Constructed from
