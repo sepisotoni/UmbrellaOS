@@ -7,10 +7,20 @@ PATCH /api/v1/appeals/{id}       — update an appeal status
 POST /api/v1/appeals/{id}/close  — close an appeal with an action (P15 Task 3)
 
 POST /api/v1/appeals requires a plugin key (not a staff permission) —
-it's meant to be submitted by the Minecraft plugin on a player's behalf,
-not by staff. Every other endpoint here requires a staff permission
-(appeals.view / appeals.manage). See create_appeal's docstring for why
-this isn't fully public.
+NOT because the Minecraft plugin submits appeals itself (it doesn't — the
+in-game /appeal command only prints a link to an external appeal portal at
+https://umbrellaos.net/appeals, plus a Discord invite; see
+VerificationCommand.java). No code in this repo calls this endpoint to
+create an appeal. The real caller is presumably that external portal's own
+backend, submitting on a banned player's behalf — a banned player has no
+UmbrellaOS session to authenticate with by definition, but a trusted
+backend service can still hold a shared secret. require_plugin_key is the
+right shape of check for that (any trusted server-side caller), and it
+closes the alternative — a genuinely open, unauthenticated endpoint — which
+would let anyone on the internet forge an appeal for any player_uuid against
+any punishment_id with zero traceability. Every other endpoint here requires
+a staff permission (appeals.view / appeals.manage). See create_appeal's
+docstring for the full history of this decision.
 """
 import json
 from datetime import datetime, timezone
@@ -158,8 +168,20 @@ async def create_appeal(
          endpoint lets anyone forge an appeal as any player against any
          punishment_id. [AUTH] updated the test to match. This is the
          version that stuck.
+      5. [AUTH] traced the real submission path to settle this for good:
+         no code in this repo (dashboard, Discord bot, or Minecraft plugin)
+         actually calls this endpoint. The in-game /appeal command
+         (VerificationCommand.java) only prints a link to an external
+         portal — https://umbrellaos.net/appeals — and a Discord invite;
+         it never submits anything itself. That portal is out of this
+         repo's scope, but its backend is the plausible real caller,
+         acting as a trusted intermediary for banned players who have no
+         session of their own. require_plugin_key (any trusted
+         server-side secret, not tied to "the Minecraft plugin"
+         specifically) is the correct check for that relationship —
+         confirmed, not just reasoned about.
     Requiring a plugin key doesn't fully solve player-identity spoofing
-    (a compromised plugin could still submit on behalf of any uuid), but
+    (a compromised caller could still submit on behalf of any uuid), but
     it restricts this to trusted server infrastructure rather than the
     open internet, matching the same convention already used for other
     player-initiated writes in this codebase (player_snapshot, anticheat
