@@ -481,3 +481,114 @@ async def test_owner_endpoint_rejects_non_owner_role_user(client, db_session):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# 10. require_admin_key must never accept a session from a non-admin/owner
+#     role user (CRITICAL fix, 2026-08-30) — this was a full
+#     privilege-escalation-to-owner via PATCH /auth/users/{id}
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_member_session_cannot_self_promote_to_owner(client, db_session):
+    """
+    THE bug: a member-role user (lowest tier, appeals.view only) with a
+    normal dashboard session token could previously PATCH their own user
+    row and set role_id directly to the owner role's ID, because
+    require_admin_key's Bearer-token branch only checked the session was
+    valid — never who the user actually was. Full privilege escalation
+    with a single authenticated request and zero permission checks.
+    """
+    async with db_session() as db:
+        member_role = await db.scalar(select(Role).where(Role.name == "member"))
+        owner_role = await db.scalar(select(Role).where(Role.name == "owner"))
+        attacker = User(discord_id="escalation-attacker", username="attacker", role_id=member_role.id)
+        db.add(attacker)
+        await db.flush()
+        token = await _make_session(db, attacker)
+        attacker_id = attacker.id
+        owner_role_id = owner_role.id
+        await db.commit()
+
+    resp = await client.patch(
+        f"/api/v1/auth/users/{attacker_id}",
+        json={"role_id": owner_role_id},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 403, "member-role session must not reach PATCH /users/{id}"
+
+    # Confirm the DB was not mutated
+    async with db_session() as db:
+        refreshed = await db.get(User, attacker_id)
+        assert refreshed.role_id != owner_role_id
+
+
+@pytest.mark.asyncio
+async def test_no_role_user_cannot_reach_admin_key_endpoints(client, db_session):
+    """A user with role_id=None (no staff role assigned at all) must also
+    be rejected — get_current_user only checks is_active, never role_id,
+    so this branch needs its own explicit check."""
+    async with db_session() as db:
+        no_role_user = User(discord_id="no-role-user", username="norole", role_id=None)
+        db.add(no_role_user)
+        await db.flush()
+        token = await _make_session(db, no_role_user)
+        target_id = no_role_user.id
+        await db.commit()
+
+    resp = await client.get(
+        f"/api/v1/auth/users/{target_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_admin_role_session_passes_require_admin_key(client, db_session):
+    """An admin-role session must still work — this is not a full lockdown,
+    only member/helper/moderator/no-role sessions should be rejected."""
+    async with db_session() as db:
+        admin_role = await db.scalar(select(Role).where(Role.name == "admin"))
+        admin_user = User(discord_id="legit-admin", username="legitadmin", role_id=admin_role.id)
+        db.add(admin_user)
+        await db.flush()
+        token = await _make_session(db, admin_user)
+        target_id = admin_user.id
+        await db.commit()
+
+    resp = await client.get(
+        f"/api/v1/auth/users/{target_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_moderator_session_rejected_from_admin_key_endpoint(client, db_session):
+    """A moderator-role session (mid-tier, well below admin) must also be rejected."""
+    async with db_session() as db:
+        mod_role = await db.scalar(select(Role).where(Role.name == "moderator"))
+        mod_user = User(discord_id="mod-user-test", username="moduser", role_id=mod_role.id)
+        db.add(mod_user)
+        await db.flush()
+        token = await _make_session(db, mod_user)
+        target_id = mod_user.id
+        await db.commit()
+
+    resp = await client.get(
+        f"/api/v1/auth/users/{target_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_admin_key_header_still_works_after_fix(client, db_session):
+    """The raw X-Admin-Key path must be completely unaffected by this fix."""
+    async with db_session() as db:
+        user = await _make_owner(db)
+        target_id = user.id
+        await db.commit()
+
+    resp = await client.get(f"/api/v1/auth/users/{target_id}", headers=ADMIN_HEADERS)
+    assert resp.status_code == 200
