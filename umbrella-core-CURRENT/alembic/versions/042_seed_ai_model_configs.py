@@ -104,8 +104,16 @@ def upgrade() -> None:
         # this was caught by an end-to-end migration run against a real
         # fresh Postgres instance and originally shipped as invalid SQL that
         # would have failed with "syntax error at or near NOT" on first use.
-        # A DO block catching duplicate_object is the standard idiom for a
-        # conditional ADD CONSTRAINT in Postgres.
+        #
+        # A DO block is the standard idiom for a conditional ADD CONSTRAINT,
+        # but the exception class matters: ADD CONSTRAINT ... UNIQUE creates
+        # a backing unique index under the hood, and a name collision on
+        # that index raises duplicate_table (SQLSTATE 42P07), NOT
+        # duplicate_object (42710) as the Postgres docs' general "IF NOT
+        # EXISTS equivalent" examples might suggest. Confirmed directly
+        # against real Postgres 16: catching only duplicate_object let
+        # duplicate_table through uncaught on the second run. Catching both
+        # covers every way this specific constraint name can already exist.
         op.execute(sa.text("""
             DO $$
             BEGIN
@@ -113,6 +121,7 @@ def upgrade() -> None:
                 ADD CONSTRAINT uq_ai_model_configs_provider_model_task
                 UNIQUE (provider, model_name, task_type);
             EXCEPTION
+                WHEN duplicate_table THEN NULL;
                 WHEN duplicate_object THEN NULL;
             END $$;
         """))
