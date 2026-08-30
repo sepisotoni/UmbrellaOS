@@ -159,6 +159,8 @@ async def test_mfa_enabled_user_gets_403_at_callback(client, db_session):
     If a user has mfa_enabled=True, /discord/callback must return 403 with
     mfa_required=True instead of issuing a full session token.
     """
+    from models import DiscordOAuthPending
+
     async with db_session() as db:
         role = await db.scalar(select(Role).where(Role.name == "owner"))
         user = User(
@@ -169,24 +171,25 @@ async def test_mfa_enabled_user_gets_403_at_callback(client, db_session):
             mfa_secret=pyotp.random_base32(),
         )
         db.add(user)
-        # Create a pending OAuth state as the callback expects
-        from models.auth import OAuthState
-        pending = OAuthState(
-            discord_id="mfa-gated-discord-id",
+        # Create a pending OAuth state record — matches what discord_callback
+        # looks up by `state` before exchanging the code with Discord.
+        pending = DiscordOAuthPending(
             state="mfa-test-state-xyz",
-            username="mfagateduser",
-            avatar_hash=None,
-            email=None,
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
         )
         db.add(pending)
         await db.commit()
 
-    # Simulate callback by hitting /discord/callback with the resolved pending record
-    # We patch the Discord API exchange to return our test user's data
-    with patch("api.routers.auth.exchange_discord_code") as mock_exchange:
-        mock_exchange.return_value = {
+    # discord_callback calls discord_service.exchange_code() then
+    # discord_service.fetch_user() to resolve the Discord identity — mock
+    # both so no real network call happens.
+    with patch("api.routers.auth.discord_service.exchange_code") as mock_exchange, \
+         patch("api.routers.auth.discord_service.fetch_user") as mock_fetch_user:
+        mock_exchange.return_value = {"access_token": "fake-access-token"}
+        mock_fetch_user.return_value = {
             "id": "mfa-gated-discord-id",
             "username": "mfagateduser",
+            "global_name": "mfagateduser",
             "avatar": None,
             "email": None,
         }
@@ -341,8 +344,11 @@ async def test_500_handler_does_not_leak_exception_detail(client):
     """
     When an unexpected exception occurs, the response body must not contain
     the raw exception message or stack details.
+
+    Patches the actual health() endpoint function (not a non-existent
+    get_health) to raise, forcing the generic_exception_handler path.
     """
-    with patch("api.routers.health.get_health") as mock:
+    with patch("api.routers.health.health") as mock:
         mock.side_effect = RuntimeError("INTERNAL SECRET DB PASSWORD abc123")
         resp = await client.get("/health")
 

@@ -491,29 +491,21 @@ async def logout(
 
 @router.get("/me", response_model=UserSchema)
 async def get_current_user_endpoint(
-    authorization: str | None = Header(None),
+    current_user: User = Depends(require_session),
     db: AsyncSession = Depends(get_db),
 ) -> UserSchema:
     """Get current authenticated user via Authorization: Bearer <token> header.
 
     Token must be sent in the Authorization header only, never as a query
     parameter, to avoid appearing in access logs and browser history.
+
+    Delegates to require_session (api/middleware/session.py) rather than
+    duplicating the session lookup inline — that shared path is what rejects
+    "mfa:"-prefixed pre-session tokens, so any endpoint doing its own ad-hoc
+    Session.token lookup silently reopens the MFA-bypass hole those tokens
+    exist to prevent.
     """
-    token: str | None = None
-    if authorization and authorization.startswith("Bearer "):
-        token = authorization.removeprefix("Bearer ").strip() or None
-    if not token:
-        raise HTTPException(status_code=401, detail="Missing session token")
-
-    result = await db.execute(
-        select(Session).options(selectinload(Session.user)).where(Session.token == token)
-    )
-    session = result.scalar_one_or_none()
-
-    if session is None or not session.is_valid():
-        raise HTTPException(status_code=401, detail="Invalid or expired session")
-
-    return await _user_to_schema(session.user, db)
+    return await _user_to_schema(current_user, db)
 
 
 

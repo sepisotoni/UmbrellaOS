@@ -19,8 +19,27 @@ from api.middleware.auth import admin_key_header, plugin_key_header
 settings = get_settings()
 
 
+# Reserved token prefix for short-lived MFA pre-sessions (see
+# api/routers/auth.py discord_callback / mfa_verify). A pre-session token is
+# stored as a real Session row so it can be looked up and expired the same
+# way as a normal session, but it must NEVER be accepted as full
+# authentication — only /auth/mfa/verify's own lookup is allowed to consume
+# it. Without this guard, the mfa_token returned in the 403 challenge body
+# (visible to anyone who intercepts that response, before the user has even
+# entered their TOTP code) could be used directly as a Bearer token to fully
+# authenticate as the user, completely bypassing MFA.
+_MFA_PRESESSION_PREFIX = "mfa:"
+
+
 async def get_current_user(token: str, db: AsyncSession) -> User:
-    """Look up a session by token and return the associated user."""
+    """Look up a session by token and return the associated user.
+
+    Rejects MFA pre-session tokens (prefixed "mfa:") outright — those are
+    only valid for the /auth/mfa/verify exchange, never as general auth.
+    """
+    if token.startswith(_MFA_PRESESSION_PREFIX):
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+
     result = await db.execute(
         select(Session)
         .options(selectinload(Session.user))

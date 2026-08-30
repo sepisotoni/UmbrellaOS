@@ -77,7 +77,15 @@ from api.routers.bot_registration import router as bot_registration_router
 from api.routers.knowledge import router as knowledge_router
 
 settings = get_settings()
-validate_secrets(settings)
+# NOTE: validate_secrets() is intentionally NOT called here at module import
+# time. Test modules do `from main import app`, which would trip this check
+# before any test fixture gets a chance to monkeypatch settings.secret_key /
+# settings.admin_key to a safe test value — every test importing `main`
+# would fail before running. The check instead runs inside the lifespan
+# startup handler below, which only executes when the app actually boots
+# (uvicorn run, or an ASGI test client's lifespan is triggered) — and the
+# test suite's `client` fixture never triggers app startup/lifespan events,
+# only dependency overrides, so tests remain unaffected either way.
 
 
 @asynccontextmanager
@@ -89,6 +97,12 @@ async def lifespan(app: FastAPI):
     """
     # --- Startup ---
     print("[Umbrella Core] Starting up...")
+
+    # Refuse to boot with insecure default secret keys. Deliberately placed
+    # here (not at module import time) so `from main import app` in the test
+    # suite never triggers it; only a real server start (uvicorn run, or an
+    # ASGI client that drives the lifespan) does.
+    validate_secrets(get_settings())
 
     # Run Alembic migrations to head before anything else.
     # Must run in a thread because env.py uses asyncio.run() internally,
