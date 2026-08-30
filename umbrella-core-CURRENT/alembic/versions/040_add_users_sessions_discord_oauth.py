@@ -92,23 +92,54 @@ def upgrade() -> None:
         "ON discord_oauth_pending (state)"
     ))
 
-    # Retrofit api_keys.user_id FK now that users is guaranteed to exist.
-    try:
-        op.create_foreign_key(
-            "fk_api_keys_user_id",
-            "api_keys",
-            "users",
-            ["user_id"],
-            ["id"],
-            ondelete="CASCADE",
-        )
-    except Exception:
-        pass  # Already exists on create_all()-bootstrapped databases
+    # Retrofit api_keys.created_by FK now that users is guaranteed to exist.
+    #
+    # FIX: this previously referenced "api_keys.user_id" — a column that has
+    # never existed. models/api_key.py's ApiKey ORM model has always declared
+    # the column as `created_by` (String(36), ForeignKey("users.id",
+    # ondelete="SET NULL"), nullable=True) — never user_id, and never CASCADE.
+    # On a real migration-based Postgres deployment, create_foreign_key with
+    # the wrong column name raised UndefinedColumn every single time; the
+    # bare `except Exception: pass` silently swallowed that, so this FK was
+    # NEVER actually created via migrations, on any database, ever — not just
+    # on "already exists" reruns as the comment claimed. It only ever existed
+    # on databases bootstrapped via create_all() (tests, local dev), because
+    # that path reads the correct column name directly from the model and
+    # bypasses this migration entirely — which is exactly why nothing caught
+    # this until a real `alembic upgrade head` run against fresh Postgres did.
+    #
+    # Also corrected ondelete from CASCADE to SET NULL to match the model:
+    # deleting a user should not delete every API key they ever created —
+    # api_key.creator becoming NULL (an "orphaned" key, still functional) is
+    # the intended behaviour, same as knowledge_entries and other created_by
+    # columns elsewhere in this schema.
+    #
+    # Uses the same duplicate_object-catching DO block as 043's fix (verified
+    # against real Postgres 16 there) rather than a bare Python except, so a
+    # genuine second failure mode isn't silently masked alongside the
+    # "already exists" case this is meant to tolerate.
+    bind = op.get_bind()
+    if bind.dialect.name == "postgresql":
+        op.execute(text("""
+            DO $$
+            BEGIN
+                ALTER TABLE api_keys
+                ADD CONSTRAINT fk_api_keys_created_by
+                FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL;
+            EXCEPTION
+                WHEN duplicate_object THEN NULL;
+            END $$;
+        """))
+    else:
+        # SQLite (tests): create_all() already applies the model's inline FK;
+        # SQLite also can't ALTER TABLE ADD CONSTRAINT at all, so there is
+        # nothing to retrofit here on that dialect.
+        pass
 
 
 def downgrade() -> None:
     try:
-        op.drop_constraint("fk_api_keys_user_id", "api_keys", type_="foreignkey")
+        op.drop_constraint("fk_api_keys_created_by", "api_keys", type_="foreignkey")
     except Exception:
         pass
     op.drop_table("discord_oauth_pending")
