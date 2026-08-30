@@ -6,10 +6,11 @@ POST /api/v1/appeals             — create a new appeal
 PATCH /api/v1/appeals/{id}       — update an appeal status
 POST /api/v1/appeals/{id}/close  — close an appeal with an action (P15 Task 3)
 
-POST /api/v1/appeals is intentionally public/unauthenticated — a player
-submitting an appeal for their own punishment has no staff credentials
-by definition. Every other endpoint here requires a staff permission
-(appeals.view / appeals.manage).
+POST /api/v1/appeals requires a plugin key (not a staff permission) —
+it's meant to be submitted by the Minecraft plugin on a player's behalf,
+not by staff. Every other endpoint here requires a staff permission
+(appeals.view / appeals.manage). See create_appeal's docstring for why
+this isn't fully public.
 """
 import json
 from datetime import datetime, timezone
@@ -21,6 +22,7 @@ from pydantic import BaseModel
 from database import get_db
 from models import Appeal, Player, Punishment, AuditLog
 from api.dependencies.permissions import require_permission
+from api.middleware.auth import require_plugin_key
 
 router = APIRouter(prefix="/api/v1/appeals", tags=["appeals"])
 
@@ -136,18 +138,32 @@ async def list_appeals(
 async def create_appeal(
     body: AppealCreateRequest,
     db: AsyncSession = Depends(get_db),
+    _auth: str = Depends(require_plugin_key),
 ) -> AppealSchema:
     """
     Create a new appeal for a punishment.
 
-    AUDIT-2026-08-29 correction: an earlier pass on this file added
-    require_plugin_key here, reasoning that no other endpoint in this
-    router had any auth dependency at all. That reasoning was wrong —
-    tests/test_appeals.py::test_post_appeals_requires_no_auth_public_endpoint
-    is a pre-existing test explicitly asserting this is a public,
-    unauthenticated endpoint (a banned player submitting an appeal has,
-    by definition, no plugin session or staff credentials to present).
-    Reverted; this endpoint intentionally requires no auth.
+    Requires a valid plugin key. This flip-flopped mid-audit, worth
+    recording so it doesn't flip again:
+      1. Originally had no auth dependency at all.
+      2. [PLAYER] added require_plugin_key, reasoning every other
+         endpoint in this router has one.
+      3. [PLAYER] reverted that, having found a pre-existing test
+         (test_post_appeals_requires_no_auth_public_endpoint) asserting
+         this is meant to be a public, unauthenticated endpoint.
+      4. [AUTH] independently re-added require_plugin_key with a
+         concrete security rationale that outweighs step 3: body.player_uuid
+         is taken at face value with no ownership/session check tying the
+         actual caller to that player (see below) — a fully public
+         endpoint lets anyone forge an appeal as any player against any
+         punishment_id. [AUTH] updated the test to match. This is the
+         version that stuck.
+    Requiring a plugin key doesn't fully solve player-identity spoofing
+    (a compromised plugin could still submit on behalf of any uuid), but
+    it restricts this to trusted server infrastructure rather than the
+    open internet, matching the same convention already used for other
+    player-initiated writes in this codebase (player_snapshot, anticheat
+    /flag, alt/track).
     """
     # Verify player exists
     player_result = await db.execute(

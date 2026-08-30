@@ -45,8 +45,18 @@ def _make_tool_capability(tool_cls, name: str, summary: str, needs_target: bool)
     """Registers a single InvestigationTool as a capability. All five
     ported tools follow the exact same shape (run one tool, return its
     one finding), so this generates the boilerplate once rather than
-    duplicating a near-identical @capability function five times."""
-    tool = tool_cls()
+    duplicating a near-identical @capability function five times.
+
+    Bug fixed (AUDIT-VERIFICATION-2026-08-29 #11): previously did
+    `tool = tool_cls()` once here and captured it in the handler's closure,
+    reusing the same instance across every request. None of the five
+    current InvestigationTool subclasses define __init__ or hold mutable
+    instance state, so this was harmless today — but it's a footgun: any
+    future tool that caches something on self would silently leak state
+    between concurrent requests from different users. Instantiating fresh
+    inside the handler costs one cheap object construction per call and
+    removes the shared-state risk entirely.
+    """
     params_model = TargetUserParams if needs_target else NoParams
 
     @capability(
@@ -60,6 +70,7 @@ def _make_tool_capability(tool_cls, name: str, summary: str, needs_target: bool)
         audited=False,  # read-only diagnostics; the aggregate investigation.run call is audited instead
     )
     async def handler(ctx: CallContext, params) -> FindingResult:
+        tool = tool_cls()
         target_user_id = params.target_user_id if needs_target else None
         finding = await tool.run(ctx.db, InvestigationContext(target_user_id=target_user_id))
         return FindingResult(tool_key=finding.tool_key, finding_text=finding.finding_text, confidence=finding.confidence)
@@ -88,9 +99,6 @@ class RecentAnnouncementsParams(BaseModel):
     question: str = Field(description="Keyword to search recent knowledge base entries for")
 
 
-_recent_announcements_tool = RecentAnnouncementsTool()
-
-
 @capability(
     name="investigation.recent_announcements",
     summary="Search the knowledge base for content relevant to a question.",
@@ -101,7 +109,10 @@ _recent_announcements_tool = RecentAnnouncementsTool()
     reversible=True,
     audited=False)
 async def recent_announcements(ctx: CallContext, params: RecentAnnouncementsParams) -> FindingResult:
-    finding = await _recent_announcements_tool.run(ctx.db, InvestigationContext(target_user_id=None, question=params.question))
+    # Instantiated per-call (see _make_tool_capability docstring above for why) —
+    # was previously a module-level singleton captured in this function's closure.
+    tool = RecentAnnouncementsTool()
+    finding = await tool.run(ctx.db, InvestigationContext(target_user_id=None, question=params.question))
     return FindingResult(tool_key=finding.tool_key, finding_text=finding.finding_text, confidence=finding.confidence)
 
 

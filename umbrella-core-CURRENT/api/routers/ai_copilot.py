@@ -63,9 +63,15 @@ async def copilot_chat(
     with provider/model metadata and measured latency.
     Fails with 503 if no AI provider is available — never fakes a response.
     """
-    prompt = body.message
+    # Bug fix (AUDIT-VERIFICATION-2026-08-29 #8 — prompt injection): body.message
+    # and body.context are untrusted user input. Delimiting them clearly reduces
+    # the chance the model treats injected text as new instructions. Copilot has
+    # no direct write path of its own — any capability it invokes (investigation.run,
+    # knowledge.*) still goes through action_guard's hard, code-level restrictions —
+    # but this is cheap defense in depth on the most user-facing AI surface.
+    prompt = f"<user_question>\n{body.message}\n</user_question>"
     if body.context:
-        prompt = f"Context: {body.context}\n\nQuestion: {body.message}"
+        prompt = f"<context>\n{body.context}\n</context>\n\n{prompt}"
 
     t0 = time.monotonic()
     try:
