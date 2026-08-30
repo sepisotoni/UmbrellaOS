@@ -117,9 +117,29 @@ class RoleChecker:
 async def require_owner(
     auth: User | str | ApiKey = Depends(require_capability_auth),
     db: AsyncSession = Depends(get_db),
-) -> User | str | ApiKey:
-    """Only the owner role (or admin key) may access settings."""
-    if isinstance(auth, (str, ApiKey)):
+) -> User | str:
+    """
+    Only the owner role or the raw admin-key bootstrap tier may access
+    settings — deliberately NOT any scoped API key, regardless of what
+    permissions it carries.
+
+    BUG FIXED 2026-08-30: this previously did `isinstance(auth, (str, ApiKey))`
+    and let both branches through unconditionally. `str` here is only ever
+    the literal admin-key sentinel returned by require_admin_key_or_session
+    (see api/middleware/session.py), so that half was correct — but treating
+    `ApiKey` the same way meant ANY valid scoped API key, including one
+    created with a single unrelated permission (or even an empty permission
+    list), could create/update arbitrary application settings via
+    POST/PATCH /settings/{key}. services/api_key_service.py's own docstring
+    is explicit that "An API key is deliberately NOT a second admin-key
+    bootstrap tier" — this check silently made it exactly that. API keys
+    have no concept of "owner" (they carry a flat permission list, not a
+    role), so there is no permission an API key could ever hold that would
+    legitimately satisfy this check; they are unconditionally denied.
+    """
+    if isinstance(auth, ApiKey):
+        raise HTTPException(status_code=403, detail="Owner access required — API keys cannot access owner-only endpoints")
+    if isinstance(auth, str):
         return auth
     if not auth.role_id:
         raise HTTPException(status_code=403, detail="Owner access required")

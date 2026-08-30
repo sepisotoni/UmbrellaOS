@@ -374,3 +374,110 @@ async def test_verification_count_requires_permission(client):
     resp = await client.get("/api/v1/verification/count", headers=ADMIN_HEADERS)
     assert resp.status_code in (200, 404)  # 404 if no data, not 401/403
 
+
+# ---------------------------------------------------------------------------
+# 9. require_owner must reject ANY ApiKey, regardless of its permission list
+#    (CRITICAL fix, 2026-08-30 — see api/dependencies/permissions.py)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_owner_endpoint_rejects_scoped_api_key(client, db_session):
+    """
+    POST /settings/{key} is require_owner-gated. A scoped API key — even
+    one carrying an unrelated permission — must NEVER be able to write
+    settings. This is the exact bug found during subsystem self-testing:
+    require_owner previously treated ApiKey the same as the raw admin-key
+    bootstrap string and let it through unconditionally.
+    """
+    from models.api_key import ApiKey
+    from services.api_key_service import _hash_key
+
+    async with db_session() as db:
+        plaintext = "umbr_test_owner_bypass_attempt_key"
+        key = ApiKey(
+            name="test-scoped-key",
+            key_hash=_hash_key(plaintext),
+            key_prefix=plaintext[:12],
+            permissions=["some.unrelated.permission"],
+        )
+        db.add(key)
+        await db.commit()
+
+    resp = await client.post(
+        "/api/v1/settings/some_test_setting",
+        json={"value": "attacker-controlled-value"},
+        headers={"X-Api-Key": plaintext},
+    )
+    assert resp.status_code == 403, "Scoped API key must never pass require_owner"
+
+
+@pytest.mark.asyncio
+async def test_owner_endpoint_rejects_api_key_with_no_permissions(client, db_session):
+    """Same as above, but with an API key carrying zero permissions at all."""
+    from models.api_key import ApiKey
+    from services.api_key_service import _hash_key
+
+    async with db_session() as db:
+        plaintext = "umbr_test_empty_perms_key"
+        key = ApiKey(
+            name="test-empty-perms-key",
+            key_hash=_hash_key(plaintext),
+            key_prefix=plaintext[:12],
+            permissions=[],
+        )
+        db.add(key)
+        await db.commit()
+
+    resp = await client.post(
+        "/api/v1/settings/some_test_setting",
+        json={"value": "attacker-controlled-value"},
+        headers={"X-Api-Key": plaintext},
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_owner_endpoint_accepts_admin_key(client):
+    """The raw admin-key bootstrap tier must still work — this is the one
+    legitimate str-typed bypass require_owner is documented to allow."""
+    resp = await client.post(
+        "/api/v1/settings/some_test_setting_admin_ok",
+        json={"value": "admin-set-value"},
+        headers=ADMIN_HEADERS,
+    )
+    assert resp.status_code in (200, 404)  # 404 if setting key doesn't exist in schema — not 401/403
+
+
+@pytest.mark.asyncio
+async def test_owner_endpoint_accepts_owner_role_user(client, db_session):
+    """A session-authenticated user with the owner role must still pass."""
+    async with db_session() as db:
+        user = await _make_owner(db)
+        token = await _make_session(db, user)
+        await db.commit()
+
+    resp = await client.post(
+        "/api/v1/settings/some_test_setting_owner_ok",
+        json={"value": "owner-set-value"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code in (200, 404)
+
+
+@pytest.mark.asyncio
+async def test_owner_endpoint_rejects_non_owner_role_user(client, db_session):
+    """A session-authenticated user WITHOUT the owner role must be rejected."""
+    async with db_session() as db:
+        member_role = await db.scalar(select(Role).where(Role.name == "member"))
+        user = User(discord_id="non-owner-test", username="nonowneruser", role_id=member_role.id)
+        db.add(user)
+        await db.flush()
+        token = await _make_session(db, user)
+        await db.commit()
+
+    resp = await client.post(
+        "/api/v1/settings/some_test_setting_denied",
+        json={"value": "should-not-be-set"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 403
