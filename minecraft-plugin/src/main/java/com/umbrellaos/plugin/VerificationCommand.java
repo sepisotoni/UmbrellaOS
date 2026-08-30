@@ -379,6 +379,24 @@ public class VerificationCommand implements CommandExecutor, TabCompleter {
     }
 
     public String getAppealUrl() {
+        // FIX: previously read only from the local plugin config.yml, with a
+        // hardcoded fallback ("https://umbrellaos.net/appeals") that isn't the
+        // real, live appeal portal. Staff had no way to change this without
+        // editing a file on the Minecraft server directly — every other
+        // player-facing link (discord.invite_url) is centrally managed via
+        // core Settings + the dashboard, this one wasn't. Now mirrors
+        // getDiscordInviteUrl(): templateManager holds appeal.url, seeded
+        // with a sane built-in default and kept fresh from core Settings on
+        // its normal 5-minute refresh, so staff can change it in the
+        // dashboard with no plugin reload. Local config.yml is checked only
+        // if templateManager itself is unavailable (should not happen in
+        // normal operation).
+        if (templateManager != null) {
+            String url = templateManager.getTemplate(MessageTemplateManager.KEY_APPEAL_URL);
+            if (url != null && !url.isBlank()) {
+                return url;
+            }
+        }
         if (plugin != null && plugin.getConfig() != null) {
             return plugin.getConfig().getString("appeal.url", "https://umbrellaos.net/appeals");
         }

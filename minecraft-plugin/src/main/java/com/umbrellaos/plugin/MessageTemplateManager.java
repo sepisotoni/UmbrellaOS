@@ -40,6 +40,7 @@ public class MessageTemplateManager {
     public static final String KEY_GREETER_FIRST_JOIN  = "greeter.first_join_message";
     public static final String KEY_GREETER_RETURN_JOIN = "greeter.return_join_message";
     public static final String KEY_DISCORD_INVITE      = "discord.invite_url";
+    public static final String KEY_APPEAL_URL          = "appeal.url";
 
     // Chat responder settings (P16E)
     public static final String KEY_CHAT_RESPONDER_KEYWORDS = "chat_responder.keywords";
@@ -58,6 +59,7 @@ public class MessageTemplateManager {
         d.put(KEY_GREETER_FIRST_JOIN,  "Welcome to the server, $PLAYER! Join our Discord: $DISCORD_INVITE");
         d.put(KEY_GREETER_RETURN_JOIN, "Welcome back, $PLAYER!");
         d.put(KEY_DISCORD_INVITE,      "https://discord.gg/yourserver");
+        d.put(KEY_APPEAL_URL,          "https://umbrella-os-phi.vercel.app/");
         d.put(KEY_CHAT_RESPONDER_KEYWORDS, "[\"how to join\",\"whats the ip\",\"what are the rules\"]");
         d.put(KEY_CHAT_RESPONDER_COOLDOWN, "60");
         d.put(KEY_CHAT_RESPONDER_STYLE,    "friendly and brief, 1-2 sentences max");
@@ -67,7 +69,7 @@ public class MessageTemplateManager {
 
     private static final String[] KEYS = {
         KEY_INGAME_PROMPT, KEY_INGAME_SUCCESS,
-        KEY_GREETER_FIRST_JOIN, KEY_GREETER_RETURN_JOIN, KEY_DISCORD_INVITE,
+        KEY_GREETER_FIRST_JOIN, KEY_GREETER_RETURN_JOIN, KEY_DISCORD_INVITE, KEY_APPEAL_URL,
         KEY_CHAT_RESPONDER_KEYWORDS, KEY_CHAT_RESPONDER_COOLDOWN, KEY_CHAT_RESPONDER_STYLE,
         KEY_MAINTENANCE_KICK,
     };
