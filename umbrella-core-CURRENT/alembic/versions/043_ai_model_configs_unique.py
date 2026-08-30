@@ -36,7 +36,12 @@ def upgrade() -> None:
         # an end-to-end migration run against a real fresh Postgres instance;
         # the original version here was invalid SQL that would fail with
         # "syntax error at or near NOT" (same bug fixed in 042's upgrade()).
-        # A DO block catching duplicate_object is the standard idiom.
+        #
+        # Catches both duplicate_table (42P07) and duplicate_object (42710) —
+        # confirmed directly against real Postgres 16 that ADD CONSTRAINT
+        # UNIQUE raises duplicate_table specifically (via its backing unique
+        # index), not duplicate_object as general "conditional DDL" examples
+        # might suggest. Catching only one left the other uncaught on rerun.
         op.execute(sa.text("""
             DO $$
             BEGIN
@@ -44,6 +49,7 @@ def upgrade() -> None:
                 ADD CONSTRAINT uq_ai_model_configs_provider_model_task
                 UNIQUE (provider, model_name, task_type);
             EXCEPTION
+                WHEN duplicate_table THEN NULL;
                 WHEN duplicate_object THEN NULL;
             END $$;
         """))
