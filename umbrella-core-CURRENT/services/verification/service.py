@@ -88,7 +88,17 @@ async def confirm_verification(
     if not verification_code:
         raise ResourceNotFoundException("Verification code", code)
 
-    if datetime.now(timezone.utc) > verification_code.expires_at:
+    # FIX: expires_at is DateTime(timezone=True) in Postgres, always tz-aware
+    # on read there. SQLite (tests, local dev) drops tzinfo on write, coming
+    # back naive. Normalize before comparing so this doesn't raise
+    # 'can't compare offset-naive and offset-aware datetimes' depending on
+    # which DB backend is in play. Same fix as api/routers/verification.py's
+    # _aware() helper — this module has its own single call site so a local
+    # inline normalize is clearer than importing across the router boundary.
+    expires_at = verification_code.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if datetime.now(timezone.utc) > expires_at:
         raise ValidationException("Verification code has expired.")
 
     if verification_code.used:

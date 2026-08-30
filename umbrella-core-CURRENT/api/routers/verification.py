@@ -22,6 +22,24 @@ from api.dependencies.permissions import require_permission
 router = APIRouter(prefix="/api/v1/verification", tags=["verification"])
 
 
+def _aware(dt: datetime) -> datetime:
+    """Return *dt* as tz-aware UTC.
+
+    FIX: VerificationCode.expires_at is stored as DateTime(timezone=True),
+    which Postgres always returns as tz-aware. SQLite (used in tests, and by
+    anyone running core against sqlite for dev) does not persist tzinfo, so
+    a value written as aware comes back naive on read. Comparing that naive
+    value against datetime.now(timezone.utc) raised
+    'TypeError: can't compare offset-naive and offset-aware datetimes'.
+    Every Python-level comparison against expires_at goes through here so
+    it does not matter which backend actually returned the row.
+    """
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+
 class VerificationRequestRequest(BaseModel):
     player_uuid: str
     player_username: str
@@ -207,7 +225,7 @@ async def confirm_verification(
         raise HTTPException(status_code=404, detail="Code not found")
     
     # Check if expired
-    if datetime.now(timezone.utc) > verification_code.expires_at:
+    if datetime.now(timezone.utc) > _aware(verification_code.expires_at):
         raise HTTPException(status_code=400, detail="Code expired")
     
     # Check if already used
@@ -595,12 +613,16 @@ async def list_verification_links(
         # placeholder discord_id values (starting with "pending_mc:") indicate
         # plugin-path links. Use the discord_id prefix as the heuristic so at
         # least manual vs bot links are distinguishable in the dashboard.
+        # FIX: dropped the dead `elif ... body.discord_id if False else ""`
+        # branch — `body` is not a parameter of this function, so removing
+        # the `if False` guard (an easy accidental edit) would have raised
+        # NameError on every request. The branch was unreachable in the
+        # first place (an always-false ternary short-circuits `body.discord_id`
+        # so it never actually ran), so removing it changes no behaviour.
         if acct.discord_id and (
             acct.discord_id.startswith("pending_mc:") or acct.discord_id.startswith("pmc:")
         ):
             verified_by = "PLUGIN"
-        elif acct.discord_id and acct.discord_id.startswith(body.discord_id if False else ""):
-            verified_by = "BOT_CODE"
         else:
             # Default: assume bot-code flow (the normal path)
             verified_by = "BOT_CODE"
@@ -724,7 +746,7 @@ async def plugin_verify_code(
                 success=False,
                 message="That code has already been used. Generate a new one in Discord.",
             )
-        if stale and stale.expires_at <= now:
+        if stale and _aware(stale.expires_at) <= now:
             return PluginVerifyCodeResponse(
                 success=False,
                 message="That code has expired. Generate a new one in Discord.",
