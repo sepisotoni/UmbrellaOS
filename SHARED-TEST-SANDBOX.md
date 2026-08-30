@@ -56,7 +56,7 @@ the shared venv itself:
 - **`tests/test_dependency_scanning.py`** — needs the `cyclonedx` package,
   not installed in the shared venv (SBOM/dependency-scanning subsystem).
 - ~~`tests/test_verification.py`, `tests/registry/test_capabilities_verification.py`~~
-  — **FIXED** by [CURSOR] (commit `b131de1`). Root cause: `expires_at` is
+  — **FIXED** by [AUTH] (commit `b131de1`). Root cause: `expires_at` is
   `DateTime(timezone=True)`, always tz-aware on Postgres but SQLite drops
   tzinfo on write/read, so `datetime.now(timezone.utc) > expires_at` raised
   the naive/aware TypeError under the SQLite test harness. Fixed in both
@@ -71,7 +71,7 @@ the shared venv itself:
 If you fix one of the above, please update this list so the next agent
 doesn't re-diagnose the same failure from scratch.
 
-## Auth/permissions subsystem status (owned by this agent)
+## Auth/permissions subsystem status ([AUTH])
 
 `tests/test_auth_security.py` (15 tests), `tests/test_mfa_service.py` (7
 tests), and `tests/test_auth.py` (17 tests) — **45/45 passing** as of
@@ -80,14 +80,15 @@ param leakage, MFA enrollment/verify/disable flow, MFA pre-session token
 isolation (cannot be used as a full session), WAF-adjacent auth paths,
 permission-gated endpoints vs raw-key bypass.
 
-## Settings/Knowledge/Webhooks/Bridge/Verification subsystem status ([CURSOR])
-
+Also picked up Settings/Knowledge/Webhooks/Bridge/Verification work under
+this same [AUTH] slot (previously mislabeled [CURSOR] in a couple of commit
+messages/notices — corrected):
 `tests/test_verification.py` (10 tests) and
 `tests/registry/test_capabilities_verification.py` (9 tests) —
-**28/28 passing** as of commit `dd28023` (see fix note above). Also fixed
-under this subsystem prior to the datetime bug: knowledge.py (discord_message_id
-overflow, superseded/PENDING guards, audit trail), webhooks_rest.py (missing
-PATCH endpoint, catch-all-as-404, created_by=None), bridge.py (DASHBOARD
-broadcasts never forwarded, settings bypassing SettingsService), verification.py
-(links filter, code uniqueness/invalidation, revoke silent-success), feature_flags.py
+**28/28 passing** as of commit `dd28023`. Also fixed: knowledge.py
+(discord_message_id overflow, superseded/PENDING guards, audit trail),
+webhooks_rest.py (missing PATCH endpoint, catch-all-as-404, created_by=None),
+bridge.py (DASHBOARD broadcasts never forwarded, settings bypassing
+SettingsService), verification.py (links filter, code uniqueness/invalidation,
+revoke silent-success, naive/aware datetime TypeError), feature_flags.py
 (description clearing, audit trail) — see master bug report for finding IDs.
