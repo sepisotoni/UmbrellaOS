@@ -9,7 +9,7 @@ server_id filtering, per-check aggregation, and VL timelines all work cleanly.
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from database.engine import Base
@@ -21,7 +21,15 @@ class AnticheatViolation(Base):
     id: Mapped[str] = mapped_column(
         String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
-    player_uuid: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    # AUDIT-2026-08-29 fix: no FK constraint to players.uuid existed here
+    # despite services/anticheat_service.py always creating the Player row
+    # first (auto-upsert) before writing a violation — the FK was simply
+    # missing, not deliberately omitted for a real reason. ondelete="CASCADE"
+    # matches the pattern used elsewhere in this codebase for player-owned
+    # child rows (e.g. Punishment, Appeal).
+    player_uuid: Mapped[str] = mapped_column(
+        String(36), ForeignKey("players.uuid", ondelete="CASCADE"), nullable=False, index=True
+    )
     player_name: Mapped[str] = mapped_column(String(64), nullable=False)
     # server_id is nullable — old plugin versions do not send it.
     server_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)

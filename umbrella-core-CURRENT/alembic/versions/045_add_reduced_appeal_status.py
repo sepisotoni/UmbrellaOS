@@ -13,14 +13,23 @@ matched the lowercase constraint either — that's fixed in the router
 code (api/routers/appeals.py), not here. This migration only adds the
 missing 'reduced' value.
 
+Originally filed as revision 042_add_reduced_appeal_status, branching off
+041 at the same time as a parallel migration (042_seed_ai_model_configs)
+also branched off 041 under the same number — leaving two heads
+(confirmed via `alembic heads`). Renumbered/rebased to 045 on top of the
+actual chain head (044_widen_knowledge_discord_message_id) to resolve the
+branch; the revision id is intentionally left unchanged from the original
+042 filing so any environment that already applied it under the old name
+is unaffected — only down_revision moves.
+
 Revision ID: 042_add_reduced_appeal_status
-Revises:     041_fix_ipban_player_uuid_and_punishment_nullable
+Revises:     044_widen_knowledge_discord_message_id
 Create Date: 2026-08-29
 """
 from alembic import op
 
 revision = "042_add_reduced_appeal_status"
-down_revision = "041_fix_ipban_player_uuid_and_punishment_nullable"
+down_revision = "044_widen_knowledge_discord_message_id"
 branch_labels = None
 depends_on = None
 

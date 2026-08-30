@@ -788,12 +788,17 @@ export class UmbrellaApiClient {
   // --------------------------------------------------------------------------
   // Players & Profiles
   // --------------------------------------------------------------------------
-  public async getPlayers(params?: { search?: string; username?: string; limit?: number; offset?: number }): Promise<PlayerSummary[]> {
+  public async getPlayers(params?: { search?: string; username?: string; limit?: number; skip?: number }): Promise<PlayerSummary[]> {
     const q = new URLSearchParams();
     const searchTerm = params?.search || params?.username;
     if (searchTerm) q.set('username', searchTerm);
     if (params?.limit) q.set('limit', params.limit.toString());
-    if (params?.offset) q.set('offset', params.offset.toString());
+    // AUDIT-2026-08-29 fix: this sent `offset`, but GET /api/v1/players only
+    // reads a `skip` query param (see api/routers/players.py::list_players) —
+    // every other pagination-aware method in this client (getPunishments,
+    // getAppeals) already uses `skip`; this was the one outlier, silently
+    // dropping any offset the caller passed.
+    if (params?.skip) q.set('skip', params.skip.toString());
     const queryStr = q.toString() ? `?${q.toString()}` : '';
     return this.request<PlayerSummary[]>(`/api/v1/players${queryStr}`);
   }

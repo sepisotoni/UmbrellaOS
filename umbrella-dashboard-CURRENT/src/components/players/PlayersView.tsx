@@ -12,11 +12,15 @@ import {
   ShieldAlert,
   Clock,
   Ban,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 
 interface PlayersViewProps {
   onOpenBanModal?: (playerUuid: string) => void;
 }
+
+const PAGE_SIZE = 25;
 
 export const PlayersView: React.FC<PlayersViewProps> = ({ onOpenBanModal }) => {
   const { selectedPlayerUuid, setSelectedPlayerUuid } = useDashboard();
@@ -24,13 +28,24 @@ export const PlayersView: React.FC<PlayersViewProps> = ({ onOpenBanModal }) => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  // AUDIT-2026-08-29 fix: this view had no pagination at all — it always
+  // fetched a hardcoded limit of 100 with no way to see anyone past that.
+  // page is 0-indexed; hasNextPage is inferred from a full page coming
+  // back (no total count in PlayerSummary[] to rely on instead).
+  const [page, setPage] = useState<number>(0);
+  const [hasNextPage, setHasNextPage] = useState<boolean>(false);
 
-  const fetchPlayers = async (search?: string) => {
+  const fetchPlayers = async (search?: string, pageNum: number = 0) => {
     setIsLoading(true);
     setError(null);
     try {
-      const data = await api.getPlayers({ username: search || undefined, limit: 100 });
+      const data = await api.getPlayers({
+        username: search || undefined,
+        limit: PAGE_SIZE,
+        skip: pageNum * PAGE_SIZE,
+      });
       setPlayers(data || []);
+      setHasNextPage((data || []).length === PAGE_SIZE);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch player directory');
     } finally {
@@ -39,12 +54,13 @@ export const PlayersView: React.FC<PlayersViewProps> = ({ onOpenBanModal }) => {
   };
 
   useEffect(() => {
-    fetchPlayers(searchQuery);
-  }, []);
+    fetchPlayers(searchQuery, page);
+  }, [page]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    fetchPlayers(searchQuery);
+    setPage(0);
+    fetchPlayers(searchQuery, 0);
   };
 
   if (selectedPlayerUuid) {

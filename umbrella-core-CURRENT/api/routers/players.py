@@ -416,6 +416,15 @@ async def player_snapshot(
     from models.player import IPAddress
     import uuid as uuid_lib
 
+    # AUDIT-2026-08-29 fix: uuid was used to create/update Player rows with
+    # no format check at all (Player.uuid is a plain String(36), not a native
+    # UUID column) — a malformed value from a buggy plugin build would be
+    # silently persisted as a player record instead of being rejected.
+    try:
+        uuid_lib.UUID(uuid)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"'{uuid}' is not a valid UUID")
+
     now = datetime.now(timezone.utc)
     event = body.event or body.action or "snapshot"
 
