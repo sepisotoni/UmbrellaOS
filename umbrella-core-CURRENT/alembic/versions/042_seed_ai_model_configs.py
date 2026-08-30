@@ -98,11 +98,23 @@ def upgrade() -> None:
     # same constraint under the same name for DBs that ran 042 before this
     # fix was applied (idempotent via CREATE … IF NOT EXISTS pattern).
     if is_postgres:
-        op.execute(sa.text(
-            "ALTER TABLE ai_model_configs "
-            "ADD CONSTRAINT IF NOT EXISTS uq_ai_model_configs_provider_model_task "
-            "UNIQUE (provider, model_name, task_type)"
-        ))
+        # PostgreSQL has no `ADD CONSTRAINT IF NOT EXISTS` syntax (unlike
+        # ADD COLUMN, CREATE INDEX, or CREATE TABLE, which all support it) —
+        # this was caught by an end-to-end migration run against a real
+        # fresh Postgres instance and originally shipped as invalid SQL that
+        # would have failed with "syntax error at or near NOT" on first use.
+        # A DO block catching duplicate_object is the standard idiom for a
+        # conditional ADD CONSTRAINT in Postgres.
+        op.execute(sa.text("""
+            DO $$
+            BEGIN
+                ALTER TABLE ai_model_configs
+                ADD CONSTRAINT uq_ai_model_configs_provider_model_task
+                UNIQUE (provider, model_name, task_type);
+            EXCEPTION
+                WHEN duplicate_object THEN NULL;
+            END $$;
+        """))
     # SQLite has no ALTER TABLE ADD CONSTRAINT, but also has no ON CONFLICT
     # index_elements requirement — it falls back to the per-row path below.
 

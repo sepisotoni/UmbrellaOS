@@ -32,12 +32,21 @@ depends_on = None
 def upgrade() -> None:
     bind = op.get_bind()
     if bind.dialect.name == "postgresql":
-        # IF NOT EXISTS: safe whether 042 already created this or not.
-        op.execute(sa.text(
-            "ALTER TABLE ai_model_configs "
-            "ADD CONSTRAINT IF NOT EXISTS uq_ai_model_configs_provider_model_task "
-            "UNIQUE (provider, model_name, task_type)"
-        ))
+        # PostgreSQL has no `ADD CONSTRAINT IF NOT EXISTS` syntax — caught by
+        # an end-to-end migration run against a real fresh Postgres instance;
+        # the original version here was invalid SQL that would fail with
+        # "syntax error at or near NOT" (same bug fixed in 042's upgrade()).
+        # A DO block catching duplicate_object is the standard idiom.
+        op.execute(sa.text("""
+            DO $$
+            BEGIN
+                ALTER TABLE ai_model_configs
+                ADD CONSTRAINT uq_ai_model_configs_provider_model_task
+                UNIQUE (provider, model_name, task_type);
+            EXCEPTION
+                WHEN duplicate_object THEN NULL;
+            END $$;
+        """))
     # SQLite does not support ADD CONSTRAINT and has no need for it
     # (the SQLite path in 042 uses per-row existence checks, not ON CONFLICT).
 
