@@ -44,3 +44,4 @@ other-services/
 */.env
 **/.env
 umbrella-core-CURRENT/.venv/
+.shared-test-venv/
