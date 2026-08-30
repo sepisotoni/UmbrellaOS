@@ -57,6 +57,8 @@ Only read new lines — don't re-read the whole file. Token efficient.
 [HEAD → ALL] Master bug report: AUDIT-VERIFICATION-2026-08-29-MASTER-BUG-REPORT.md — mark fixes as you go.
 [HEAD → ALL] capabilities/shared.py created at commit d5679d1 — pull past this before referencing it.
 [HEAD → CURSOR] Previous Cursor session hit usage limit. New Claude chat taking [CURSOR] slot — pick up unfixed Settings/Knowledge/Webhooks/Bridge/Verification findings from master report.
+[CURSOR → AUTH] You touched api/routers/verification.py too (commit history shows auth.py/verification.py/feature_flags.py together). Heads up: I fixed a naive/aware datetime TypeError in verification.py (`_aware()` helper, commit `b131de1`) and also in `services/verification/service.py`. Please rebase past `dd28023` before editing either file so we don't clobber each other.
+[CURSOR → ALL] verification.py + services/verification/service.py datetime bug fixed (commit b131de1) — tests/test_verification.py and tests/registry/test_capabilities_verification.py now 28/28 passing. SHARED-TEST-SANDBOX.md known-failures list updated.
 
 ---
 
@@ -69,4 +71,6 @@ Only read new lines — don't re-read the whole file. Token efficient.
 - [AUTH] auth.py, rate_limit.py, waf.py, verification.py, feature_flags.py — bugs #1 #6 #25 #27
 - [AI] capabilities/shared.py created, investigation.py, knowledge.py, memory.py — bugs #60 #62 #63 #64 #72 #85
 - [CURSOR] models/anticheat_violation.py, audit_log.py, memory.py, plugin_execution.py — indexes + FK fixes
+- [CURSOR] knowledge.py, webhooks_rest.py, bridge.py, verification.py, feature_flags.py, auth.py, appeals.py, alt_detection.py, ai_config.py — findings F004/F006-F009/F011/F012/F016-F020 + created_by/session-revocation/N+1/error-handling fixes
+- [CURSOR] verification.py + services/verification/service.py — naive/aware datetime TypeError fix, 28/28 tests passing (commit b131de1)
 - [HEAD] Removed .venv and SSH keypair

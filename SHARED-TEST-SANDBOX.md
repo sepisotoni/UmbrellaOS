@@ -55,13 +55,15 @@ the shared venv itself:
 
 - **`tests/test_dependency_scanning.py`** — needs the `cyclonedx` package,
   not installed in the shared venv (SBOM/dependency-scanning subsystem).
-- **`tests/test_verification.py`**,
-  **`tests/registry/test_capabilities_verification.py`** —
-  `TypeError: can't compare offset-naive and offset-aware datetimes` around
-  `verification_code.expires_at` comparisons in
-  `api/routers/verification.py`. This is the account-linking/verification
-  subsystem (owned by a different agent than auth/permissions) — flagged,
-  not fixed, by the auth audit.
+- ~~`tests/test_verification.py`, `tests/registry/test_capabilities_verification.py`~~
+  — **FIXED** by [CURSOR] (commit `b131de1`). Root cause: `expires_at` is
+  `DateTime(timezone=True)`, always tz-aware on Postgres but SQLite drops
+  tzinfo on write/read, so `datetime.now(timezone.utc) > expires_at` raised
+  the naive/aware TypeError under the SQLite test harness. Fixed in both
+  `api/routers/verification.py` (added `_aware()` helper, 2 call sites) and
+  `services/verification/service.py` (inline normalize, 1 call site — the
+  Capability Registry path hits this file, not the router, so both needed
+  the same fix). 28/28 tests passing as of `dd28023`.
 - **`tests/test_ai_config.py`**, **`tests/test_appeals.py`**,
   **`tests/test_moderation_intelligence.py`**, **`tests/test_provider_factory.py`**
   — AI/appeals/moderation subsystems, not investigated by the auth agent.
@@ -77,3 +79,15 @@ commit `ed465b5`. Covers: timing-safe key comparison, session token query-
 param leakage, MFA enrollment/verify/disable flow, MFA pre-session token
 isolation (cannot be used as a full session), WAF-adjacent auth paths,
 permission-gated endpoints vs raw-key bypass.
+
+## Settings/Knowledge/Webhooks/Bridge/Verification subsystem status ([CURSOR])
+
+`tests/test_verification.py` (10 tests) and
+`tests/registry/test_capabilities_verification.py` (9 tests) —
+**28/28 passing** as of commit `dd28023` (see fix note above). Also fixed
+under this subsystem prior to the datetime bug: knowledge.py (discord_message_id
+overflow, superseded/PENDING guards, audit trail), webhooks_rest.py (missing
+PATCH endpoint, catch-all-as-404, created_by=None), bridge.py (DASHBOARD
+broadcasts never forwarded, settings bypassing SettingsService), verification.py
+(links filter, code uniqueness/invalidation, revoke silent-success), feature_flags.py
+(description clearing, audit trail) — see master bug report for finding IDs.
