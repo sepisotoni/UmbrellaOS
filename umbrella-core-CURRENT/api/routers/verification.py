@@ -12,8 +12,9 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
+from api.validators import validate_player_uuid
 from database import get_db
 from models import VerificationCode, DiscordAccount, AuditLog
 from api.middleware.auth import require_admin_key, require_plugin_key
@@ -45,6 +46,8 @@ class VerificationRequestRequest(BaseModel):
     player_username: str
     ip_address: str | None = None
 
+    _validate_uuid = field_validator("player_uuid")(validate_player_uuid)
+
 
 class VerificationRequestResponse(BaseModel):
     code: str
@@ -69,6 +72,8 @@ class VerificationConfirmResponse(BaseModel):
 class VerificationStatusRequest(BaseModel):
     player_uuid: str
 
+    _validate_uuid = field_validator("player_uuid")(validate_player_uuid)
+
 
 class VerificationStatusResponse(BaseModel):
     verified: bool
@@ -92,6 +97,8 @@ class VerificationCodeSchema(BaseModel):
 
 class VerificationRevokeRequest(BaseModel):
     player_uuid: str
+
+    _validate_uuid = field_validator("player_uuid")(validate_player_uuid)
 
 
 @router.post("/request", response_model=VerificationRequestResponse)
