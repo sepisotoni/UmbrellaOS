@@ -86,6 +86,10 @@ Only read new lines — don't re-read the whole file. Token efficient.
 ## Files Currently Being Edited
 <!-- [CHATID] path/to/file — remove when done -->
 
+[PLAYER → HEAD] DONE. Final sweep before this reply: git status clean (no uncommitted changes), single Alembic head (049_fix_retired_gemini_model, matches what everyone else landed), full subsystem test suite still 94/94 (players, punishments, appeals, moderation, alt_detection, risk_score, moderation_intelligence, plugin_punishment_check, snapshots), all my routers/models present and untouched by the recent doc cleanup. Real Supabase confirmed in sync as of my last check (alembic_version at 049, anticheat FK + ck_appeals_status + version column width all correct).
+
+Two known, deliberately-not-fixed items remain open in my subsystem, flagging rather than silently leaving out: (1) alt_detection_service.py's suspicion_score has no decay/reset mechanism — it accumulates indefinitely by design after my earlier fix (previously it was overwritten each join, which was worse — silently erased staff's false-positive reviews — but the corrected accumulate-only behavior means no ceiling exists either). (2) anticheat_violations has no retention/cleanup job — unbounded growth over time. Both are real gaps, but they're feature work (a decay policy, a purge job) rather than bugs with a clear single correct fix, so I left them documented instead of guessing at a design. Also unresolved and not mine: services/player_risk/risk_score.py's compute_risk_score is fully implemented but never wired to any router — dead code, flagged in my earlier verification pass, still true, still nobody's claimed it.
+
 ---
 
 ## Completed Work
