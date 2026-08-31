@@ -72,6 +72,13 @@ class Settings(BaseSettings):
     short_term_memory_ttl_seconds: int = 1800  # 30 min - ported default from Moo's config
     server_metric_sample_interval_seconds: int = 60
     server_metric_retention_hours: int = 168  # 7 days
+    # AUDIT-2026-08-30: anticheat_violations previously had no retention
+    # policy at all — unbounded growth over time (flagged in
+    # AUDIT-VERIFICATION-2026-08-29-MASTER-BUG-REPORT.md). 90 days is long
+    # enough to review historical griefer/cheater patterns per player,
+    # short enough not to grow forever. See
+    # services/anticheat_service.py::purge_old_violations.
+    anticheat_violation_retention_days: int = 90
     # Predictive crash prevention thresholds (services/operational_intelligence/crash_prevention.py)
     crash_prevention_lookback_minutes: int = 15
     crash_prevention_min_samples: int = 3

@@ -15,6 +15,7 @@ from . import identity  # noqa: F401
 from . import automation  # noqa: F401
 from . import moderation_intelligence  # noqa: F401
 from . import investigation  # noqa: F401
+from . import anticheat_maintenance  # noqa: F401
 from . import knowledge  # noqa: F401
 from . import archive_search  # noqa: F401
 from . import memory  # noqa: F401
@@ -31,7 +32,7 @@ from . import feature_flags  # noqa: F401
 
 __all__ = [
     "system", "hosting", "identity", "automation", "moderation_intelligence",
-    "investigation", "knowledge", "archive_search", "memory", "operational_intelligence",
+    "investigation", "anticheat_maintenance", "knowledge", "archive_search", "memory", "operational_intelligence",
     "player_risk", "verification", "webhooks", "marketplace", "observability",
     "dashboard_layout", "dev_auth", "plugin_sandbox", "feature_flags",
 ]

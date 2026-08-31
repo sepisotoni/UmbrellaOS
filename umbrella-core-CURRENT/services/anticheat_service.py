@@ -4,8 +4,9 @@ import os
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
+from config import get_settings
 from models import AITask, Player, Punishment, ReplaySession
 from models.anticheat_violation import AnticheatViolation
 from services.settings_service import SettingsService
@@ -197,3 +198,25 @@ async def handle_cheat_flag(
         "violation_id": violation.id,
         "notify_staff": True,      # always notify — plugin decides channel/method
     }
+
+
+async def purge_old_violations(db: AsyncSession) -> int:
+    """
+    Sweeps anticheat_violations older than
+    settings.anticheat_violation_retention_days. Mirrors
+    services/operational_intelligence/metrics.py::purge_old_snapshots —
+    same reasoning: an unbounded, ever-growing security/audit log for
+    every GrimAC flag ever forwarded by the plugin would otherwise
+    accumulate forever with no cap. Intended to be called periodically
+    via a Schedule pointing at the
+    anticheat.violations.purge_old capability
+    (capabilities/anticheat_maintenance.py), the same
+    scheduler-driven pattern as everything else in this codebase that
+    needs a recurring maintenance task — no bespoke background loop.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(
+        days=get_settings().anticheat_violation_retention_days
+    )
+    stmt = delete(AnticheatViolation).where(AnticheatViolation.timestamp < cutoff)
+    result = await db.execute(stmt)
+    return result.rowcount
