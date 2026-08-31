@@ -45,8 +45,9 @@ own behalf.
 """
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
+from api.validators import validate_player_uuid
 from registry.context import CallContext
 from registry.decorator import capability
 from services.verification.service import confirm_verification, get_link_by_discord, get_verification_status
@@ -92,6 +93,11 @@ async def confirm(ctx: CallContext, params: ConfirmVerificationParams) -> Confir
 
 class VerificationStatusParams(BaseModel):
     player_uuid: str = Field(description="The Minecraft player's UUID")
+
+    # FIX (master bug report #17): same validation as
+    # api/routers/verification.py's request models — see
+    # api/validators.py::validate_player_uuid for the full rationale.
+    _validate_uuid = field_validator("player_uuid")(validate_player_uuid)
 
 
 class VerificationStatusResult(BaseModel):
