@@ -136,7 +136,15 @@ async def call_tool(
     try:
         params = spec.params_model.model_validate(raw_params)
     except ValidationError as exc:
-        raise ValidationException(f"Invalid parameters for capability '{name}'", details=exc.errors()) from exc
+        # FIX: see registry/registry.py's identical fix for the full
+        # rationale — exc.errors() defaults to embedding the raw exception
+        # object in ctx["error"] for ValueError-raising custom validators,
+        # which isn't JSON-serializable and would crash the error handler
+        # (500) instead of returning the intended 422.
+        raise ValidationException(
+            f"Invalid parameters for capability '{name}'",
+            details=exc.errors(include_context=False),
+        ) from exc
 
     try:
         require_autonomous_allowed(name, params.model_dump(mode="json"), autonomous_mode)

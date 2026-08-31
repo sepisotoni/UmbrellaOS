@@ -152,9 +152,21 @@ class CapabilityRegistry:
             try:
                 params = spec.params_model.model_validate(raw_params)
             except ValidationError as exc:
+                # FIX: exc.errors() defaults to including the raw exception
+                # object in each error's ctx["error"] when a custom
+                # field_validator raises a plain ValueError/AssertionError.
+                # That raw exception isn't JSON-serializable, so any capability
+                # with such a validator (api/validators.py::validate_player_uuid
+                # is the first, but not necessarily the last) would crash
+                # api/middleware/errors.py's handler with
+                # "PydanticSerializationError: Unable to serialize unknown
+                # type" instead of returning the intended 422 — turning a
+                # normal validation failure into a 500. include_context=False
+                # drops the ctx key entirely; the human-readable msg is
+                # already in each error dict without it.
                 raise ValidationException(
                     f"Invalid parameters for capability '{name}'",
-                    details=exc.errors(),
+                    details=exc.errors(include_context=False),
                 ) from exc
 
         # 3. Invoke. This is the only line in the entire codebase that should
