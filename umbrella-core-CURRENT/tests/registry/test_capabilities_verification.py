@@ -132,7 +132,7 @@ async def test_confirm_conflicting_discord_account_returns_409(client, db_sessio
 
 @pytest.mark.asyncio
 async def test_status_reflects_confirmed_link(client, db_session):
-    code = await _create_code(db_session, player_uuid="uuid-7", player_username="Fae")
+    code = await _create_code(db_session, player_uuid="77777777-7777-7777-7777-777777777777", player_username="Fae")
     await client.post(
         "/api/v1/capabilities/verification.confirm/invoke",
         json={"discord_id": "777", "discord_username": "fae", "code": code},
@@ -140,7 +140,7 @@ async def test_status_reflects_confirmed_link(client, db_session):
     )
     response = await client.post(
         "/api/v1/capabilities/verification.status/invoke",
-        json={"player_uuid": "uuid-7"},
+        json={"player_uuid": "77777777-7777-7777-7777-777777777777"},
         headers=ADMIN_HEADERS,
     )
     assert response.status_code == 200
@@ -153,7 +153,12 @@ async def test_status_reflects_confirmed_link(client, db_session):
 async def test_status_for_unverified_player(client):
     response = await client.post(
         "/api/v1/capabilities/verification.status/invoke",
-        json={"player_uuid": "never-verified"},
+        # FIX (finding #17 fallout): "never-verified" isn't a valid UUID —
+        # this test predates api/validators.py's format check, which now
+        # correctly rejects it with a 422. Swapped for a syntactically
+        # valid UUID that simply has no matching row, which is what this
+        # test actually means to exercise.
+        json={"player_uuid": "00000000-0000-0000-0000-000000000000"},
         headers=ADMIN_HEADERS,
     )
     assert response.status_code == 200
@@ -178,7 +183,12 @@ async def test_status_allowed_for_helper(client, db_session):
     headers = await session_headers_for_role(db_session, "helper")
     response = await client.post(
         "/api/v1/capabilities/verification.status/invoke",
-        json={"player_uuid": "whatever"},
+        # FIX (finding #17 fallout): "whatever" isn't a valid UUID — see
+        # test_status_for_unverified_player's comment above for the same
+        # reasoning. This test only cares about the permission gate (200
+        # for helper), not any particular player, so any valid-format UUID
+        # works.
+        json={"player_uuid": "11111111-1111-1111-1111-111111111111"},
         headers=headers,
     )
     assert response.status_code == 200
