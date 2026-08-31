@@ -46,6 +46,17 @@ class User(Base):
     mfa_secret: Mapped[str | None] = mapped_column(String(64), nullable=True)
     mfa_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
 
+    # Master bug report finding #5: no MFA recovery path existed at all — a
+    # user who lost their authenticator app (phone reset, app deleted, etc.)
+    # had no way back into their account short of a staff member with
+    # database access manually clearing mfa_enabled/mfa_secret. Stores a JSON
+    # array of SHA-256 hashes (never plaintext — same convention as
+    # ApiKey.key_hash in models/api_key.py), one per unused recovery code.
+    # Generated once at MFA confirm time (10 codes), shown to the user
+    # exactly once, consumed (removed from this list) one at a time on use.
+    # NULL when MFA has never been enabled or has been disabled.
+    mfa_recovery_codes_hash: Mapped[str | None] = mapped_column(JSON, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
