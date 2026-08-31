@@ -15,7 +15,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
 from api.dependencies.permissions import require_permission
-from api.middleware.auth import require_admin_hmac_or_session
+from api.middleware.api_key_auth import require_capability_auth
+from models import User
+from models.api_key import ApiKey
+from registry.context import CallContext
 from services.ai.orchestrator import Orchestrator
 from services.ai.provider_factory import ProviderFactory
 from services.ai.base import ProviderError
@@ -23,6 +26,7 @@ from services.operational_intelligence.crash_prevention import (
     assess_crash_risk,
     CrashRiskLevel,
 )
+from services.operational_intelligence.server_registry import list_known_server_ids
 
 router = APIRouter(prefix="/api/v1/ai", tags=["ai-copilot"])
 
@@ -40,6 +44,12 @@ COPILOT_SYSTEM_PROMPT = (
 class CopilotRequest(BaseModel):
     message: str
     context: Optional[str] = None
+    # [HEAD gap #2 — fleet awareness, 2026-08-31] Optional: which server(s)
+    # the question is about. None means "network-wide" — the copilot gets a
+    # list of every server it's allowed to see rather than being scoped to
+    # whatever single server_id happened to be in the dashboard's local
+    # state when the request was made.
+    server_ids: Optional[list[str]] = None
 
 
 class CopilotResponse(BaseModel):
@@ -52,24 +62,82 @@ class CopilotResponse(BaseModel):
 async def copilot_chat(
     body: CopilotRequest,
     db: AsyncSession = Depends(get_db),
-    # Accept PBKDF2 MAC (bot), raw admin key, or dashboard session token.
-    # require_permission() only accepts admin key or session — bot calls
-    # would 401. require_admin_hmac_or_session covers all three callers.
-    _auth=Depends(require_admin_hmac_or_session),
+    # [HEAD gap #1 — caller identity, 2026-08-31] Was require_admin_hmac_or_session,
+    # which returns a bare string ("hmac" | "plugin" | "session") with no
+    # actual identity, role, or permission set attached — the copilot had no
+    # way to know WHO was asking or scope its behavior to what they can do.
+    # require_capability_auth returns the real User/ApiKey/admin-key-string,
+    # the same identity primitive every capability invocation already uses
+    # (see registry/context.py::CallContext.from_web_auth) — this makes the
+    # copilot's identity handling consistent with the rest of the AI
+    # subsystem instead of being its own special case.
+    auth: User | str | ApiKey = Depends(require_capability_auth),
 ) -> CopilotResponse:
     """Route a copilot prompt through the real AI orchestrator.
 
     Replaces the dashboard's local simulation. Returns the model's response
     with provider/model metadata and measured latency.
     Fails with 503 if no AI provider is available — never fakes a response.
+
+    Caller identity and permissions are resolved into a CallContext (the
+    same identity primitive every capability invocation uses) and passed to
+    the model so it knows who it's talking to and what they're allowed to
+    do — see [HEAD → AI, 2026-08-31]'s 3-gap finding this addresses.
     """
+    ctx = await CallContext.from_web_auth(auth, db, source="ai")
+
+    # [HEAD gap #3 — permission scoping, 2026-08-31] The copilot itself is
+    # read/advice-only — it has no direct write path (see the prompt-injection
+    # fix's comment below), so it doesn't need a permission gate to be
+    # INVOKED. What it needs is for the MODEL to know the caller's actual
+    # scope, so it doesn't advise or imply actions the caller isn't
+    # authorized to take (e.g. telling a moderator "just ban them" when
+    # only players.punish permission-holders can). Any actual capability
+    # the model's advice leads a human to invoke afterward is separately,
+    # independently gated by that capability's own required_permission via
+    # action_guard — this is advisory context for the model's phrasing, not
+    # the security boundary itself.
+    permission_summary = (
+        "full access (admin key / superuser)" if ctx.is_superuser
+        else (", ".join(sorted(ctx.permissions)) if ctx.permissions else "no granted permissions")
+    )
+
+    # [HEAD gap #2 — fleet awareness, 2026-08-31] Previously only knew
+    # whatever server_id string happened to be in the dashboard's local
+    # component state and passed as free-text `context` — the copilot had
+    # no way to answer "which of my servers..." questions or know a second
+    # server existed. list_known_server_ids() is the same registry
+    # assess_crash_risk() below already validates server_id against.
+    known_servers = await list_known_server_ids(db)
+    if body.server_ids:
+        unknown = [s for s in body.server_ids if s not in known_servers]
+        if unknown:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown server_id(s): {unknown}. Known servers: {known_servers}",
+            )
+        scoped_servers = body.server_ids
+    else:
+        scoped_servers = known_servers
+
+    identity_block = (
+        f"<caller>\n"
+        f"actor_id: {ctx.actor_id}\n"
+        f"actor_type: {ctx.actor_type}\n"
+        f"permissions: {permission_summary}\n"
+        f"</caller>\n"
+        f"<fleet>\n"
+        f"servers_in_scope: {', '.join(scoped_servers) if scoped_servers else '(none registered)'}\n"
+        f"</fleet>"
+    )
+
     # Bug fix (AUDIT-VERIFICATION-2026-08-29 #8 — prompt injection): body.message
     # and body.context are untrusted user input. Delimiting them clearly reduces
     # the chance the model treats injected text as new instructions. Copilot has
     # no direct write path of its own — any capability it invokes (investigation.run,
     # knowledge.*) still goes through action_guard's hard, code-level restrictions —
     # but this is cheap defense in depth on the most user-facing AI surface.
-    prompt = f"<user_question>\n{body.message}\n</user_question>"
+    prompt = f"{identity_block}\n\n<user_question>\n{body.message}\n</user_question>"
     if body.context:
         prompt = f"<context>\n{body.context}\n</context>\n\n{prompt}"
 
@@ -79,7 +147,7 @@ async def copilot_chat(
             db=db,
             task_type="copilot",
             task_prompt=prompt,
-            requested_by="dashboard_copilot",
+            requested_by=ctx.actor_id,
             require_dual_review=False,  # copilot is low-stakes; skip dual review
         )
     except Exception as exc:
