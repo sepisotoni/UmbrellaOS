@@ -1,5 +1,6 @@
 """Staff management — promote and demote."""
 from typing import Literal
+import uuid as uuid_lib
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -9,7 +10,9 @@ from sqlalchemy.orm import selectinload
 
 from database import get_db
 from api.dependencies.permissions import require_permission
+from api.middleware.auth import require_plugin_key
 from models import User
+from models.discord import DiscordAccount
 from models.permissions import Role
 from services.staff_service import StaffManageError, manage_staff_role, find_or_add_staff, ROLE_LADDER
 
@@ -209,3 +212,106 @@ async def list_staff(
         ))
 
     return staff_members
+
+
+class StaffLookupResponse(BaseModel):
+    is_staff: bool
+    discord_id: str | None = None
+    role: str | None = None
+    permissions: list[str] = []
+
+
+def _looks_like_uuid(s: str) -> bool:
+    """True if s is a canonically-formatted UUID (matches the same strict
+    check as api/validators.py::validate_player_uuid, duplicated here as a
+    plain bool test rather than a Pydantic validator since this needs to
+    pick a lookup strategy, not reject input)."""
+    try:
+        return str(uuid_lib.UUID(s)) == s
+    except (ValueError, AttributeError, TypeError):
+        return False
+
+
+@router.get("/{identifier}", response_model=StaffLookupResponse)
+async def staff_lookup(
+    identifier: str,
+    db: AsyncSession = Depends(get_db),
+    _auth: str = Depends(require_plugin_key),
+) -> StaffLookupResponse:
+    """Look up whether a player is staff, by Discord ID or Minecraft UUID.
+
+    Plugin-extensibility requirement ([HEAD] notice, subsystem sweep): the
+    Minecraft plugin needs to check a connecting/online player's staff
+    status and role so it can grant matching in-game permissions (e.g. a
+    Minecraft permission node per staff role) without staff having to be
+    configured twice — once in the dashboard, once in the server's own
+    permission plugin.
+
+    Placed as the LAST route in this router (after every literal-path route:
+    /manage, /add, /discord-members, and the bare list at "") since a
+    path-param route this general (`/{identifier}`) would otherwise shadow
+    any literal segment registered after it — FastAPI matches routes in
+    registration order.
+
+    Accepts either a Discord snowflake ID or a canonical Minecraft UUID
+    (36-char lowercase hyphenated — same strict format validators.py
+    enforces elsewhere) and resolves whichever was given to the same
+    is_staff/role/permissions shape, so the plugin doesn't need to know or
+    care which identifier type it has on hand.
+
+    Auth: X-Plugin-Key, matching /verify-code and /status's convention —
+    the plugin has no admin-key or staff-session credential, and this
+    endpoint only returns role/permission metadata, not anything sensitive
+    (no email, no discord username, no MC username).
+    """
+    discord_id: str | None = None
+
+    if _looks_like_uuid(identifier):
+        # Resolve UUID -> discord_id via the verified DiscordAccount link.
+        # An unverified or nonexistent link means "not staff" (a UUID with
+        # no verified Discord link can't be a staff member, since staff
+        # accounts always exist as Users keyed by discord_id).
+        discord_account = await db.scalar(
+            select(DiscordAccount).where(
+                DiscordAccount.player_uuid == identifier,
+                DiscordAccount.verified == True,
+            )
+        )
+        if discord_account is not None:
+            discord_id = discord_account.discord_id
+    else:
+        # Treat as a Discord snowflake directly.
+        discord_id = identifier
+
+    if discord_id is None:
+        return StaffLookupResponse(is_staff=False)
+
+    user = await db.scalar(
+        select(User).where(User.discord_id == discord_id, User.is_active == True)
+    )
+    if user is None or user.role_id is None:
+        return StaffLookupResponse(is_staff=False, discord_id=discord_id)
+
+    role = await db.scalar(
+        select(Role).options(selectinload(Role.permissions)).where(Role.id == user.role_id)
+    )
+    role_name = role.name if role else None
+
+    # Same "player role isn't really staff" exclusion list_staff() already
+    # applies, kept consistent so a plugin and the dashboard never disagree
+    # about who counts as staff.
+    if role_name and role_name.lower() == "player":
+        return StaffLookupResponse(is_staff=False, discord_id=discord_id)
+
+    permissions: list[str] = list(user.extra_permissions or [])
+    if role and hasattr(role, "permissions"):
+        permissions = sorted(
+            {p.permission_key for p in role.permissions} | set(user.extra_permissions or [])
+        )
+
+    return StaffLookupResponse(
+        is_staff=True,
+        discord_id=discord_id,
+        role=role_name,
+        permissions=permissions,
+    )

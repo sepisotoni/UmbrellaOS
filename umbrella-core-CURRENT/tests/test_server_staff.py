@@ -6,7 +6,7 @@ from models import User
 from models.permissions import Role
 from models.plugin_heartbeat import PluginHeartbeat
 from services.settings_service import SettingsService
-from tests.conftest import ADMIN_HEADERS
+from tests.conftest import ADMIN_HEADERS, PLUGIN_HEADERS
 
 
 async def _owner_headers(db_session):
@@ -221,3 +221,119 @@ async def test_staff_demote_second_owner_succeeds(client, db_session):
     )
     assert response.status_code == 200
     assert response.json()["new_role"] == "admin"
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/staff/{identifier} — plugin-key staff lookup (HEAD's plugin-
+# extensibility notice: plugin needs to check a player's staff status/role
+# by Discord ID or Minecraft UUID to grant matching in-game permissions).
+# ---------------------------------------------------------------------------
+
+async def test_staff_lookup_by_discord_id_finds_staff(client, db_session):
+    from datetime import datetime, timezone
+    async with db_session() as db:
+        role = await db.scalar(select(Role).where(Role.name == "helper"))
+        user = User(discord_id="lookup-discord-1", username="LookupHelper", role_id=role.id)
+        db.add(user)
+        await db.commit()
+
+    response = await client.get(
+        "/api/v1/staff/lookup-discord-1",
+        headers=PLUGIN_HEADERS,
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["is_staff"] is True
+    assert data["discord_id"] == "lookup-discord-1"
+    assert data["role"] == "helper"
+
+
+async def test_staff_lookup_by_discord_id_not_staff(client, db_session):
+    response = await client.get(
+        "/api/v1/staff/never-registered-discord-id",
+        headers=PLUGIN_HEADERS,
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["is_staff"] is False
+
+
+async def test_staff_lookup_by_minecraft_uuid_finds_staff(client, db_session):
+    from models import Player
+    from models.discord import DiscordAccount
+
+    test_uuid = "aaaaaaaa-1111-2222-3333-444444444444"
+    async with db_session() as db:
+        role = await db.scalar(select(Role).where(Role.name == "moderator"))
+        user = User(discord_id="lookup-discord-2", username="LookupMod", role_id=role.id)
+        db.add(user)
+        db.add(Player(uuid=test_uuid, username="ModPlayer"))
+        db.add(DiscordAccount(
+            discord_id="lookup-discord-2",
+            player_uuid=test_uuid,
+            verified=True,
+        ))
+        await db.commit()
+
+    response = await client.get(
+        f"/api/v1/staff/{test_uuid}",
+        headers=PLUGIN_HEADERS,
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["is_staff"] is True
+    assert data["discord_id"] == "lookup-discord-2"
+    assert data["role"] == "moderator"
+
+
+async def test_staff_lookup_by_unverified_uuid_not_staff(client, db_session):
+    """An unverified DiscordAccount link should not resolve to staff status,
+    even if the underlying discord_id belongs to a real staff member —
+    unverified means the plugin can't trust the UUID<->Discord link yet."""
+    from models import Player
+    from models.discord import DiscordAccount
+
+    test_uuid = "bbbbbbbb-1111-2222-3333-444444444444"
+    async with db_session() as db:
+        role = await db.scalar(select(Role).where(Role.name == "helper"))
+        user = User(discord_id="lookup-discord-3", username="LookupUnverified", role_id=role.id)
+        db.add(user)
+        db.add(Player(uuid=test_uuid, username="UnverifiedPlayer"))
+        db.add(DiscordAccount(
+            discord_id="lookup-discord-3",
+            player_uuid=test_uuid,
+            verified=False,
+        ))
+        await db.commit()
+
+    response = await client.get(
+        f"/api/v1/staff/{test_uuid}",
+        headers=PLUGIN_HEADERS,
+    )
+    assert response.status_code == 200
+    assert response.json()["is_staff"] is False
+
+
+async def test_staff_lookup_player_role_excluded(client, db_session):
+    """A User with the 'player' role (not a real staff role) should report
+    is_staff=False, matching list_staff()'s existing exclusion."""
+    async with db_session() as db:
+        role = await db.scalar(select(Role).where(Role.name == "player"))
+        if role is not None:
+            user = User(discord_id="lookup-discord-player", username="JustAPlayer", role_id=role.id)
+            db.add(user)
+            await db.commit()
+        else:
+            pytest.skip("no 'player' role seeded in this environment")
+
+    response = await client.get(
+        "/api/v1/staff/lookup-discord-player",
+        headers=PLUGIN_HEADERS,
+    )
+    assert response.status_code == 200
+    assert response.json()["is_staff"] is False
+
+
+async def test_staff_lookup_requires_plugin_key(client, db_session):
+    response = await client.get("/api/v1/staff/some-discord-id")
+    assert response.status_code == 401
