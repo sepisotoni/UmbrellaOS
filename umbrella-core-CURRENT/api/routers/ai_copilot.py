@@ -19,6 +19,8 @@ from api.middleware.api_key_auth import require_capability_auth
 from models import User
 from models.api_key import ApiKey
 from registry.context import CallContext
+from sqlalchemy import select as sa_select
+from models.hosting import Server
 from services.ai.orchestrator import Orchestrator
 from services.ai.provider_factory import ProviderFactory
 from services.ai.base import ProviderError
@@ -26,7 +28,6 @@ from services.operational_intelligence.crash_prevention import (
     assess_crash_risk,
     CrashRiskLevel,
 )
-from services.operational_intelligence.server_registry import list_known_server_ids
 
 router = APIRouter(prefix="/api/v1/ai", tags=["ai-copilot"])
 
@@ -106,19 +107,24 @@ async def copilot_chat(
     # whatever server_id string happened to be in the dashboard's local
     # component state and passed as free-text `context` — the copilot had
     # no way to answer "which of my servers..." questions or know a second
-    # server existed. list_known_server_ids() is the same registry
-    # assess_crash_risk() below already validates server_id against.
-    known_servers = await list_known_server_ids(db)
+    # server existed. Queries the same `servers` table (models/hosting.py)
+    # that backs the actual fleet — not a fabricated or cached list.
+    server_rows = (await db.execute(sa_select(Server.id, Server.name))).all()
+    server_by_id = {row.id: row.name for row in server_rows}
+    known_server_ids = list(server_by_id.keys())
+
     if body.server_ids:
-        unknown = [s for s in body.server_ids if s not in known_servers]
+        unknown = [s for s in body.server_ids if s not in server_by_id]
         if unknown:
             raise HTTPException(
                 status_code=400,
-                detail=f"Unknown server_id(s): {unknown}. Known servers: {known_servers}",
+                detail=f"Unknown server_id(s): {unknown}. Known servers: {known_server_ids}",
             )
-        scoped_servers = body.server_ids
+        scoped_ids = body.server_ids
     else:
-        scoped_servers = known_servers
+        scoped_ids = known_server_ids
+
+    fleet_lines = [f"{sid} ({server_by_id[sid]})" for sid in scoped_ids] or ["(no servers registered)"]
 
     identity_block = (
         f"<caller>\n"
@@ -127,7 +133,7 @@ async def copilot_chat(
         f"permissions: {permission_summary}\n"
         f"</caller>\n"
         f"<fleet>\n"
-        f"servers_in_scope: {', '.join(scoped_servers) if scoped_servers else '(none registered)'}\n"
+        f"servers_in_scope: {', '.join(fleet_lines)}\n"
         f"</fleet>"
     )
 
