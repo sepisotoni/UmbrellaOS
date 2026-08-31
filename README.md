@@ -1,32 +1,44 @@
 # UmbrellaOS
 
-A custom Minecraft server administration platform, built for Sepiso
-Toni's community server. Backend (`umbrella-core`), Discord bot
-(`umbrella-discord`), dashboard (`umbrella-dashboard`), and a
-from-scratch Paper/Java plugin (not yet started).
+A Minecraft server management platform — FastAPI backend, React dashboard, Discord bot, and Paper plugin working together.
 
-This project is developed across many separate chat sessions. If
-you're a person: start with `MASTER-PROJECT-STATUS-AND-HANDOFF.md`.
-If you're an AI assistant picking this project up: **read `CLAUDE.md`
-first, it's the actual entry point for you.**
+## Stack
 
-## Where things are
+| Component | Tech | Hosted |
+|---|---|---|
+| Core API | FastAPI + PostgreSQL | Render |
+| Dashboard | React + Vite + Tailwind | Vercel |
+| Discord Bot | discord.py | HeavenCloud |
+| Minecraft Plugin | Java + Paper 1.21.4 | BisectHosting |
+| Database | Supabase (PostgreSQL) | Supabase |
 
-| Doc | What it's for |
+## Branches
+
+| Branch | Purpose |
 |---|---|
-| `CLAUDE.md` | Start here if you're an AI session. Points everywhere else. |
-| `MASTER-PROJECT-STATUS-AND-HANDOFF.md` | "Where we are" — full narrative status, current phase, what to do next. |
-| `PROJECT-PRINCIPLES-AND-WORKING-RULES.md` | "How we work" — the non-negotiable rules (verify independently, don't trust self-reports, scope discipline). Read before touching anything. |
-| `PHASE-STATUS-CORRECTED.md` | The actual, sourced phase-by-phase status, with confidence markers. More reliable than any summary table. |
-| `phase10/UMBRELLAOS_MASTER_ROADMAP_v3_CONSOLIDATED.md` | "What's planned" — full 13-phase roadmap and definition-of-done per phase. |
-| `CRITICAL-FINDINGS-2026-08-17.md` | Open, unresolved, high-priority bugs. Read before starting new feature work. |
-| `dispatches/` | Every prior scoped sub-chat dispatch and its handback. |
-| `cross-chat-findings/` | Independent review docs, including live-Postgres functional testing. |
-| `historical-reference/` | Narrative record of complications and false starts. Context only — never a starting point to build from. |
+| `main` | Production code only |
+| `docs` | Historical docs, dispatches, audit reports, handoffs |
+| `archive` | Important things that shouldn't be on main |
 
-## Repo / access
+## Active Coordination
 
-Real git history exists from **2026-08-15 onward** (see D4 in the
-working-rules doc) — nothing before that is in `git log`, only in the
-handoff docs. Only the head chat session holds write access; sub-chats
-get read-only (D5).
+Multi-chat development is coordinated via [`CHAT-COORDINATION.md`](./CHAT-COORDINATION.md).
+Each chat has an ID (`[HEAD]`, `[AUTH]`, `[PLAYER]` etc.) and prefixes all commits with it.
+Chats post cross-chat notices and file claims in the coordination file.
+
+## Key Files
+
+- `CHAT-COORDINATION.md` — active multi-chat coordination
+- `CLAUDE.md` — working rules and principles
+- `PROJECT-PRINCIPLES-AND-WORKING-RULES.md` — architecture principles
+- `UMBRELLA-PLUGIN-ARCHITECTURE.md` — plugin integration reference
+- `SHARED-TEST-SANDBOX.md` — shared pytest environment setup
+- `umbrella-core-CURRENT/docs/` — ADRs and design docs
+
+## Commit Convention
+
+```
+[CHATID] scope(area): description
+[AUTH] fix(auth): use hmac.compare_digest instead of ==
+[HEAD] chore: remove stale dispatch docs
+```
