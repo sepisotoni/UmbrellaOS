@@ -229,6 +229,7 @@ async def test_staff_demote_second_owner_succeeds(client, db_session):
 # by Discord ID or Minecraft UUID to grant matching in-game permissions).
 # ---------------------------------------------------------------------------
 
+@pytest.mark.asyncio
 async def test_staff_lookup_by_discord_id_finds_staff(client, db_session):
     from datetime import datetime, timezone
     async with db_session() as db:
@@ -248,6 +249,7 @@ async def test_staff_lookup_by_discord_id_finds_staff(client, db_session):
     assert data["role"] == "helper"
 
 
+@pytest.mark.asyncio
 async def test_staff_lookup_by_discord_id_not_staff(client, db_session):
     response = await client.get(
         "/api/v1/staff/never-registered-discord-id",
@@ -258,6 +260,7 @@ async def test_staff_lookup_by_discord_id_not_staff(client, db_session):
     assert data["is_staff"] is False
 
 
+@pytest.mark.asyncio
 async def test_staff_lookup_by_minecraft_uuid_finds_staff(client, db_session):
     from models import Player
     from models.discord import DiscordAccount
@@ -286,6 +289,7 @@ async def test_staff_lookup_by_minecraft_uuid_finds_staff(client, db_session):
     assert data["role"] == "moderator"
 
 
+@pytest.mark.asyncio
 async def test_staff_lookup_by_unverified_uuid_not_staff(client, db_session):
     """An unverified DiscordAccount link should not resolve to staff status,
     even if the underlying discord_id belongs to a real staff member —
@@ -314,6 +318,7 @@ async def test_staff_lookup_by_unverified_uuid_not_staff(client, db_session):
     assert response.json()["is_staff"] is False
 
 
+@pytest.mark.asyncio
 async def test_staff_lookup_player_role_excluded(client, db_session):
     """A User with the 'player' role (not a real staff role) should report
     is_staff=False, matching list_staff()'s existing exclusion."""
@@ -334,6 +339,7 @@ async def test_staff_lookup_player_role_excluded(client, db_session):
     assert response.json()["is_staff"] is False
 
 
+@pytest.mark.asyncio
 async def test_staff_lookup_requires_plugin_key(client, db_session):
     response = await client.get("/api/v1/staff/some-discord-id")
     assert response.status_code == 401
