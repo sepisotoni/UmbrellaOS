@@ -129,6 +129,7 @@ class WebhookService:
         docstring) but the capability layer should still only ever show it
         to the caller at creation time, not on subsequent list calls."""
         _validate_webhook_url(url)
+        secret = _generate_secret()
         subscription = WebhookSubscription(
             topic=topic,
             url=url,
