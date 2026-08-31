@@ -188,3 +188,74 @@ async def test_dispatch_pending_ignores_inactive_subscriptions(db_session, monke
 
         assert event.id in dispatched
         assert calls == []
+
+
+# ---------------------------------------------------------------------------
+# FINDING-010 — SSRF protection: hostname resolution path
+# ---------------------------------------------------------------------------
+# test_capabilities_webhooks.py covers literal-IP URLs against the real
+# validator with no mocking needed. This covers the hostname-resolution
+# branch specifically (socket.getaddrinfo), mocked for determinism — a
+# real DNS lookup in a unit test would make the test's outcome depend on
+# network availability and an external hostname's current A/AAAA records,
+# neither of which this test should be sensitive to.
+
+from unittest.mock import patch
+from services.webhooks.service import WebhookError, _validate_webhook_url
+
+
+def test_validate_webhook_url_rejects_hostname_resolving_to_private_ip():
+    """A hostname (not a literal IP) that resolves to an internal address
+    must be rejected — this is the case a naive 'does the string contain
+    127.0.0.1' check would miss entirely, e.g. an attacker-controlled
+    domain whose DNS record points at an internal target."""
+    fake_resolution = [
+        (2, 1, 6, "", ("10.0.0.99", 0)),  # AF_INET, SOCK_STREAM, private IP
+    ]
+    with patch("services.webhooks.service.socket.getaddrinfo", return_value=fake_resolution):
+        with pytest.raises(WebhookError, match="disallowed address"):
+            _validate_webhook_url("http://attacker-controlled.example/hook")
+
+
+def test_validate_webhook_url_rejects_if_any_resolved_address_is_private():
+    """DNS can return multiple A/AAAA records. Rejecting only if the FIRST
+    address is bad would miss a hostname that round-robins between a public
+    decoy address and an internal one — an attacker only needs one request
+    to land on the bad address. Every resolved address must be checked."""
+    fake_resolution = [
+        (2, 1, 6, "", ("8.8.8.8", 0)),      # public — would pass alone
+        (2, 1, 6, "", ("192.168.1.1", 0)),  # private — must still block the whole URL
+    ]
+    with patch("services.webhooks.service.socket.getaddrinfo", return_value=fake_resolution):
+        with pytest.raises(WebhookError, match="disallowed address"):
+            _validate_webhook_url("http://multi-record.example/hook")
+
+
+def test_validate_webhook_url_allows_hostname_resolving_to_public_ips_only():
+    fake_resolution = [
+        (2, 1, 6, "", ("8.8.8.8", 0)),
+        (2, 1, 6, "", ("1.1.1.1", 0)),
+    ]
+    with patch("services.webhooks.service.socket.getaddrinfo", return_value=fake_resolution):
+        _validate_webhook_url("http://genuinely-public.example/hook")  # must not raise
+
+
+def test_validate_webhook_url_rejects_unresolvable_hostname():
+    """A hostname that fails to resolve at all should be rejected with a
+    clear message rather than an unhandled socket.gaierror bubbling up as
+    a 500 — this is a normal, expected input (a typo'd domain, a domain
+    that doesn't exist yet), not an exceptional condition."""
+    import socket
+    with patch("services.webhooks.service.socket.getaddrinfo", side_effect=socket.gaierror("nodename nor servname provided")):
+        with pytest.raises(WebhookError, match="could not resolve"):
+            _validate_webhook_url("http://this-domain-does-not-exist-xyz123.invalid/hook")
+
+
+def test_validate_webhook_url_rejects_missing_scheme():
+    with pytest.raises(WebhookError, match="http:// or https://"):
+        _validate_webhook_url("not-a-url-at-all")
+
+
+def test_validate_webhook_url_rejects_url_with_no_hostname():
+    with pytest.raises(WebhookError, match="valid hostname"):
+        _validate_webhook_url("http:///no-host-here")

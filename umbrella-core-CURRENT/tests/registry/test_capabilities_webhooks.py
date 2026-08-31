@@ -153,3 +153,102 @@ async def test_webhook_view_permission_allows_list_but_not_create(client, db_ses
         "/api/v1/capabilities/webhooks.subscription.list/invoke", json={}, headers=headers
     )
     assert response.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# FINDING-010 — SSRF protection on webhook URLs
+# ---------------------------------------------------------------------------
+# These use literal IP addresses (127.0.0.1, 169.254.169.254, 10.x, 192.168.x)
+# rather than hostnames needing DNS mocking — _validate_webhook_url resolves
+# via socket.getaddrinfo, which correctly treats a literal IP as "resolving"
+# to itself, so these test the real code path without any network dependency
+# or flakiness from live DNS.
+
+@pytest.mark.asyncio
+async def test_create_subscription_rejects_loopback_url(client):
+    response = await client.post(
+        "/api/v1/capabilities/webhooks.subscription.create/invoke",
+        json={"topic": "ssrf.loopback", "url": "http://127.0.0.1:8000/admin"},
+        headers=ADMIN_HEADERS,
+    )
+    assert response.status_code == 400
+    assert response.json()["code"] == "WEBHOOK_ERROR"
+
+
+@pytest.mark.asyncio
+async def test_create_subscription_rejects_cloud_metadata_endpoint(client):
+    """169.254.169.254 is the instance metadata endpoint on AWS, GCP, and
+    Azure — the single most common real-world SSRF target, since it serves
+    IAM credentials with no authentication to whoever can reach it from
+    inside the VPC/instance. This is is_link_local, not is_private, so it
+    specifically exercises that classification isn't missed."""
+    response = await client.post(
+        "/api/v1/capabilities/webhooks.subscription.create/invoke",
+        json={"topic": "ssrf.metadata", "url": "http://169.254.169.254/latest/meta-data/"},
+        headers=ADMIN_HEADERS,
+    )
+    assert response.status_code == 400
+    assert response.json()["code"] == "WEBHOOK_ERROR"
+
+
+@pytest.mark.asyncio
+async def test_create_subscription_rejects_rfc1918_private_ranges(client):
+    for bad_url in (
+        "http://10.0.0.5/hook",
+        "http://172.16.0.1/hook",
+        "http://192.168.1.1/hook",
+    ):
+        response = await client.post(
+            "/api/v1/capabilities/webhooks.subscription.create/invoke",
+            json={"topic": "ssrf.private", "url": bad_url},
+            headers=ADMIN_HEADERS,
+        )
+        assert response.status_code == 400, f"{bad_url} should have been rejected"
+        assert response.json()["code"] == "WEBHOOK_ERROR"
+
+
+@pytest.mark.asyncio
+async def test_create_subscription_rejects_ipv6_loopback(client):
+    response = await client.post(
+        "/api/v1/capabilities/webhooks.subscription.create/invoke",
+        json={"topic": "ssrf.ipv6loop", "url": "http://[::1]:8000/admin"},
+        headers=ADMIN_HEADERS,
+    )
+    assert response.status_code == 400
+    assert response.json()["code"] == "WEBHOOK_ERROR"
+
+
+@pytest.mark.asyncio
+async def test_create_subscription_allows_public_ip(client):
+    """A public IP literal (not private/loopback/link-local) must still be
+    accepted — the fix should reject only genuinely internal destinations,
+    not every numeric-IP URL. 1.1.1.1 (Cloudflare's public resolver) is
+    used here instead of a hostname to keep this test's outcome independent
+    of DNS, matching the rest of this section."""
+    response = await client.post(
+        "/api/v1/capabilities/webhooks.subscription.create/invoke",
+        json={"topic": "ssrf.public_ip_allowed", "url": "http://1.1.1.1/hook"},
+        headers=ADMIN_HEADERS,
+    )
+    assert response.status_code == 200
+    assert response.json()["url"] == "http://1.1.1.1/hook"
+
+
+@pytest.mark.asyncio
+async def test_update_subscription_rejects_loopback_url(client):
+    """The SSRF check must also apply when editing an existing, previously-
+    valid subscription's URL — not only at creation."""
+    create_response = await client.post(
+        "/api/v1/capabilities/webhooks.subscription.create/invoke",
+        json={"topic": "ssrf.update_test", "url": "https://example.com/original"},
+        headers=ADMIN_HEADERS,
+    )
+    subscription_id = create_response.json()["id"]
+
+    update_response = await client.post(
+        "/api/v1/capabilities/webhooks.subscription.update/invoke",
+        json={"subscription_id": subscription_id, "url": "http://127.0.0.1/pwn"},
+        headers=ADMIN_HEADERS,
+    )
+    assert update_response.status_code == 400
+    assert update_response.json()["code"] == "WEBHOOK_ERROR"
