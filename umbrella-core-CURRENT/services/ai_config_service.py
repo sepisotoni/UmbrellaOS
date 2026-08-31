@@ -10,11 +10,14 @@ Bug fixed: old code bypassed all provider routing, ignored enabled flags,
 and used a hardcoded free model that may not exist on OpenRouter any more.
 """
 import json
+import re
+import uuid
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from models import AIConfigAction
+from models.ai import AIModelConfig
 from services.settings_service import SettingsService
 from services.ai.orchestrator import Orchestrator
 from services.ai.model_router import NoAvailableModelError
@@ -204,3 +207,135 @@ async def apply_config_action(
         await db.commit()
         await db.refresh(action)
         return action
+
+
+# ---------------------------------------------------------------------------
+# ai.task.*.{primary_model,fallback_model_1,fallback_model_2} → ai_model_configs sync
+#
+# Bug fixed (2026-08-30, live copilot 503 investigation): the dashboard's
+# Settings → AI → Task Models UI (SettingsView.tsx's TaskModelCard component)
+# saves free-text "provider/model" strings to settings keys like
+# ai.task.copilot.primary_model via the ordinary settings PATCH endpoint.
+# Those keys have NEVER been read by anything — ModelRouter only reads
+# ai_model_configs rows. An operator could type "google/gemini-2.5-flash"
+# into every Task Models card, see it saved, and the copilot would keep
+# calling whatever model ai_model_configs still had from the last migration
+# or manual DB edit — with zero indication the UI's setting had no effect.
+#
+# This maps the OpenRouter-style "vendor/model" string convention the UI
+# uses (chosen because that's the format most model names are commonly
+# written in) to this codebase's actual registered provider names, and
+# upserts the matching ai_model_configs row so the setting the operator
+# sees in the UI is the setting that is actually used.
+# ---------------------------------------------------------------------------
+
+# Maps the vendor prefix used in "vendor/model" strings (OpenRouter naming
+# convention) to this codebase's actual provider name in
+# provider_factory._PROVIDER_REGISTRY. Extend this if a new provider is
+# registered — an unrecognized prefix is left as a plain settings value
+# with no ai_model_configs effect (fails safe: silently inert, not silently
+# wrong) rather than guessing.
+_VENDOR_PREFIX_TO_PROVIDER = {
+    "google": "gemini",
+    "anthropic": "anthropic",
+    "openai": "openrouter",  # OpenRouter is how this codebase reaches OpenAI models
+}
+
+_TASK_MODEL_KEY_RE = re.compile(
+    r"^ai\.task\.(?P<task_type>[a-z_]+)\.(?P<slot>primary_model|fallback_model_1|fallback_model_2)$"
+)
+
+# UI slot name → ai_model_configs priority. Matches the primary=10/failover=20
+# convention already used by the /api/v1/ai/config/tasks REST endpoint and by
+# migration 042's seed data, so both configuration paths agree on what
+# "priority 10" means.
+_SLOT_TO_PRIORITY = {
+    "primary_model": 10,
+    "fallback_model_1": 20,
+    "fallback_model_2": 30,
+}
+
+
+def parse_task_model_setting_key(key: str) -> tuple[str, str] | None:
+    """Returns (task_type, slot) if `key` matches ai.task.<type>.<slot>,
+    else None. Exported so the settings router can cheaply check "is this
+    even a task-model key" before calling the (slightly heavier) sync."""
+    m = _TASK_MODEL_KEY_RE.match(key)
+    if not m:
+        return None
+    return m.group("task_type"), m.group("slot")
+
+
+async def sync_task_model_setting(db: AsyncSession, key: str, value: str) -> None:
+    """Call this after successfully saving an ai.task.<type>.<slot> setting.
+
+    Parses a "vendor/model" string (e.g. "google/gemini-2.5-flash") and
+    upserts the matching ai_model_configs row so ModelRouter actually uses
+    what was just saved. Does nothing (returns silently) if:
+    - the key isn't a recognized ai.task.*.<slot> key
+    - the value is empty (operator cleared the field — see note below)
+    - the value's vendor prefix isn't recognized
+
+    Does NOT commit — the caller (the settings PATCH handler) already
+    commits the settings row in the same request; the ai_model_configs
+    write rides along in the same transaction so both changes succeed or
+    fail together rather than settings and routing ever disagreeing.
+    """
+    parsed = parse_task_model_setting_key(key)
+    if parsed is None:
+        return
+    task_type, slot = parsed
+    priority = _SLOT_TO_PRIORITY[slot]
+
+    value = (value or "").strip()
+    if not value:
+        # Operator cleared the field. Disable (don't delete) the row at
+        # this priority for this task_type — mirrors the /config/tasks
+        # REST endpoint's existing behavior when failover is cleared, and
+        # preserves health-tracking history rather than losing it.
+        result = await db.execute(
+            select(AIModelConfig).where(
+                AIModelConfig.task_type == task_type,
+                AIModelConfig.priority == priority,
+            )
+        )
+        for row in result.scalars().all():
+            row.enabled = False
+        return
+
+    if "/" not in value:
+        # Not the expected "vendor/model" shape — leave it as an inert
+        # settings-only value rather than guessing a provider.
+        return
+    vendor_prefix, model_name = value.split("/", 1)
+    provider = _VENDOR_PREFIX_TO_PROVIDER.get(vendor_prefix.lower())
+    if provider is None:
+        return
+
+    result = await db.execute(
+        select(AIModelConfig).where(
+            AIModelConfig.task_type == task_type,
+            AIModelConfig.priority == priority,
+        )
+    )
+    existing = result.scalars().first()
+
+    if existing:
+        existing.provider = provider
+        existing.model_name = model_name
+        existing.enabled = True
+        # Changing which model this slot points to should not carry over
+        # the old model's failure history.
+        existing.is_healthy = True
+        existing.consecutive_failures = 0
+    else:
+        db.add(AIModelConfig(
+            id=str(uuid.uuid4()),
+            provider=provider,
+            model_name=model_name,
+            task_type=task_type,
+            priority=priority,
+            enabled=True,
+            is_healthy=True,
+            consecutive_failures=0,
+        ))

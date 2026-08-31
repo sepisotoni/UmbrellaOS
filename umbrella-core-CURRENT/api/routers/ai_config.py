@@ -164,7 +164,9 @@ KNOWN_TASK_TYPES = {
 
 # Default model strings per provider — used when creating new ai_model_configs rows.
 _DEFAULT_MODELS: dict[str, str] = {
-    "gemini":      "gemini-1.5-flash",
+    # gemini-1.5-flash was retired by Google before 2026-08-31 — see the
+    # identical note in api/routers/ai_copilot.py's _PROVIDER_DEFAULT_MODELS.
+    "gemini":      "gemini-2.5-flash",
     "anthropic":   "claude-haiku-4-5-20251001",
     "openrouter":  "openai/gpt-4o-mini",
 }

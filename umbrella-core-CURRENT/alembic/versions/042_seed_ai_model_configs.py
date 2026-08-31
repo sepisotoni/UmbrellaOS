@@ -34,19 +34,19 @@ depends_on = None
 # Operators can add/reorder rows from the dashboard without touching code.
 _MODEL_ROWS = [
     # copilot — Gemini primary, OpenRouter fallback
-    ("gemini",     "gemini-1.5-flash",          "copilot",        10),
+    ("gemini",     "gemini-2.5-flash",          "copilot",        10),
     ("openrouter", "openai/gpt-4o-mini",         "copilot",        20),
     # player_review — Gemini primary, Anthropic fallback
-    ("gemini",     "gemini-1.5-flash",          "player_review",  10),
+    ("gemini",     "gemini-2.5-flash",          "player_review",  10),
     ("anthropic",  "claude-haiku-4-5-20251001", "player_review",  20),
     # appeal_review — Anthropic primary, Gemini fallback
     ("anthropic",  "claude-haiku-4-5-20251001", "appeal_review",  10),
-    ("gemini",     "gemini-1.5-flash",          "appeal_review",  20),
+    ("gemini",     "gemini-2.5-flash",          "appeal_review",  20),
     # moderation_review (ai_service legacy path) — Anthropic primary, OpenRouter fallback
     ("anthropic",  "claude-haiku-4-5-20251001", "moderation_review", 10),
     ("openrouter", "openai/gpt-4o-mini",         "moderation_review", 20),
     # crash_risk — Gemini only (deterministic enough to skip dual-review)
-    ("gemini",     "gemini-1.5-flash",          "crash_risk",     10),
+    ("gemini",     "gemini-2.5-flash",          "crash_risk",     10),
     # chat_review — OpenRouter primary
     ("openrouter", "openai/gpt-4o-mini",         "chat_review",    10),
     ("anthropic",  "claude-haiku-4-5-20251001", "chat_review",    20),

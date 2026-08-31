@@ -118,7 +118,13 @@ class ProviderTestResponse(BaseModel):
 
 _PROVIDER_DEFAULT_MODELS = {
     "anthropic": "claude-haiku-4-5-20251001",
-    "gemini": "gemini-1.5-flash",
+    # gemini-1.5-flash was retired by Google before 2026-08-31 (confirmed via
+    # ai.google.dev/gemini-api/docs/changelog: "All Gemini 1.0 models and
+    # Gemini 1.5 are already shutdown, and all requests to these models
+    # return a 404 error") — every call using it fails at the provider,
+    # surfacing to users as a confusing "no available model" error with no
+    # indication the model itself no longer exists.
+    "gemini": "gemini-2.5-flash",
     "openrouter": "openai/gpt-3.5-turbo",
 }
 
