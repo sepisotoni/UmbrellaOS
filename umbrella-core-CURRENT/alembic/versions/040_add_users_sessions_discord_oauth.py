@@ -14,6 +14,25 @@ users: created in 013_identity_phase3 (the earliest migration that
 sessions: FK to users.id. Created here unconditionally.
 discord_oauth_pending: no FK dependencies. Created here unconditionally.
 
+AUDIT-2026-08-30/31 fix ([HEAD] flagged this migration as one of the
+migration-chain blockers; [AUTH] traced and fixed it in two passes): the
+original upgrade() also tried to retrofit a foreign key on api_keys,
+referencing "api_keys.user_id" — a column that has never existed (the
+real column is `created_by`, per models/api_key.py). A first pass fixed
+the column name, ondelete behavior, and swapped the bare
+`except Exception: pass` for a targeted duplicate_object-catching DO
+block. Verified against real Postgres 16, that no longer raised — but it
+also revealed the retrofit was never actually needed: 013_identity_phase3
+already creates api_keys with `created_by`'s FK to users.id inline, at
+table-creation time (013 creates users first, then api_keys, in the same
+migration — there is no point in this chain where api_keys exists without
+users). The "fixed" version was successfully adding a second, redundant,
+differently-named FK constraint on the same column every run, since
+Postgres doesn't treat two different constraint names as a duplicate_object
+collision. The api_keys FK block is now a genuine no-op, same convention
+as 011/032's fixes for the analogous "this work was already done earlier
+in the chain" bug class.
+
 Revision ID: 040_add_users_sessions_discord_oauth
 Revises:     039_fix_check_constraints
 Create Date: 2026-08-26
@@ -92,56 +111,41 @@ def upgrade() -> None:
         "ON discord_oauth_pending (state)"
     ))
 
-    # Retrofit api_keys.created_by FK now that users is guaranteed to exist.
+    # No-op — see module docstring for the full history of this block.
     #
-    # FIX: this previously referenced "api_keys.user_id" — a column that has
-    # never existed. models/api_key.py's ApiKey ORM model has always declared
-    # the column as `created_by` (String(36), ForeignKey("users.id",
-    # ondelete="SET NULL"), nullable=True) — never user_id, and never CASCADE.
-    # On a real migration-based Postgres deployment, create_foreign_key with
-    # the wrong column name raised UndefinedColumn every single time; the
-    # bare `except Exception: pass` silently swallowed that, so this FK was
-    # NEVER actually created via migrations, on any database, ever — not just
-    # on "already exists" reruns as the comment claimed. It only ever existed
-    # on databases bootstrapped via create_all() (tests, local dev), because
-    # that path reads the correct column name directly from the model and
-    # bypasses this migration entirely — which is exactly why nothing caught
-    # this until a real `alembic upgrade head` run against fresh Postgres did.
+    # This retrofit was based on a false premise from the start, on two
+    # separate levels:
+    #   1. It referenced "api_keys.user_id", a column that has never
+    #      existed (the real column, and the model's actual FK, has always
+    #      been `created_by` — see models/api_key.py).
+    #   2. Even correcting the column name, the retrofit itself was
+    #      unnecessary: 013_identity_phase3.py's op.create_table("api_keys",
+    #      ...) already declares created_by with its FK to users.id
+    #      (ondelete="SET NULL") INLINE, at table-creation time — not
+    #      "before users existed" as this migration's original comment
+    #      assumed. 013 creates users first, then api_keys with the FK, in
+    #      the same migration. There was never a point in this chain where
+    #      api_keys existed without users, so there was never anything to
+    #      retrofit.
     #
-    # Also corrected ondelete from CASCADE to SET NULL to match the model:
-    # deleting a user should not delete every API key they ever created —
-    # api_key.creator becoming NULL (an "orphaned" key, still functional) is
-    # the intended behaviour, same as knowledge_entries and other created_by
-    # columns elsewhere in this schema.
-    #
-    # Uses the same duplicate_object-catching DO block as 043's fix (verified
-    # against real Postgres 16 there) rather than a bare Python except, so a
-    # genuine second failure mode isn't silently masked alongside the
-    # "already exists" case this is meant to tolerate.
-    bind = op.get_bind()
-    if bind.dialect.name == "postgresql":
-        op.execute(text("""
-            DO $$
-            BEGIN
-                ALTER TABLE api_keys
-                ADD CONSTRAINT fk_api_keys_created_by
-                FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL;
-            EXCEPTION
-                WHEN duplicate_object THEN NULL;
-            END $$;
-        """))
-    else:
-        # SQLite (tests): create_all() already applies the model's inline FK;
-        # SQLite also can't ALTER TABLE ADD CONSTRAINT at all, so there is
-        # nothing to retrofit here on that dialect.
-        pass
+    # Confirmed directly against real Postgres 16: running the corrected
+    # version of this block (which fixed the column name to created_by,
+    # correct ondelete, and a duplicate_object-catching DO block) did not
+    # error, but it silently created a SECOND foreign key constraint on the
+    # same column — Postgres allows multiple differently-named FK
+    # constraints on one column, so `fk_api_keys_created_by` (this
+    # migration) coexisted right alongside `api_keys_created_by_fkey` (the
+    # one 013 already created), rather than tripping the duplicate_object
+    # guard. Confirmed via pg_constraint that 013's FK already carries
+    # identical semantics (same column, same target, same ON DELETE SET
+    # NULL) — there is nothing for this migration to add.
+    pass
 
 
 def downgrade() -> None:
-    try:
-        op.drop_constraint("fk_api_keys_created_by", "api_keys", type_="foreignkey")
-    except Exception:
-        pass
+    # No-op to match upgrade() — the FK on api_keys.created_by is owned by
+    # 013_identity_phase3.py (created inline with the table), not this
+    # migration. Nothing here to undo.
     op.drop_table("discord_oauth_pending")
     op.drop_table("sessions")
     # Do not drop users — it's owned by 013 which creates it first
