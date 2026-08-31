@@ -40,7 +40,7 @@ def _mk_result(text: str) -> OrchestrationResult:
         confidence=0.9,
         escalated=False,
         primary_provider="gemini",
-        primary_model="gemini-1.5-flash",
+        primary_model="gemini-2.5-flash",
         secondary_provider=None,
         secondary_model=None,
         dual_review_agreement=None,

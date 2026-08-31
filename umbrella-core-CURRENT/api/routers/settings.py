@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from database import get_db
 from services import SettingsService
+from services.ai_config_service import sync_task_model_setting
 from api.dependencies.permissions import require_owner, require_permission
 from api.middleware.auth import require_admin_hmac_or_session
 from models import User
@@ -94,4 +95,27 @@ async def update_setting(
     )
     if updated is None:
         raise HTTPException(status_code=404, detail=f"Setting '{key}' not found")
+
+    # [AI subsystem, 2026-08-31 live copilot fix] If this is an
+    # ai.task.<type>.<slot> key, also upsert the matching ai_model_configs
+    # row so ModelRouter actually uses what was just saved. Before this,
+    # these settings were saved successfully and displayed correctly in the
+    # UI but had ZERO effect on which model the AI subsystem actually called
+    # — ModelRouter only ever reads ai_model_configs, never these keys. See
+    # services/ai_config_service.py::sync_task_model_setting for the full
+    # writeup.
+    #
+    # NOTE: this runs in a SEPARATE transaction from the settings write
+    # above — SettingsService.update() already calls db.commit() internally
+    # before returning, so by the time control reaches here the setting is
+    # already durably saved regardless of what happens next. If this sync
+    # step fails, the setting itself is still correctly saved (matching
+    # what the UI already showed); only the ai_model_configs side would be
+    # out of sync until the operator re-saves or corrects it manually. This
+    # is the safer failure mode of the two — a failed sync silently leaving
+    # the OLD model active is far better than a failed sync somehow rolling
+    # back a settings change the operator was told succeeded.
+    await sync_task_model_setting(db, key, body.value)
+    await db.commit()
+
     return updated
