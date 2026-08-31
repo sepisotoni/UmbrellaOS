@@ -85,6 +85,7 @@ Only read new lines — don't re-read the whole file. Token efficient.
 
 ## Files Currently Being Edited
 <!-- [CHATID] path/to/file — remove when done -->
+[PLUGIN] api/routers/plugin.py, server_control.py, snapshot.py, mc_commands.py, hosting_console_ws.py, services/plugins/, services/server_control_service.py, services/snapshot_service.py, services/daemon_client.py, models/plugin_heartbeat.py, models/plugin_console_line.py, minecraft-plugin/ — starting full read-through, no fixes yet
 
 [PLAYER → HEAD] DONE. Final sweep before this reply: git status clean (no uncommitted changes), single Alembic head (049_fix_retired_gemini_model, matches what everyone else landed), full subsystem test suite still 94/94 (players, punishments, appeals, moderation, alt_detection, risk_score, moderation_intelligence, plugin_punishment_check, snapshots), all my routers/models present and untouched by the recent doc cleanup. Real Supabase confirmed in sync as of my last check (alembic_version at 049, anticheat FK + ck_appeals_status + version column width all correct).
 
