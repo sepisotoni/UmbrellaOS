@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_
 
+from config import get_settings
 from models import (
     Player,
     IPAddress,
@@ -261,3 +262,39 @@ async def flag_player(
         "flagged": flagged,
         "risk_level": risk_level,
     }
+
+
+async def decay_stale_suspicion_scores(db: AsyncSession) -> int:
+    """
+    Decays suspicion_score for players with no SuspicionEvent in the last
+    settings.suspicion_score_decay_after_days — an actively-triggering
+    player's score is never touched by this, only a stale one. Returns
+    the number of players decayed. Intended to be called periodically via
+    a Schedule pointing at the alt_detection.suspicion.decay_stale
+    capability (capabilities/alt_detection_maintenance.py), the same
+    scheduler-driven pattern as
+    services/anticheat_service.py::purge_old_violations — no bespoke
+    background loop.
+    """
+    settings = get_settings()
+    cutoff = datetime.now(timezone.utc) - timedelta(days=settings.suspicion_score_decay_after_days)
+
+    # Players with a recent trigger are exempt from decay this tick —
+    # only players who've gone quiet for the full window get decayed.
+    recent_result = await db.execute(
+        select(SuspicionEvent.player_uuid).where(SuspicionEvent.created_at >= cutoff).distinct()
+    )
+    recently_triggered = {row[0] for row in recent_result.all()}
+
+    result = await db.execute(select(Player).where(Player.suspicion_score > 0))
+    players = list(result.scalars().all())
+
+    decayed_count = 0
+    for player in players:
+        if player.uuid in recently_triggered:
+            continue
+        player.suspicion_score = max(0, player.suspicion_score - settings.suspicion_score_decay_points)
+        decayed_count += 1
+
+    await db.flush()
+    return decayed_count

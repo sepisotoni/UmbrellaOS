@@ -79,6 +79,20 @@ class Settings(BaseSettings):
     # short enough not to grow forever. See
     # services/anticheat_service.py::purge_old_violations.
     anticheat_violation_retention_days: int = 90
+    # AUDIT-2026-08-30: player.suspicion_score previously had no decay at
+    # all — it either got silently overwritten on every join (erasing
+    # staff's false-positive reviews, fixed separately) or, after that
+    # fix, only ever accumulated with no ceiling. api/routers/alt_detection.py's
+    # watchlist (suspicion_score >= 80) degrades over time without decay:
+    # a player who triggered suspicion once, years ago, then behaved
+    # normally ever since stays on the watchlist forever alongside
+    # genuinely currently-suspicious players, diluting the signal. Only
+    # decays players with no SuspicionEvent in the last
+    # suspicion_score_decay_after_days — an actively-triggering player's
+    # score is never touched by decay, only a stale one. See
+    # services/alt_detection_service.py::decay_stale_suspicion_scores.
+    suspicion_score_decay_points: int = 10
+    suspicion_score_decay_after_days: int = 30
     # Predictive crash prevention thresholds (services/operational_intelligence/crash_prevention.py)
     crash_prevention_lookback_minutes: int = 15
     crash_prevention_min_samples: int = 3
