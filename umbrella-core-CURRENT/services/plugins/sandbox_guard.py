@@ -57,6 +57,32 @@ _FORBIDDEN_ATTRS = {
     # __getattr__/__setattr__ override lets crafted code intercept
     # attribute access itself rather than just reading a forbidden one.
     "__init_subclass__", "__subclasshook__", "__getattr__", "__setattr__",
+    # [PLUGIN] audit addition, 2026-09-01: format/format_map. Empirically
+    # confirmed (not theoretical) that `"{0.__class__.__base__.__subclasses__}"
+    # .format(params)` reads straight through this entire allowlist against
+    # the real sandbox.py runtime: str.format()'s field-name mini-language
+    # walks `.attr` and `[key]` chains via CPython's internal C-level
+    # attribute/item resolution, which is NOT the same code path Python-level
+    # `getattr`/`ast.Attribute` checks touch — the dunder chain lives as
+    # opaque TEXT inside a string constant, so ast.walk() never sees an
+    # ast.Attribute node for __class__/__subclasses__/etc. at all, and
+    # sandbox.py's restricted __builtins__ doesn't gate string *methods*
+    # (str is itself in the safe-builtins allowlist, and .format is always
+    # available on any string instance regardless of what names are
+    # resolvable in scope). f-strings are unaffected by this fix — their
+    # `{x.attr}` expressions are real Python source parsed into genuine
+    # ast.Attribute nodes that this module's ast.walk() already recurses
+    # into and catches today; this gap is specific to the *method call*
+    # `"...".format(...)` / `"...".format_map(...)`, whose field-name
+    # string content is invisible to static AST inspection by definition.
+    # str.format()/.format_map() always return str (no live object/callable
+    # ever crosses back into plugin code this way), so the confirmed impact
+    # is arbitrary-attribute-chain information disclosure via repr(), not
+    # remote code execution — still a real violation of this module's own
+    # documented guarantee to close "the most common, well-known escape
+    # chains", and blocking it costs no legitimate plugin functionality
+    # (f-strings and %-style formatting remain fully available).
+    "format", "format_map",
 }
 
 # Phase 9 addition, based on real Phase 8 usage: no legitimate plugin
