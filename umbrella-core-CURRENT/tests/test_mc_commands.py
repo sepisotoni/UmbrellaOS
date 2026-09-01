@@ -300,3 +300,109 @@ async def test_post_mc_commands_id_complete_creates_audit_log(client: AsyncClien
         latest_log = logs[-1]
         assert latest_log.actor == "plugin"
         assert latest_log.details_json
+
+
+# ---------------------------------------------------------------------------
+# server_id routing ([PLUGIN] subsystem audit) — a fleet's plugin instances
+# must only see/execute commands meant for their own server, not every
+# pending command globally.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_post_mc_command_respects_server_id(client: AsyncClient, db_session):
+    """POST /mc/command with an explicit server_id stores it on the row."""
+    response = await client.post(
+        "/api/v1/mc/command",
+        json={
+            "command": "say hello",
+            "requested_by_discord_id": "123456789",
+            "requested_by_username": "TestStaff",
+            "server_id": "survival-1",
+        },
+        headers={"X-Admin-Key": "test-secret-key"},
+    )
+    assert response.status_code == 201
+    assert response.json()["server_id"] == "survival-1"
+
+
+@pytest.mark.asyncio
+async def test_post_mc_command_defaults_server_id(client: AsyncClient):
+    """POST /mc/command without server_id defaults to 'default' (backward
+    compatible with any caller not yet updated to send one)."""
+    response = await client.post(
+        "/api/v1/mc/command",
+        json={
+            "command": "say hello",
+            "requested_by_discord_id": "123456789",
+            "requested_by_username": "TestStaff",
+        },
+        headers={"X-Admin-Key": "test-secret-key"},
+    )
+    assert response.status_code == 201
+    assert response.json()["server_id"] == "default"
+
+
+@pytest.mark.asyncio
+async def test_get_mc_commands_pending_scoped_to_server_id(client: AsyncClient, db_session):
+    """GET /mc/commands/pending?server_id=X only returns commands for that
+    server — the core bug this fix addresses. Without this, a fleet's
+    plugin instances would each execute every server's pending commands."""
+    async with db_session() as db:
+        db.add(MCCommand(
+            command="ban griefer",
+            server_id="survival-1",
+            requested_by_discord_id="1", requested_by_username="A",
+            status="pending", created_at=datetime.now(timezone.utc),
+        ))
+        db.add(MCCommand(
+            command="whitelist add dev",
+            server_id="creative-dev",
+            requested_by_discord_id="2", requested_by_username="B",
+            status="pending", created_at=datetime.now(timezone.utc),
+        ))
+        await db.commit()
+
+    survival_response = await client.get(
+        "/api/v1/mc/commands/pending?server_id=survival-1",
+        headers=PLUGIN_HEADERS,
+    )
+    assert survival_response.status_code == 200
+    survival_commands = [c["command"] for c in survival_response.json()]
+    assert "ban griefer" in survival_commands
+    assert "whitelist add dev" not in survival_commands
+
+    dev_response = await client.get(
+        "/api/v1/mc/commands/pending?server_id=creative-dev",
+        headers=PLUGIN_HEADERS,
+    )
+    assert dev_response.status_code == 200
+    dev_commands = [c["command"] for c in dev_response.json()]
+    assert "whitelist add dev" in dev_commands
+    assert "ban griefer" not in dev_commands
+
+
+@pytest.mark.asyncio
+async def test_get_mc_commands_pending_defaults_to_default_server(client: AsyncClient, db_session):
+    """A plugin instance not yet passing ?server_id= keeps working exactly
+    as before — scoped to the implicit 'default' queue every existing row
+    already uses via the column default."""
+    async with db_session() as db:
+        db.add(MCCommand(
+            command="say legacy behavior",
+            requested_by_discord_id="1", requested_by_username="A",
+            status="pending", created_at=datetime.now(timezone.utc),
+            # server_id intentionally omitted — exercises the column default
+        ))
+        db.add(MCCommand(
+            command="say other server",
+            server_id="other-server",
+            requested_by_discord_id="2", requested_by_username="B",
+            status="pending", created_at=datetime.now(timezone.utc),
+        ))
+        await db.commit()
+
+    response = await client.get("/api/v1/mc/commands/pending", headers=PLUGIN_HEADERS)
+    assert response.status_code == 200
+    commands = [c["command"] for c in response.json()]
+    assert "say legacy behavior" in commands
+    assert "say other server" not in commands

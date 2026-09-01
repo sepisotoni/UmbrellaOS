@@ -14,6 +14,12 @@ different auth: staff/bot enqueue via the admin key, the plugin itself
 polls and acks via the plugin key. (Phase 13 Step 2 — the poll/complete
 pair used to require_admin_key too, which the plugin was never given a
 credential for; fixed to match every other plugin-facing router.)
+
+Every command carries a server_id (default "default" for backward
+compatibility with anything not yet passing one explicitly) so a
+multi-server fleet's plugin instances each only see and execute commands
+meant for their own server — see models/mc_commands.py's column docstring
+for the bug this fixes ([PLUGIN] subsystem audit).
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,12 +40,18 @@ class MCCommandRequest(BaseModel):
     command: str
     requested_by_discord_id: str
     requested_by_username: str
+    # FIX ([PLUGIN] audit): default "default" preserves existing behavior
+    # for callers that don't specify one (single-server deployments,
+    # anything not yet updated) — see models/mc_commands.py for the full
+    # fleet-routing rationale.
+    server_id: str = "default"
 
 
 class MCCommandResponse(BaseModel):
     id: int
     command: str
     status: str
+    server_id: str
     requested_by_username: str
     requested_by_discord_id: str
     created_at: datetime
@@ -72,6 +84,7 @@ async def create_mc_command(
     # Create MC command record
     mc_command = MCCommand(
         command=body.command.strip(),
+        server_id=body.server_id,
         requested_by_discord_id=body.requested_by_discord_id,
         requested_by_username=body.requested_by_username,
         status="pending",
@@ -89,6 +102,7 @@ async def create_mc_command(
         target=str(mc_command.id),
         details={
             "command": body.command,
+            "server_id": body.server_id,
             "requested_by": body.requested_by_username,
         },
     )
@@ -101,13 +115,21 @@ async def create_mc_command(
 
 @router.get("/commands/pending", response_model=list[MCCommandResponse])
 async def get_pending_mc_commands(
+    server_id: str = "default",
     db: AsyncSession = Depends(get_db),
     _auth: str = Depends(require_plugin_key),
 ) -> list[MCCommandResponse]:
     """
-    Get all pending Minecraft commands.
+    Get all pending Minecraft commands for one server.
 
     The plugin calls this every 5 seconds to poll for new commands.
+
+    FIX ([PLUGIN] audit): previously returned every pending command
+    globally, with no server_id filter at all — see models/mc_commands.py
+    for the full fleet-routing bug this caused. Defaults to "default" so a
+    plugin instance that hasn't been updated to send its own server_id yet
+    keeps working exactly as before (scoped to the implicit "default"
+    queue every existing row already uses via the column's default).
 
     Auth: X-Plugin-Key (Phase 13 Step 2 — was require_admin_key, which
     checks a different secret (settings.admin_key) than every other
@@ -119,7 +141,10 @@ async def get_pending_mc_commands(
     endpoint list, which didn't mention auth per-endpoint at all.
     """
     result = await db.execute(
-        select(MCCommand).where(MCCommand.status == "pending")
+        select(MCCommand).where(
+            MCCommand.status == "pending",
+            MCCommand.server_id == server_id,
+        )
     )
     commands = result.scalars().all()
     

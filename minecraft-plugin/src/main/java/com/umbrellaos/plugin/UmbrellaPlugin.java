@@ -50,7 +50,7 @@ public final class UmbrellaPlugin extends JavaPlugin {
         messageTemplateManager = new MessageTemplateManager(this, apiClient);
         // GrimBridge reference set after grimBridge is created below (DEAD-4 fix).
         heartbeatManager = new HeartbeatManager(this, apiClient, configManager, serverId, serverName);
-        commandPoller = new CommandPoller(this, apiClient);
+        commandPoller = new CommandPoller(this, apiClient, serverId);
         banEnforcer = new BanEnforcer(apiClient);
         maintenanceEnforcer = new MaintenanceEnforcer(this, configManager, messageTemplateManager);
         telemetryListener = new PlayerTelemetryListener(this, apiClient);

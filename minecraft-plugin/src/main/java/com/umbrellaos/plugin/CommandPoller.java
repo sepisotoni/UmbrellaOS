@@ -6,7 +6,9 @@ import org.bukkit.scheduler.BukkitTask;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.net.URLEncoder;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Level;
@@ -21,6 +23,17 @@ import java.util.logging.Level;
  * main thread via {@link CoreApiClient}; only the actual in-game command
  * dispatch is marshalled onto the main thread — same async-network /
  * sync-Bukkit-API split {@link HeartbeatManager} already established.
+ *
+ * <p>FIX ([PLUGIN] subsystem audit): the poll previously fetched every
+ * pending command globally with no server scoping, despite core already
+ * supporting multiple Minecraft servers under one umbrella-core instance
+ * (the Node/Server/daemon system). In a real fleet, every plugin instance
+ * would execute every OTHER server's queued commands too, since core's
+ * mc_commands table had no server_id column at all until this fix.
+ * {@link HeartbeatManager} already threads {@code serverId} through from
+ * {@link UmbrellaPlugin}; this class previously didn't take it as a
+ * constructor argument at all, even though the exact same value was
+ * already available at the exact same construction site.
  */
 public class CommandPoller {
 
@@ -29,12 +42,23 @@ public class CommandPoller {
 
     private final Plugin plugin;
     private final CoreApiClient apiClient;
+    private final String serverId;
 
     private BukkitTask task;
 
-    public CommandPoller(Plugin plugin, CoreApiClient apiClient) {
+    /**
+     * @param serverId this server's configured ID (same value passed to
+     *                 {@link HeartbeatManager}), or null/blank if not yet
+     *                 configured — in which case the poll omits the
+     *                 server_id query param entirely and core's own
+     *                 "default" column default applies, preserving
+     *                 pre-fix behavior for any deployment that hasn't set
+     *                 one.
+     */
+    public CommandPoller(Plugin plugin, CoreApiClient apiClient, String serverId) {
         this.plugin = plugin;
         this.apiClient = apiClient;
+        this.serverId = (serverId == null || serverId.isBlank()) ? null : serverId;
     }
 
     /** Starts the periodic async poll task. Safe to call once from onEnable. */
@@ -64,7 +88,11 @@ public class CommandPoller {
     }
 
     private void poll() throws Exception {
-        HttpResponse<String> response = apiClient.get("/api/v1/mc/commands/pending");
+        String path = "/api/v1/mc/commands/pending";
+        if (serverId != null) {
+            path += "?server_id=" + URLEncoder.encode(serverId, StandardCharsets.UTF_8);
+        }
+        HttpResponse<String> response = apiClient.get(path);
         if (response.statusCode() != 200) {
             apiClient.logger().warning(
                     "Command poll rejected by core: HTTP " + response.statusCode() + " — " + response.body());
