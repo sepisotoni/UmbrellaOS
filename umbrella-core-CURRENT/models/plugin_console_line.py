@@ -11,15 +11,21 @@ class PluginConsoleLine(Base):
     __tablename__ = "plugin_console_lines"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    # FIX ([PLUGIN] subsystem audit): server_id was explicitly index=False
-    # despite every single query against this table (push_console_lines'
-    # trim-to-cap lookup, get_recent_console, the row-count check) filtering
-    # WHERE server_id == ... combined with ORDER BY captured_at. A composite
-    # index on (server_id, captured_at) serves all three of those query
-    # shapes directly — the leading column covers the equality filter, the
-    # second covers the ORDER BY/range within that filtered set — rather
-    # than a single-column index on server_id alone, which would still leave
-    # a separate sort step for every query here.
+    # CORRECTION ([PLUGIN] subsystem audit): this was previously declared
+    # index=False, and my first attempt at fixing it "added" a composite
+    # index (server_id, captured_at) via a new migration (051) — before
+    # verifying against real Postgres and discovering the model was simply
+    # WRONG, not the database. Migration 035_plugin_console_lines.py (the
+    # migration that created this table) already creates
+    # "ix_plugin_console_lines_server_id_ts" on (server_id, captured_at
+    # DESC) — the model's own declaration just never matched it. My first
+    # migration created a second, redundant, differently-named, opposite-
+    # sort-direction index alongside the real one. Deleted that migration;
+    # this __table_args__ now correctly documents the index that has always
+    # existed since 035, matching its real name and DESC ordering (which
+    # index=True on the column alone can't express) rather than adding
+    # anything new to the schema. No new migration needed — nothing to
+    # apply, the database has been correct since 035.
     server_id: Mapped[str] = mapped_column(String(64), nullable=False)
     line: Mapped[str] = mapped_column(Text, nullable=False)
     captured_at: Mapped[datetime] = mapped_column(
@@ -27,5 +33,5 @@ class PluginConsoleLine(Base):
     )
 
     __table_args__ = (
-        Index("ix_plugin_console_lines_server_id_captured_at", "server_id", "captured_at"),
+        Index("ix_plugin_console_lines_server_id_ts", "server_id", captured_at.desc()),
     )
