@@ -1,4 +1,3 @@
-import json
 """
 api/routers/snapshot.py — Snapshot endpoints.
 
@@ -8,6 +7,8 @@ GET  /api/v1/snapshots/players/{minecraft_uuid}/latest
 GET  /api/v1/snapshots/{snapshot_id}
 GET  /api/v1/snapshots/replay/{replay_id}
 """
+import json
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
@@ -15,8 +16,11 @@ from datetime import datetime
 
 from database import get_db
 from api.middleware.auth import require_admin_key
-from api.dependencies.permissions import require_permission, RoleChecker
+from api.dependencies.permissions import require_permission
 from services import snapshot_service
+
+logger = logging.getLogger(__name__)
+
 
 router = APIRouter(prefix="/api/v1/snapshots", tags=["snapshots"])
 
@@ -55,11 +59,31 @@ async def create_snapshot(
     if body.timestamp:
         timestamp = datetime.fromisoformat(body.timestamp.replace("Z", "+00:00"))
 
-    def _parse_json_field(val):
+    def _parse_json_field(field_name: str, val):
+        """Parse a JSON-string inventory/armor/offhand field.
+
+        FIX ([PLUGIN] subsystem audit): silently returned None on any parse
+        failure — no warning, no error, no signal of any kind. On a system
+        whose entire purpose is forensic-quality incident capture (this
+        table feeds /replay/{id} for exactly that), a malformed JSON string
+        from the plugin (truncation, encoding bug, bad NBT-to-JSON
+        serialization) meant the snapshot still returned 201 looking
+        successful while quietly missing the data an investigator would
+        actually be looking for. Still non-fatal — a snapshot with partial
+        data (e.g. position/health present, inventory dropped) is still
+        useful for many purposes, so this doesn't reject the whole request —
+        but now leaves a log trail so "why is this incident replay missing
+        inventory" is answerable after the fact instead of a silent gap.
+        """
         if isinstance(val, str):
             try:
                 return json.loads(val)
             except Exception:
+                logger.warning(
+                    "snapshot %s field failed to parse as JSON — storing as null. "
+                    "Raw value (truncated): %r",
+                    field_name, val[:200],
+                )
                 return None
         return val
 
@@ -71,9 +95,9 @@ async def create_snapshot(
             health=body.health,
             food=body.food,
             xp=body.xp,
-            inventory=_parse_json_field(body.inventory),
-            armor=_parse_json_field(body.armor),
-            offhand=_parse_json_field(body.offhand),
+            inventory=_parse_json_field("inventory", body.inventory),
+            armor=_parse_json_field("armor", body.armor),
+            offhand=_parse_json_field("offhand", body.offhand),
             x=body.x,
             y=body.y,
             z=body.z,

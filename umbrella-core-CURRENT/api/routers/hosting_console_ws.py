@@ -27,7 +27,7 @@ from api.middleware.session import get_current_user
 from database import AsyncSessionLocal
 from models.hosting import Server
 from services.node_auth_service import issue_node_token
-from services.node_service import NodeService
+from services.node_service import NodeError, NodeService
 from services.permission_resolution import resolve_user_permissions
 
 logger = logging.getLogger(__name__)
@@ -72,7 +72,23 @@ async def proxy_console(websocket: WebSocket, server_id: str, token: str = Query
             await websocket.close(code=ws_status.WS_1008_POLICY_VIOLATION, reason="no such server")
             return
 
-        node = await NodeService.get_node(db, server.node_id)
+        # FIX ([PLUGIN] subsystem audit): NodeService.get_node() raises
+        # NodeError (404) rather than returning None when server.node_id
+        # points at a node that no longer exists (e.g. deleted/decommissioned
+        # after the server row was created). That's a genuinely reachable
+        # state — nothing enforces the node still existing at the moment a
+        # console connection is attempted — but this call sat completely
+        # unguarded, unlike the `server is None` case just above it, which
+        # closes gracefully. An unhandled exception in a WebSocket route
+        # handler doesn't get FastAPI's normal HTTP-exception-to-response
+        # translation; it just aborts the connection abruptly with a logged
+        # stack trace instead of the same clean, reasoned close every other
+        # failure path here already gives the client.
+        try:
+            node = await NodeService.get_node(db, server.node_id)
+        except NodeError:
+            await websocket.close(code=ws_status.WS_1008_POLICY_VIOLATION, reason="server's node no longer exists")
+            return
 
     await websocket.accept()
     decrypted_secret = NodeService.decrypted_signing_secret(node)
