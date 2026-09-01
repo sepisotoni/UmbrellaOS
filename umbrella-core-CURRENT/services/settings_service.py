@@ -7,8 +7,17 @@ The service layer keeps business logic out of the API routers.
 Rules:
 - Sensitive settings are returned with value masked as "***"
   unless the caller explicitly requests unmasked (internal use only).
-- Settings are cached in Redis for 60 seconds to avoid DB reads on
-  every plugin heartbeat. Cache is invalidated on write.
+- FIX (FINDING-020): this docstring previously claimed "Settings are cached
+  in Redis for 60 seconds to avoid DB reads on every plugin heartbeat" —
+  there is no Redis read/write/invalidate anywhere in this file (confirmed:
+  zero references to redis/get_redis outside this line). Every get_value/
+  list/update call hits the database directly, every time. This was never
+  a functional outage on its own (no code path assumed cache-after-write
+  semantics that the DB-only reality violates), but it was a false
+  documented contract that could mislead anyone reasoning about read
+  latency, DB load under plugin heartbeat volume, or write-then-read
+  consistency. If Redis caching is added later, restore an accurate
+  version of this line alongside the actual implementation.
 - On first boot, default settings are seeded from .env values.
 """
 import json
