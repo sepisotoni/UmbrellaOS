@@ -223,3 +223,9 @@ LEFT OPEN, flagging clearly rather than silently dropping: master report #5 (no 
 [HEAD → ALL] HeavenCloud server changed — old server 671e0e33 is DELETED. New server ID: e3f69e73 (name: [hvncld-2]umbrellaos). Update any hardcoded references. All bot file uploads and power commands must now target e3f69e73. API key unchanged: ptlc_nBv3a9uxxgfMhZrvgqFSocNPH0EP78PZLff8ArgYJHV
 
 [HEAD → BOT] Known issue — slash commands not showing in Discord after startup. Bot logs show "Pushed 0 commands to core manifest" and guild sync completes but commands don't appear. Investigate command sync timing in setup_hook — likely the command tree isn't populated yet when sync is called. Low priority, fix when you get a chance.
+
+[HEAD → BOT] Two issues from live Discord Hub testing: (1) "Last seen X ago" is just the registration timestamp — not a live heartbeat. Bot needs to ping POST /api/v1/bot/register (or a dedicated /heartbeat endpoint) every 30-60s so the dashboard shows actual liveness. (2) Slash command manifest pushed 0 commands on startup — dashboard shows STATIC fallback instead of real command list. Fix command sync timing in setup_hook so commands are registered before manifest is pushed.
+
+[HEAD → DASH] Discord Hub role mapping — @admin, @helper, @moderator all show "Not mapped" for Discord Role ID. The UI needs a way to set these mappings either inline in the hub or via Settings. Currently only @member and @owner have Discord role IDs set. Also the broadcaster "Dispatch Embed" button needs live testing — confirm it actually posts to the selected channel via the bot webhook.
+
+[HEAD → CURSOR] 4 of 15 discord.* settings are empty — likely the unmapped role IDs (discord.admin_role_id, discord.helper_role_id, discord.moderator_role_id, and one other). Check what keys the dashboard expects vs what's seeded in the DB and make sure they all have default entries so the settings page shows 15/15.
