@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Bot, Hash, RefreshCw, Send, Radio, Copy, Check, Info,
-  Users, Server, Activity, Terminal, Shield, Layers, Box, Settings
+  Users, Server, Activity, Terminal, Shield, Layers, Box, Settings,
+  Pencil, X, Loader2
 } from 'lucide-react';
 import { api, SettingRecord, GuildChannel, GuildRole } from '../../lib/api';
 import { useDashboard } from '../../context/DashboardContext';
@@ -115,6 +116,11 @@ export const DiscordView: React.FC = () => {
   const [embedColor, setEmbedColor] = useState('bg-indigo-500');
   const [isBroadcasting, setIsBroadcasting] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+
+  // ── Role Discord ID inline editing ──
+  const [editingRole, setEditingRole] = useState<string | null>(null);
+  const [editRoleValue, setEditRoleValue] = useState('');
+  const [savingRole, setSavingRole] = useState<string | null>(null);
 
   const colors = ['bg-indigo-500', 'bg-emerald-500', 'bg-rose-500', 'bg-amber-500', 'bg-sky-500'];
 
@@ -291,6 +297,48 @@ export const DiscordView: React.FC = () => {
     if (roleName === 'helper') return settings['discord.helper_role_id'] || '—';
     if (roleName === 'member') return settings['discord.verified_role_id'] || '—';
     return '—';
+  };
+
+  // Settings key backing roleDiscordId() above — used for saving edits.
+  // null for roles with no mapped key (defensive; roleDiscordId already
+  // covers all 5 current roles, but a future 6th role added to the
+  // clearanceMap/roleColor tables above without a matching case here
+  // should render read-only rather than silently PATCH the wrong key).
+  const roleSettingKey = (roleName: string): string | null => {
+    if (roleName === 'owner') return 'discord.owner_role_id';
+    if (roleName === 'admin') return 'discord.admin_role_id';
+    if (roleName === 'moderator') return 'discord.moderator_role_id';
+    if (roleName === 'helper') return 'discord.helper_role_id';
+    if (roleName === 'member') return 'discord.verified_role_id';
+    return null;
+  };
+
+  const startEditingRole = (roleName: string) => {
+    const current = roleDiscordId(roleName);
+    setEditingRole(roleName);
+    setEditRoleValue(current === '—' ? '' : current);
+  };
+
+  const cancelEditingRole = () => {
+    setEditingRole(null);
+    setEditRoleValue('');
+  };
+
+  const saveRoleDiscordId = async (roleName: string) => {
+    const key = roleSettingKey(roleName);
+    if (!key) return;
+    setSavingRole(roleName);
+    try {
+      await api.updateSetting(key, editRoleValue.trim());
+      await reloadSettings();
+      addToast({ type: 'success', title: 'Role mapping saved', message: `@${roleName} → Discord role ID updated.` });
+      setEditingRole(null);
+      setEditRoleValue('');
+    } catch (err: any) {
+      addToast({ type: 'error', title: 'Save failed', message: err.message || 'Only the owner role can edit settings.' });
+    } finally {
+      setSavingRole(null);
+    }
   };
 
   // Role color dots
@@ -653,10 +701,53 @@ export const DiscordView: React.FC = () => {
                         </span>
                       </td>
                       <td className="py-4 font-mono text-xs text-slate-400">
-                        {discordRoleId === '—' ? (
-                          <span className="text-slate-600">Not mapped</span>
+                        {editingRole === role.name ? (
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              autoFocus
+                              value={editRoleValue}
+                              onChange={(e) => setEditRoleValue(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') saveRoleDiscordId(role.name);
+                                if (e.key === 'Escape') cancelEditingRole();
+                              }}
+                              placeholder="Discord role ID"
+                              className="w-40 rounded border border-indigo-500/40 bg-[#070914] px-2 py-1 text-xs text-white font-mono focus:outline-none focus:border-indigo-400"
+                            />
+                            <button
+                              onClick={() => saveRoleDiscordId(role.name)}
+                              disabled={savingRole === role.name}
+                              className="p-1 rounded text-emerald-400 hover:bg-emerald-950/40 transition cursor-pointer disabled:opacity-50"
+                              title="Save"
+                            >
+                              {savingRole === role.name ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                            </button>
+                            <button
+                              onClick={cancelEditingRole}
+                              disabled={savingRole === role.name}
+                              className="p-1 rounded text-slate-500 hover:bg-slate-800 hover:text-white transition cursor-pointer disabled:opacity-50"
+                              title="Cancel"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
                         ) : (
-                          <span className="text-slate-300">{discordRoleId}</span>
+                          <div className="group flex items-center gap-2">
+                            {discordRoleId === '—' ? (
+                              <span className="text-slate-600">Not mapped</span>
+                            ) : (
+                              <span className="text-slate-300">{discordRoleId}</span>
+                            )}
+                            {roleSettingKey(role.name) && (
+                              <button
+                                onClick={() => startEditingRole(role.name)}
+                                className="p-1 rounded text-slate-600 hover:text-indigo-300 hover:bg-indigo-950/40 transition cursor-pointer opacity-0 group-hover:opacity-100"
+                                title="Edit Discord role ID"
+                              >
+                                <Pencil className="h-3 w-3" />
+                              </button>
+                            )}
+                          </div>
                         )}
                       </td>
                       <td className="py-4 text-right text-slate-400 font-mono text-xs">
