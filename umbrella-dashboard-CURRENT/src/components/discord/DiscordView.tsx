@@ -277,8 +277,18 @@ export const DiscordView: React.FC = () => {
   };
 
   // Role → Discord role ID from settings
+  // Fix (2026-09-01): only owner/member were looked up here despite
+  // clearanceMap/roleColor above both defining all 5 roles — admin/
+  // moderator/helper always showed "Not mapped" regardless of what was
+  // configured, because there was no case for them at all (not because the
+  // settings were empty). discord.admin_role_id/moderator_role_id/
+  // helper_role_id are new settings keys — see settings_service.py's
+  // DEFAULT_SETTINGS for the corresponding backend addition.
   const roleDiscordId = (roleName: string): string => {
     if (roleName === 'owner') return settings['discord.owner_role_id'] || '—';
+    if (roleName === 'admin') return settings['discord.admin_role_id'] || '—';
+    if (roleName === 'moderator') return settings['discord.moderator_role_id'] || '—';
+    if (roleName === 'helper') return settings['discord.helper_role_id'] || '—';
     if (roleName === 'member') return settings['discord.verified_role_id'] || '—';
     return '—';
   };

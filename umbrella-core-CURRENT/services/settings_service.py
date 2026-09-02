@@ -185,6 +185,21 @@ DEFAULT_SETTINGS: list[tuple] = [
      "Role assigned to a player on successful Minecraft account verification", False, False),
     ("discord.owner_role_id", "1503074796702011582", "discord",
      "Discord role ID for the Owner role; members can run all staff/destructive commands", False, False),
+    # [HEAD → CURSOR, 2026-09-01] Dashboard's DiscordView.tsx clearanceMap and
+    # roleColor both define 5 roles (owner, admin, moderator, helper, member)
+    # but roleDiscordId() only had lookup branches for owner and member — admin/
+    # moderator/helper always fell through to '—' ("Not mapped") regardless of
+    # what was in settings, because these three keys never existed as a concept
+    # anywhere in the codebase (confirmed: zero references in either umbrella-core
+    # or umbrella-dashboard before this commit). Added as empty-by-default so an
+    # operator can fill them in via the dashboard once real Discord role IDs are
+    # known, same pattern as owner_role_id/verified_role_id above.
+    ("discord.admin_role_id", "", "discord",
+     "Discord role ID for the Admin role; maps to dashboard clearance ADMIN", False, False),
+    ("discord.moderator_role_id", "", "discord",
+     "Discord role ID for the Moderator role; maps to dashboard clearance MODERATOR", False, False),
+    ("discord.helper_role_id", "", "discord",
+     "Discord role ID for the Helper role; maps to dashboard clearance SUPPORT", False, False),
     ("discord.callback_url", "http://free-bots.heavencloud.in:3607", "discord",
      "Public URL core will POST webhook events to (must be reachable from core)", False, False),
     ("discord.callback_port", "3607", "discord",
