@@ -11,7 +11,7 @@ import {
   Server, RefreshCw, Palette, Save, Eye, EyeOff, Flag, Plus,
   CheckCircle, AlertCircle, Loader2, ChevronRight, Puzzle, Trash2
 } from 'lucide-react';
-import { api, SettingRecord, PluginHeartbeatRecord } from '../../lib/api';
+import { api, SettingRecord, PluginHeartbeatStatus } from '../../lib/api';
 import { useDashboard } from '../../context/DashboardContext';
 import { DisconnectedBanner } from '../common/DisconnectedBanner';
 import { BrandVisualSettings } from './BrandVisualSettings';
@@ -336,7 +336,7 @@ export const SettingsView: React.FC = () => {
 
   const [activeTab, setTab] = useState<string>('ai');
   const [allSettings, setAllSettings] = useState<SettingRecord[]>([]);
-  const [plugins, setPlugins] = useState<PluginHeartbeatRecord[]>([]);
+  const [plugins, setPlugins] = useState<PluginHeartbeatStatus[]>([]);
   const [values, setValues] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<Record<string, boolean>>({});
@@ -351,7 +351,7 @@ export const SettingsView: React.FC = () => {
     try {
       const [records, pluginList] = await Promise.all([
         api.getSettings(),
-        api.getPlugins().catch(() => []),
+        api.getPluginsHeartbeat(),
       ]);
       setAllSettings(records);
       setPlugins(pluginList || []);
@@ -403,7 +403,7 @@ export const SettingsView: React.FC = () => {
   // Determine active plugin if tab is a plugin tab
   const isPluginTab = activeTab.startsWith('plugin:');
   const activeServerId = isPluginTab ? activeTab.replace('plugin:', '') : null;
-  const selectedPlugin = plugins.find((p) => (p.server || p.id) === activeServerId);
+  const selectedPlugin = plugins.find((p) => p.server_id === activeServerId);
 
   const formatRelativeTime = (isoString?: string) => {
     if (!isoString) return 'Never';
@@ -504,7 +504,7 @@ export const SettingsView: React.FC = () => {
             <div className="px-3 py-1 text-[11px] text-slate-600 italic">No plugins reported</div>
           ) : (
             plugins.map((p) => {
-              const serverId = p.server || p.id;
+              const serverId = p.server_id;
               const tabId = `plugin:${serverId}`;
               const isSelected = activeTab === tabId;
               return (
@@ -518,7 +518,7 @@ export const SettingsView: React.FC = () => {
                   }`}
                 >
                   <Puzzle className={`h-3.5 w-3.5 shrink-0 ${isSelected ? 'text-indigo-400' : 'text-slate-500'}`} />
-                  <span className="truncate">{p.name || p.server || 'Server Plugin'}</span>
+                  <span className="truncate">{p.server_name || p.server_id || 'Server Plugin'}</span>
                   {isSelected && <ChevronRight className="h-3 w-3 ml-auto text-indigo-400 shrink-0" />}
                 </button>
               );

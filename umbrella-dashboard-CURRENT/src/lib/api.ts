@@ -119,16 +119,6 @@ export interface ServerRecord {
   last_heartbeat?: string;
 }
 
-export interface PluginHeartbeatRecord {
-  id: string;
-  name: string;
-  version: string;
-  server: string;
-  status: 'connected' | 'stale' | 'unreachable';
-  heartbeatMs: number;
-  lastSeen: string;
-}
-
 export interface PluginHeartbeatStatus {
   server_id: string;
   server_name?: string;
@@ -761,12 +751,6 @@ export class UmbrellaApiClient {
       method: 'POST',
       body: JSON.stringify({ server_id: id, action: 'restart' }),
     });
-  }
-
-  public async getPlugins(serverId?: string): Promise<PluginHeartbeatRecord[]> {
-    // Core prefix is /api/v1/plugin (not /api/v1/plugins); use dashboard endpoint
-    const query = serverId ? `?server=${encodeURIComponent(serverId)}` : '';
-    return this.request<PluginHeartbeatRecord[]>(`/api/v1/plugin/health${query}`);
   }
 
   public async getPluginsHeartbeat(): Promise<PluginHeartbeatStatus[]> {
