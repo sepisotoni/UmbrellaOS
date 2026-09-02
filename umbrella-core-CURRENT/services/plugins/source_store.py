@@ -26,6 +26,63 @@ from config import get_settings
 
 MANIFEST_FILENAME = "plugin.json"
 
+# [PLUGIN] audit addition, 2026-09-01: decompression-bomb guard.
+#
+# Neither read_manifest_dict() nor extract_sources() previously checked any
+# size before calling zf.read(name) — a tiny (KB-scale) crafted zip can
+# have a central-directory-declared file_size in the GB range (classic
+# "zip bomb"), and zf.read() will happily decompress the entire thing into
+# memory in one call, in this process (umbrella-core itself, not an
+# isolated sandbox subprocess — this code runs during publish/install,
+# before sandbox.py's process isolation ever begins), regardless of the
+# actual on-disk zip size. Reachable via marketplace.listing.manage /
+# marketplace.install.manage (capabilities/marketplace.py) — a genuine
+# permission gate, so this needs a trusted actor to trigger, not an
+# anonymous caller — but a mistake, a corrupted upload, or a compromised
+# trusted account should still not be able to take the whole service down
+# via a multi-KB file.
+#
+# Two layers, since a zip's own declared file_size in ZipInfo is untrusted
+# metadata the format doesn't cryptographically bind to the actual
+# decompressed byte stream:
+#   1. Reject upfront if ZipInfo.file_size already exceeds the cap (catches
+#      the common/naive case cheaply, no decompression needed).
+#   2. Stream-decompress in bounded chunks via zf.open(), aborting the
+#      moment real output crosses the cap — this is the actual backstop,
+#      independent of whatever the zip's central directory claims.
+_MAX_DECOMPRESSED_ENTRY_BYTES = 2 * 1024 * 1024  # 2 MiB — plugin.json and a
+# single plugin source module are both tiny text files by design (source
+# modules also separately face sandbox_guard.py's 64 KiB check once
+# extracted); 2 MiB is generous headroom, not a tight fit.
+
+
+def _safe_read(zf: zipfile.ZipFile, name: str) -> bytes:
+    """Decompress a single zip entry with a hard, streaming byte-count
+    cap — see _MAX_DECOMPRESSED_ENTRY_BYTES docstring above. Raises
+    PluginPackageError instead of allowing unbounded memory growth from a
+    crafted or corrupted entry."""
+    info = zf.getinfo(name)
+    if info.file_size > _MAX_DECOMPRESSED_ENTRY_BYTES:
+        raise PluginPackageError(
+            f"{name!r} declares a decompressed size of {info.file_size} bytes, "
+            f"exceeding the {_MAX_DECOMPRESSED_ENTRY_BYTES}-byte cap"
+        )
+    chunks: list[bytes] = []
+    total = 0
+    with zf.open(name) as fh:
+        while True:
+            chunk = fh.read(65536)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > _MAX_DECOMPRESSED_ENTRY_BYTES:
+                raise PluginPackageError(
+                    f"{name!r} decompressed past the {_MAX_DECOMPRESSED_ENTRY_BYTES}-byte "
+                    f"cap during read — its declared size was inaccurate or misleading"
+                )
+            chunks.append(chunk)
+    return b"".join(chunks)
+
 
 class PluginPackageError(ValueError):
     """Raised for a structurally-broken zip (not a zip at all, no
@@ -79,7 +136,7 @@ def read_manifest_dict(zip_bytes: bytes) -> dict:
         with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
             _check_safe_names(zf.namelist())
             try:
-                raw = zf.read(MANIFEST_FILENAME)
+                raw = _safe_read(zf, MANIFEST_FILENAME)
             except KeyError:
                 raise PluginPackageError(
                     f"plugin zip is missing {MANIFEST_FILENAME} at its root"
@@ -109,7 +166,7 @@ def extract_sources(zip_bytes: bytes) -> dict[str, str]:
             if name == MANIFEST_FILENAME or "/" in name or not name.endswith(".py"):
                 continue
             module_name = name[: -len(".py")]
-            sources[module_name] = zf.read(name).decode("utf-8")
+            sources[module_name] = _safe_read(zf, name).decode("utf-8")
     return sources
 
 
