@@ -250,7 +250,7 @@ async def plugin_active_punishment_check(
     return ActiveBanCheckResponse(banned=False, punishment=None)
 
 
-@router.post("/control")
+@router.post("/control", status_code=202)
 async def plugin_control(
     body: PluginControlRequest,
     db: AsyncSession = Depends(get_db),
@@ -258,6 +258,27 @@ async def plugin_control(
 ) -> dict:
     """
     Send a control command to a specific Minecraft plugin instance.
+
+    NOT CURRENTLY FUNCTIONAL — [PLUGIN] subsystem audit. This endpoint
+    writes a PluginCommand row (status="pending") but nothing anywhere in
+    this codebase ever reads it: not the Minecraft plugin's CommandPoller
+    (which only polls the unrelated mc_commands table — see
+    api/routers/mc_commands.py), not the sandboxed-plugin execution system
+    in services/plugins/, not the dashboard, not a test. Confirmed via
+    full-repo grep for both "PluginCommand" and "/control" before writing
+    this note. Before this fix, calling this endpoint returned
+    {"ok": True, "command_id": ...} — a false-success response implying an
+    action would actually happen, when nothing was ever going to read that
+    row or act on it. plugin_name + a reload/toggle action strongly
+    suggests this was designed for the sandboxed third-party plugin system
+    (services/plugins/, capabilities/marketplace.py) rather than the
+    single Bukkit plugin this router otherwise serves, but no consumer
+    exists for either interpretation. Left the write behavior in place
+    (so the historical PluginCommand row still gets created for whoever
+    eventually builds the real consumer) but stopped claiming success —
+    now returns 202 Accepted with an explicit note, rather than 200 OK
+    implying completion. Flagged in coordination for whoever has design
+    context on which system this was meant to control.
     """
     command = PluginCommand(
         plugin_name=body.plugin_name,
@@ -266,7 +287,16 @@ async def plugin_control(
     )
     db.add(command)
     await db.flush()
-    return {"ok": True, "command_id": command.id}
+    return {
+        "ok": True,
+        "command_id": command.id,
+        "status": "pending",
+        "note": (
+            "This command has been recorded but nothing currently polls or "
+            "executes PluginCommand rows — no system consumes this queue yet. "
+            "It will remain 'pending' indefinitely."
+        ),
+    }
 
 
 # ---------------------------------------------------------------------------
