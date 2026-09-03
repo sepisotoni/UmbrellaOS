@@ -40,7 +40,7 @@ class ChatMessage(Base):
     __tablename__ = "chat_messages"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    source: Mapped[str] = mapped_column(String(16), nullable=False, index=True)  # "minecraft" or "discord"
+    source: Mapped[str] = mapped_column(String(16), nullable=False, index=True)  # "minecraft", "discord", or "DASHBOARD" (see api/routers/bridge.py)
     player_uuid: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("players.uuid", ondelete="SET NULL"), nullable=True, index=True
     )
