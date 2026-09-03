@@ -43,9 +43,10 @@ export const Sidebar: React.FC<SidebarProps> = () => {
     toggleSidebar,
     logout,
     currentUser,
+    canAccessTab,
   } = useDashboard();
 
-  const navigationItems: NavItem[] = [
+  const allNavigationItems: NavItem[] = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
     { id: 'discord', label: 'Discord Server', icon: Bot, badge: 'Hub', badgeColor: 'bg-[#5865F2]/20 text-[#818cf8] border-[#5865F2]/40' },
     { id: 'players', label: 'Players', icon: Users },
@@ -63,6 +64,18 @@ export const Sidebar: React.FC<SidebarProps> = () => {
     { id: 'feature-flags', label: 'Feature Flags', icon: Flag },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
+
+  // AUDIT-2026-08-30 fix: this list was rendered completely unfiltered —
+  // every authenticated user saw all 16 tabs regardless of role, and a
+  // low-privilege user (e.g. a real "viewer" role, which per
+  // TAB_ROLE_CLEARANCE in DashboardContext.tsx can only actually open
+  // "overview") would see the full staff-tool menu and get bounced to
+  // Access Denied on 15 of the 16 links. Actual data access was never at
+  // risk (App.tsx's per-tab gate + AccessDeniedView correctly blocked
+  // content either way), but the sidebar itself was exposing the
+  // existence/labels of every admin area to anyone authenticated,
+  // regardless of what they're actually cleared to use.
+  const navigationItems = allNavigationItems.filter((item) => canAccessTab(item.id));
 
   return (
     <aside
