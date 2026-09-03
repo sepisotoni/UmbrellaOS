@@ -123,7 +123,24 @@ class DaemonClient:
             )
         if not response.content:
             return {}
-        return response.json()
+        # FIX ([PLUGIN] subsystem audit): response.json() raises a raw
+        # json.JSONDecodeError, unguarded, on malformed content — breaking
+        # this class's own documented contract ("Raised for any failure
+        # communicating with a node's daemon"). A daemon bug, or infra
+        # returning an unexpected body on a 2xx status, would previously
+        # surface as an unstructured JSONDecodeError instead of the
+        # consistent DaemonError every caller of this class is written to
+        # expect and catch.
+        try:
+            return response.json()
+        except ValueError as exc:
+            # httpx's JSONDecodeError subclasses the stdlib's, which
+            # subclasses ValueError — catching the stdlib base keeps this
+            # correct even if httpx changes its exact exception class.
+            raise DaemonError(
+                f"daemon returned malformed JSON for {method} {path}: {exc}",
+                status_code=response.status_code,
+            ) from exc
 
     async def create(
         self,

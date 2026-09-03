@@ -16,25 +16,21 @@ SECRET = "a-shared-secret-at-least-32-bytes-long-ok"
 
 
 def _client_with_transport(transport: httpx.MockTransport) -> DaemonClient:
-    client = DaemonClient("https://node1.example.com:8443", "node-1", SECRET)
-
-    # Monkeypatch the internal httpx client construction to use our
-    # MockTransport instead of making a real network call — the one place
-    # this test reaches past the public interface, and only to swap the
-    # transport, not any business logic.
-    original_request = client._request
-
-    async def patched_request(method, path, json=None):
-        url = f"{client._base_url}{path}"
-        headers = client._headers()
-        async with httpx.AsyncClient(transport=transport, timeout=client._timeout) as http_client:
-            response = await http_client.request(method, url, headers=headers, json=json)
-        if response.status_code >= 400:
-            raise DaemonError(f"daemon returned {response.status_code}", status_code=response.status_code)
-        return response.json()
-
-    client._request = patched_request
-    return client
+    # FIX ([PLUGIN] subsystem audit): previously constructed a DaemonClient
+    # with no transport, then monkeypatched client._request with a
+    # duplicated, divergent reimplementation — even though the class's own
+    # docstring explicitly says the transport constructor parameter exists
+    # so "tests can exercise this class's real request/error handling
+    # logic against an httpx.MockTransport ... rather than monkeypatching
+    # private methods". The monkeypatch had drifted from the real
+    # _request (missing its malformed-JSON handling entirely), so no test
+    # using this helper was actually verifying _request's real behavior —
+    # only a stale copy of it. Using the constructor's intended injection
+    # point instead means every test below now exercises the actual
+    # _request implementation.
+    return DaemonClient(
+        "https://node1.example.com:8443", "node-1", SECRET, transport=transport
+    )
 
 
 @pytest.mark.asyncio
@@ -112,29 +108,32 @@ async def test_network_error_raises_daemon_error():
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("connection refused")
 
-    client = DaemonClient("https://unreachable.example.com:8443", "node-1", SECRET)
-    # This one exercises the real _request path (not the patched test
-    # helper) specifically to prove the RequestError -> DaemonError
-    # wrapping in the actual production code, not just the test's transport
-    # substitution.
-    import httpx as httpx_module
+    # FIX ([PLUGIN] subsystem audit): this test previously had its own
+    # third, separate monkeypatch of _request — dead code (a
+    # `raising_request` helper defined and never called), plus yet another
+    # reimplementation of the try/except this test's own comment claimed
+    # to be testing the real one for. None of it actually exercised
+    # DaemonClient._request's real httpx.RequestError handling. Using the
+    # corrected _client_with_transport (constructor's transport=
+    # injection, matching the class's own documented test-support design)
+    # actually does.
+    client = _client_with_transport(httpx.MockTransport(handler))
+    with pytest.raises(DaemonError) as exc_info:
+        await client.state("srv-1")
+    assert "could not reach daemon" in str(exc_info.value)
 
-    async def raising_request(method, path, json=None):
-        raise httpx_module.ConnectError("connection refused")
 
-    # Use a MockTransport that raises, through the real client construction
-    # path, to exercise DaemonClient._request's own try/except.
-    real_client = DaemonClient("https://unreachable.example.com:8443", "node-1", SECRET)
+@pytest.mark.asyncio
+async def test_malformed_json_response_raises_daemon_error():
+    """FIX ([PLUGIN] subsystem audit): _request previously let a raw
+    json.JSONDecodeError escape on a 2xx response with malformed content,
+    breaking DaemonError's documented "any failure" contract. First test
+    for this path."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"not valid json{{{")
 
-    async def patched(method, path, json=None):
-        url = f"{real_client._base_url}{path}"
-        transport = httpx.MockTransport(handler)
-        try:
-            async with httpx.AsyncClient(transport=transport, timeout=1.0) as http_client:
-                await http_client.request(method, url, headers=real_client._headers(), json=json)
-        except httpx.RequestError as exc:
-            raise DaemonError(f"could not reach daemon: {exc}") from exc
-
-    real_client._request = patched
-    with pytest.raises(DaemonError):
-        await real_client.state("srv-1")
+    client = _client_with_transport(httpx.MockTransport(handler))
+    with pytest.raises(DaemonError) as exc_info:
+        await client.state("srv-1")
+    assert "malformed JSON" in str(exc_info.value)
+    assert exc_info.value.status_code == 200
