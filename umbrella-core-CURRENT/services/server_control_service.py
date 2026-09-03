@@ -105,6 +105,26 @@ async def execute_server_control(
     if action == "restart":
         result = await _run_configured_command(db, ACTION_CMD_KEYS["restart"])
     else:
+        # FIX ([PLUGIN] subsystem audit — real, live-reachable safety bug):
+        # `enabled: bool | None = None` at the API boundary means a request
+        # for action="power" that simply omits `enabled` (client bug, bad
+        # wiring, a forgotten field) arrives here as enabled=None. The
+        # previous `ACTION_CMD_KEYS["power_on"] if enabled else power_off`
+        # treats None exactly like False — so "I forgot to say what I want"
+        # silently became "stop the server", the single most consequential
+        # action this endpoint can take, with zero indication anything was
+        # ambiguous. The "maintenance" action just above already gets this
+        # right (enabled is not None distinguishes "toggle" from "set");
+        # "power" needs the same distinction, but has no toggle concept — an
+        # unspecified power action isn't a valid request at all, so it
+        # should fail loudly rather than guess in the direction that stops
+        # a live server.
+        if enabled is None:
+            raise ServerControlError(
+                "enabled is required for the 'power' action "
+                "(true to start, false to stop) — it cannot be inferred",
+                422,
+            )
         key = ACTION_CMD_KEYS["power_on"] if enabled else ACTION_CMD_KEYS["power_off"]
         result = await _run_configured_command(db, key)
 
