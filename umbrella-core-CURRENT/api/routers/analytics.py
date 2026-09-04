@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
 from database import get_db
-from api.middleware.auth import require_admin_key
+from api.middleware.auth import require_plugin_key
 from api.dependencies.permissions import require_permission
 from services import analytics_service
 
@@ -35,7 +35,18 @@ class AnalyticsEventResponse(BaseModel):
 async def post_analytics_event(
     body: AnalyticsEventRequest,
     db: AsyncSession = Depends(get_db),
-    _auth: str = Depends(require_admin_key),
+    # FIX ([PLUGIN] subsystem audit): was require_admin_key, a credential
+    # the Minecraft plugin has never held (its CoreApiClient sends only
+    # X-Plugin-Key). Confirmed this endpoint IS meant to be plugin-facing —
+    # analytics_service.py's own _EVENT_TYPE_ALIASES table already maps
+    # "player_join"/"player_quit"/"snapshot" (all plugin-side naming) to
+    # the canonical "join"/"quit" event types, with an explicit comment
+    # ("PlayerTelemetryListener sends 'snapshot' on some paths") naming
+    # the exact Java class that's supposed to call this. That class exists
+    # and does call an endpoint meant to deliver this data — just the
+    # wrong URL, with require_admin_key compounding the break even after
+    # correcting the path. See PlayerTelemetryListener.java's matching fix.
+    _auth: str = Depends(require_plugin_key),
 ) -> AnalyticsEventResponse:
     """
     Record an analytics event.
