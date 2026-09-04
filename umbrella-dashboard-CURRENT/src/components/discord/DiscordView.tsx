@@ -610,7 +610,7 @@ export const DiscordView: React.FC = () => {
           <div className="rounded-lg border border-[#141d3d] bg-[#070914] p-4 mb-5">
             <div className="flex items-center justify-between mb-3">
               <div className="text-[10px] font-mono text-slate-500 uppercase">DISCORD CLIENT EMBED PREVIEW</div>
-              <div className="text-[10px] font-mono text-indigo-400 font-bold uppercase">UMBRELLA SENTINEL • TODAY AT 14:00</div>
+              <div className="text-[10px] font-mono text-indigo-400 font-bold uppercase">UMBRELLA SENTINEL • TODAY AT {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
             </div>
             <div className="flex">
               <div className={`w-1 rounded-l ${embedColor} shrink-0`}></div>
