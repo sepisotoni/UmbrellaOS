@@ -343,3 +343,25 @@ async def test_staff_lookup_player_role_excluded(client, db_session):
 async def test_staff_lookup_requires_plugin_key(client, db_session):
     response = await client.get("/api/v1/staff/some-discord-id")
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_list_staff_includes_is_active(client, db_session):
+    """
+    AUDIT-2026-08-30 regression test: StaffMemberSchema previously had no
+    is_active field at all — GET /api/v1/staff/list_staff's response
+    never included it, so the dashboard's status badge (member.is_active)
+    was always undefined -> always falsy -> every staff member showed
+    DISABLED regardless of their real status. Zero test coverage existed
+    for this endpoint's response shape before this test.
+    """
+    headers = await _owner_headers(db_session)
+
+    response = await client.get("/api/v1/staff", headers=headers)
+    assert response.status_code == 200
+    members = response.json()
+    assert len(members) >= 1
+
+    owner_member = next(m for m in members if m["discord_id"] == "owner-discord")
+    assert "is_active" in owner_member
+    assert owner_member["is_active"] is True

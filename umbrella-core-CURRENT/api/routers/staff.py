@@ -125,6 +125,7 @@ class StaffMemberSchema(BaseModel):
     email: str | None
     linked_minecraft_uuid: str | None
     linked_minecraft_username: str | None
+    is_active: bool
 
     class Config:
         from_attributes = True
@@ -209,6 +210,17 @@ async def list_staff(
             email=user.email,
             linked_minecraft_uuid=da.player_uuid if da and da.verified else None,
             linked_minecraft_username=None,  # would need Player lookup; skip for performance
+            # AUDIT-2026-08-30 fix: this field was entirely missing from
+            # StaffMemberSchema — the dashboard's status badge read
+            # member.is_active on a response that never included it,
+            # so it was always undefined -> always falsy -> every staff
+            # member showed DISABLED regardless of their real status.
+            # This list_staff query only ever selects is_active==True
+            # rows (see the WHERE clause above), so today this is always
+            # True in practice — populated from the real column rather
+            # than hardcoded, so it stays correct if that WHERE clause
+            # is ever relaxed (e.g. to support showing disabled staff).
+            is_active=user.is_active,
         ))
 
     return staff_members

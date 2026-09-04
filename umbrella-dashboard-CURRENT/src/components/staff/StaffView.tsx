@@ -17,6 +17,7 @@ export const StaffView: React.FC = () => {
   const [roles, setRoles] = useState<RoleSchema[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [discordMembersFailed, setDiscordMembersFailed] = useState<boolean>(false);
 
   // Add staff modal state
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
@@ -42,6 +43,10 @@ export const StaffView: React.FC = () => {
 
       if (discordRes.status === 'fulfilled') {
         setDiscordMembers(discordRes.value || []);
+        setDiscordMembersFailed(false);
+      } else {
+        setDiscordMembers([]);
+        setDiscordMembersFailed(true);
       }
 
       if (rolesRes.status === 'fulfilled') {
@@ -321,6 +326,14 @@ export const StaffView: React.FC = () => {
                       </option>
                     ))}
                   </select>
+                ) : discordMembersFailed ? (
+                  <div className="mb-2 rounded-lg border border-amber-500/30 bg-amber-950/30 px-2.5 py-2 text-[11px] text-amber-300 flex items-start gap-1.5">
+                    <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                    <span>
+                      Could not load Discord server members (Discord bot token/guild ID may not be
+                      configured, or you may not have permission). Falling back to manual entry.
+                    </span>
+                  </div>
                 ) : null}
 
                 <input

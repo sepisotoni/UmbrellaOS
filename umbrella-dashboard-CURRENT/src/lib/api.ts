@@ -10,6 +10,38 @@ export interface ApiConfig {
   adminKey: string | null;
 }
 
+/**
+ * AUDIT-2026-08-30 fix: FastAPI's `detail` field on error responses is
+ * not always a string. HTTPException(detail="...") calls in this
+ * codebase give a plain string, but FastAPI's *automatic* 422 responses
+ * (Pydantic request-validation failures) return detail as an ARRAY of
+ * {loc, msg, type} objects instead. Previously `errData?.detail` was
+ * passed straight through as ApiError's message with no normalization —
+ * a non-string message, once rendered as a toast or JSX text child,
+ * stringifies as the literal text "[object Object]" ("Object, object"
+ * in live testing reports). This extracts a readable string from every
+ * shape FastAPI can actually produce.
+ */
+function extractErrorMessage(errData: any, fallback: string): string {
+  const detail = errData?.detail ?? errData?.message;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    // Pydantic validation error array: [{loc, msg, type}, ...]
+    const msgs = detail
+      .map((e: any) => {
+        if (typeof e === 'string') return e;
+        const field = Array.isArray(e?.loc) ? e.loc[e.loc.length - 1] : undefined;
+        return e?.msg ? (field ? `${field}: ${e.msg}` : e.msg) : null;
+      })
+      .filter(Boolean);
+    if (msgs.length > 0) return msgs.join('; ');
+  }
+  if (detail && typeof detail === 'object') {
+    if (typeof detail.msg === 'string') return detail.msg;
+  }
+  return fallback;
+}
+
 export class ApiError extends Error {
   status: number;
   data: any;
@@ -618,7 +650,7 @@ export class UmbrellaApiClient {
           errData = { detail: response.statusText };
         }
         throw new ApiError(
-          errData?.detail || errData?.message || `Request failed with status ${response.status}`,
+          extractErrorMessage(errData, `Request failed with status ${response.status}`),
           response.status,
           errData
         );
@@ -646,8 +678,8 @@ export class UmbrellaApiClient {
   // --------------------------------------------------------------------------
   // Health & System
   // --------------------------------------------------------------------------
-  public async getHealth(): Promise<{ status: string; uptime?: number; version?: string; database?: string }> {
-    return this.request<{ status: string; uptime?: number; version?: string; database?: string }>('/health');
+  public async getHealth(): Promise<{ status: string; uptime_seconds?: number; version?: string; database?: string; service?: string }> {
+    return this.request<{ status: string; uptime_seconds?: number; version?: string; database?: string; service?: string }>('/health');
   }
 
   // --------------------------------------------------------------------------
