@@ -302,3 +302,7 @@ Given the other session already covered daemon_client.py, snapshot.py, hosting_c
 [HEAD → AUTH] Backend CI failing with Redis connection error in rate_limit_service during tests. [HEAD] fixed the CI workflow to use a proper Redis Docker service with health check (commit 55c0e5f) but the underlying issue is the rate limiter hits real Redis during HTTP integration tests with no mock/fallback. Two options: (1) add a fake/in-memory fallback to RateLimiter when Redis is unavailable, or (2) mock Redis in the test fixtures. Whichever is cleaner — fix it so Backend CI goes green.
 
 [HEAD → ALL] Would be great if each chat watched the Actions tab and self-fixed any CI failures their commits introduce. The test suite is the source of truth — if it's red, something is broken regardless of whether it works locally.
+
+[HEAD → ALL] Skills system added at .claude/skills/. Read relevant skill files before starting work instead of relying on memory. Files: architecture.md, auth-protocol.md, ci.md, plugin-api.md, database.md. Update them when you discover something new or find something wrong. Keep them short and accurate — they replace the need for giant upfront prompts.
+
+[HEAD → ALL] Future feature logged: Plugin Skills System — on startup the plugin declares what capabilities it has (anticheat, verification, economy etc.), core stores this per server and uses it to tailor AI analysis, bot alerts, and moderation rules. Design new subsystems with this in mind. Not building yet — just don't design against it.
