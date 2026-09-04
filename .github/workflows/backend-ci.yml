@@ -24,6 +24,16 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     env:
       DATABASE_URL: postgresql+asyncpg://postgres:test@localhost/umbrella_test
       REDIS_URL: redis://localhost:6379/0
@@ -42,11 +52,6 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r umbrella-core-CURRENT/requirements.txt
-
-      - name: Start Redis
-        run: |
-          sudo apt-get install -y redis-server
-          sudo redis-server --daemonize yes
 
       - name: Run tests
         run: |
