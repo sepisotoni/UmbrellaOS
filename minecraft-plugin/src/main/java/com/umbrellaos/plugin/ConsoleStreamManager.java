@@ -186,7 +186,6 @@ public class ConsoleStreamManager {
         }
     }
 
-    /**
     public void startPushing(JavaPlugin plugin, CoreApiClient client, String serverId, long intervalTicks) {
         if (pushTask != null) return; // already started
         pushTask = plugin.getServer().getScheduler().runTaskTimerAsynchronously(plugin, () -> {
