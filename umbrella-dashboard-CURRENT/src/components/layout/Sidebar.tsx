@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { api } from '../../lib/api';
 import { useDashboard, NavigationTab } from '../../context/DashboardContext';
 import {
   LayoutDashboard,
@@ -45,6 +46,46 @@ export const Sidebar: React.FC<SidebarProps> = () => {
     currentUser,
     canAccessTab,
   } = useDashboard();
+
+  // AUDIT-2026-08-30: [HEAD] asked for the bottom-left chip to show
+  // core status (version/connection/uptime) rather than just the logged
+  // in user. Supplementing rather than replacing — logout is a critical
+  // action that shouldn't disappear from the sidebar. Polls /health on
+  // an interval (public, no auth needed) rather than once on mount, so
+  // it stays live if the connection actually drops mid-session.
+  const [coreHealth, setCoreHealth] = useState<{
+    status: string;
+    version?: string;
+    uptime_seconds?: number;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const data = await api.getHealth();
+        if (!cancelled) setCoreHealth(data);
+      } catch {
+        if (!cancelled) setCoreHealth({ status: 'unreachable' });
+      }
+    };
+    poll();
+    const interval = setInterval(poll, 30_000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
+
+  const formatUptime = (seconds?: number): string => {
+    if (seconds === undefined || seconds === null) return '—';
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    if (days > 0) return `${days}d ${hours}h`;
+    if (hours > 0) return `${hours}h ${minutes}m`;
+    return `${minutes}m`;
+  };
 
   const allNavigationItems: NavItem[] = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
@@ -134,6 +175,33 @@ export const Sidebar: React.FC<SidebarProps> = () => {
           })}
         </nav>
       </div>
+
+      {/* Core Status Chip */}
+      {!sidebarCollapsed && (
+        <div className="shrink-0 border-t border-[#141d3d]/80 bg-[#05091a]/70 px-3 py-2 flex items-center gap-2">
+          <span
+            className={`h-1.5 w-1.5 rounded-full shrink-0 ${
+              coreHealth?.status === 'ok'
+                ? 'bg-emerald-400'
+                : coreHealth?.status === 'degraded'
+                ? 'bg-amber-400'
+                : coreHealth === null
+                ? 'bg-slate-600'
+                : 'bg-rose-500'
+            }`}
+            title={coreHealth?.status || 'checking...'}
+          />
+          <span className="text-[10px] font-mono text-slate-400 truncate">
+            Core {coreHealth?.version ? `v${coreHealth.version}` : ''}
+            {coreHealth?.status && coreHealth.status !== 'unreachable' && (
+              <span className="text-slate-600"> · up {formatUptime(coreHealth.uptime_seconds)}</span>
+            )}
+            {coreHealth?.status === 'unreachable' && (
+              <span className="text-rose-400"> · unreachable</span>
+            )}
+          </span>
+        </div>
+      )}
 
       {/* User Info & Toggle Section */}
       <div className="shrink-0 border-t border-[#141d3d]/80 bg-[#05091a]/70 p-3">

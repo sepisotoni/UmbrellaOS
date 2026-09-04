@@ -30,6 +30,19 @@ async def test_health_response_shape(client):
 
 
 @pytest.mark.asyncio
+async def test_health_uptime_seconds_present_and_non_negative(client):
+    """
+    AUDIT-2026-08-30: uptime_seconds added for the dashboard's sidebar
+    core-status chip (previously absent entirely).
+    """
+    response = await client.get("/health")
+    data = response.json()
+    assert "uptime_seconds" in data
+    assert isinstance(data["uptime_seconds"], (int, float))
+    assert data["uptime_seconds"] >= 0
+
+
+@pytest.mark.asyncio
 async def test_health_service_name(client):
     response = await client.get("/health")
     assert response.json()["service"] == "umbrella-core"
