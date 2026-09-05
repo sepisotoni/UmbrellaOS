@@ -25,6 +25,26 @@ wired into main.py, not by inspection. Every failure of this kind is
 logged, so a real, ongoing Redis outage is still visible in logs even
 though it no longer blocks traffic.
 
+Widened 2026-09-05: catching only redis.exceptions.RedisError was too
+narrow to fully deliver on the "fails open" promise above. Confirmed via
+a real CI failure (RuntimeError('Event loop is closed'), surfaced when a
+Redis connection object created under one pytest-asyncio test's event
+loop was reused after that loop closed — a test-infrastructure artifact,
+not something a real long-running server process can hit, since it has
+exactly one event loop for its entire lifetime) — but the underlying
+principle applies beyond that one test symptom: a broken pipe, a DNS
+failure resolving the Redis host, or any other transport-level failure
+during the redis-py call can surface as a plain RuntimeError or OSError
+rather than a RedisError subclass, depending on exactly where in the
+stack it occurs. All of these represent "the rate limiter's backing store
+is not currently usable," which is exactly the condition this module's
+own stated design says should fail open — narrowly matching only one
+exception family among several that indicate that same condition
+undermines the module's own documented guarantee. Still deliberately not
+catching bare Exception: an AttributeError/NameError from a genuine
+coding mistake inside RateLimiter.check() itself should keep failing
+loudly in tests, not be silently swallowed as if it were a backend outage.
+
 Phase 7 addition (docs/design/public-rest-api-and-webhooks.md, Decision 1):
 when a request presents `X-Api-Key`, a second, additive check runs keyed by
 a hash of that key's plaintext value (never the plaintext itself, never
@@ -52,6 +72,11 @@ import services.threat_detection_service as threat_detection_service
 logger = logging.getLogger(__name__)
 
 DEFAULT_EXEMPT_PATHS = {"/health"}
+
+# Exception types that mean "the rate limiter's backend is not currently
+# usable" — see the widened-catch note in the module docstring above for
+# why this is broader than just RedisError.
+_LIMITER_BACKEND_ERRORS = (RedisError, RuntimeError, OSError)
 
 
 def _api_key_identifier(plaintext: str) -> str:
@@ -98,7 +123,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         try:
             result = await self._limiter.check(client_ip, self._limit, self._window)
-        except RedisError:
+        except _LIMITER_BACKEND_ERRORS:
             logger.warning(
                 "rate limiter backend unreachable — failing open (request allowed) for %s",
                 client_ip,
@@ -122,7 +147,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 key_result = await self._limiter.check(
                     _api_key_identifier(api_key), self._api_key_limit, self._api_key_window
                 )
-            except RedisError:
+            except _LIMITER_BACKEND_ERRORS:
                 logger.warning(
                     "rate limiter backend unreachable — failing open (request allowed) for API key"
                 )
