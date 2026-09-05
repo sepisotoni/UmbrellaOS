@@ -1,0 +1,37 @@
+name: Bot CI
+
+on:
+  push:
+    paths:
+      - 'umbrella-discord-CURRENT/**'
+      - '.github/workflows/bot-ci.yml'
+  pull_request:
+    paths:
+      - 'umbrella-discord-CURRENT/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    env:
+      DISCORD_BOT_TOKEN: ci-fake-token
+      UMBRELLA_CORE_URL: http://localhost:8000
+      UMBRELLA_CORE_API_KEY: ci-test-admin
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r umbrella-discord-CURRENT/requirements.txt
+
+      - name: Run tests
+        run: |
+          cd umbrella-discord-CURRENT
+          python -m pytest tests/ -x --tb=short -q
