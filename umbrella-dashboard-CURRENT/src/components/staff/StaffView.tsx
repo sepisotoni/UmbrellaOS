@@ -8,6 +8,7 @@ import {
   RefreshCw,
   AlertCircle,
   X,
+  ChevronDown,
 } from 'lucide-react';
 
 export const StaffView: React.FC = () => {
@@ -132,22 +133,63 @@ export const StaffView: React.FC = () => {
     }
   };
 
-  // Group permissions for the currently selected role in the appoint modal
-  const selectedRoleObj = useMemo(() => {
-    return roles.find((r) => r.name.toLowerCase() === newRole.toLowerCase());
-  }, [roles, newRole]);
-
-  const groupedPerms = useMemo(() => {
-    if (!selectedRoleObj?.permissions) return {};
+  // Generic permission grouping (by dot-notation prefix, e.g.
+  // "moderation.ban" -> group "moderation") — extracted from the
+  // Appoint Staff modal's original inline logic so both the modal and
+  // each staff card below can reuse it. Defined before groupedPerms
+  // below since it's referenced inside that useMemo's callback, which
+  // runs synchronously on first render.
+  const groupPermissions = (permissions: string[] | undefined): Record<string, string[]> => {
+    if (!permissions || permissions.length === 0) return {};
     const groups: Record<string, string[]> = {};
-    for (const p of selectedRoleObj.permissions) {
+    for (const p of permissions) {
       const parts = p.split('.');
       const prefix = parts.length > 1 ? parts[0] : 'general';
       if (!groups[prefix]) groups[prefix] = [];
       groups[prefix].push(p);
     }
     return groups;
+  };
+
+  // Group permissions for the currently selected role in the appoint modal
+  const selectedRoleObj = useMemo(() => {
+    return roles.find((r) => r.name.toLowerCase() === newRole.toLowerCase());
+  }, [roles, newRole]);
+
+  const groupedPerms = useMemo(() => {
+    return groupPermissions(selectedRoleObj?.permissions);
   }, [selectedRoleObj]);
+
+  // AUDIT-2026-08-30: [HEAD]'s requested role color scheme named
+  // OWNER/ADMIN/MODERATOR/SUPPORT/VIEWER, but the roles actually seeded
+  // in this codebase (services/roles_service.py) are
+  // owner/admin/moderator/helper/member — applying the same color
+  // hierarchy to the real names (helper stands in for "support",
+  // member for "viewer"). Falls back to slate for any custom role
+  // created later that doesn't match one of these.
+  const roleBadgeStyle = (role: string | null): string => {
+    switch ((role || '').toLowerCase()) {
+      case 'owner': return 'bg-purple-950/80 text-purple-300 border-purple-800/40';
+      case 'admin': return 'bg-rose-950/80 text-rose-300 border-rose-800/40';
+      case 'moderator': return 'bg-orange-950/80 text-orange-300 border-orange-800/40';
+      case 'helper': return 'bg-sky-950/80 text-sky-300 border-sky-800/40';
+      case 'member': return 'bg-slate-800/80 text-slate-300 border-slate-700/40';
+      default: return 'bg-slate-800/80 text-slate-300 border-slate-700/40';
+    }
+  };
+
+  // Which staff cards have their permission breakdown expanded —
+  // collapsed by default per [HEAD]'s "overwhelming permissions column"
+  // notice.
+  const [expandedPerms, setExpandedPerms] = useState<Set<string>>(new Set());
+  const togglePermsExpanded = (memberId: string) => {
+    setExpandedPerms((prev) => {
+      const next = new Set(prev);
+      if (next.has(memberId)) next.delete(memberId);
+      else next.add(memberId);
+      return next;
+    });
+  };
 
   const getStaffAvatar = (member: StaffMember) => {
     if (member.avatar_url) return member.avatar_url;
@@ -206,7 +248,7 @@ export const StaffView: React.FC = () => {
         </div>
       )}
 
-      {/* Staff Roster Table */}
+      {/* Staff Roster — card grid per [HEAD]'s "cards instead of flat table" ask */}
       <div className="rounded-xl border border-[#1e1b4b] bg-[#0d1127] p-5 shadow-xl">
         {isLoading ? (
           <div className="py-12 text-center text-xs text-slate-500 font-mono">
@@ -217,76 +259,99 @@ export const StaffView: React.FC = () => {
             No staff members found. Appoint staff via the button above.
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs font-mono">
-              <thead>
-                <tr className="border-b border-[#1e1b4b] text-slate-400">
-                  <th className="pb-3 font-semibold">Staff Member</th>
-                  <th className="pb-3 font-semibold">Discord ID</th>
-                  <th className="pb-3 font-semibold">Role</th>
-                  <th className="pb-3 font-semibold">Permissions</th>
-                  <th className="pb-3 font-semibold">Status</th>
-                  <th className="pb-3 font-semibold text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#1e1b4b]/60">
-                {staffList.map((member) => (
-                  <tr key={member.id} className="hover:bg-[#121638]/50 transition">
-                    <td className="py-3 font-bold text-white flex items-center gap-2">
-                      <img
-                        src={getStaffAvatar(member)}
-                        alt={member.username || 'Staff'}
-                        className="h-6 w-6 rounded-full border border-purple-500/40 object-cover bg-purple-950/80"
-                        onError={(e) => { (e.currentTarget as HTMLImageElement).src = 'https://cdn.discordapp.com/embed/avatars/0.png'; }}
-                      />
-                      <span>{member.username || member.discord_id}</span>
-                    </td>
-                    <td className="py-3 text-purple-300 font-mono">{member.discord_id}</td>
-                    <td className="py-3">
-                      <select
-                        value={member.role || 'moderator'}
-                        onChange={(e) => handlePromoteDemote(member.id, e.target.value)}
-                        className="rounded border border-[#1e1b4b] bg-[#070914] px-2 py-1 text-xs text-white focus:border-purple-500 focus:outline-none"
-                      >
-                        {roles.length > 0 ? (
-                          roles.map((r) => (
-                            <option key={r.id} value={r.name}>{r.name.toUpperCase()}</option>
-                          ))
-                        ) : (
-                          <option value="moderator">MODERATOR</option>
-                        )}
-                      </select>
-                    </td>
-                    <td className="py-3 text-slate-400">
-                      {member.permissions && member.permissions.length > 0
-                        ? member.permissions.join(', ')
-                        : 'Standard Role Perms'}
-                    </td>
-                    <td className="py-3">
-                      <button
-                        onClick={() => handleToggleActive(member.id, member.is_active)}
-                        className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer transition ${
-                          member.is_active
-                            ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-800/40 hover:bg-emerald-900/80'
-                            : 'bg-rose-950/80 text-rose-300 border border-rose-800/40 hover:bg-rose-900/80'
-                        }`}
-                      >
-                        {member.is_active ? 'ACTIVE' : 'DISABLED'}
-                      </button>
-                    </td>
-                    <td className="py-3 text-right">
-                      <button
-                        onClick={() => handleToggleActive(member.id, true)}
-                      title="Deactivate this staff member"
-                        className="text-[11px] text-slate-400 hover:text-rose-400 underline cursor-pointer"
-                      >
-                        Deactivate
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+            {staffList.map((member) => {
+              const perms = member.permissions || [];
+              const grouped = groupPermissions(perms);
+              const categoryCount = Object.keys(grouped).length;
+              const isExpanded = expandedPerms.has(member.id);
+              return (
+                <div
+                  key={member.id}
+                  className="rounded-xl border border-[#1e1b4b] bg-[#070914] p-4 flex flex-col gap-3 hover:border-purple-500/30 transition"
+                >
+                  {/* Identity row — Discord avatar prominent per [HEAD] */}
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={getStaffAvatar(member)}
+                      alt={member.username || 'Staff'}
+                      className="h-12 w-12 rounded-full border-2 border-purple-500/40 object-cover bg-purple-950/80 shrink-0"
+                      onError={(e) => { (e.currentTarget as HTMLImageElement).src = 'https://cdn.discordapp.com/embed/avatars/0.png'; }}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="font-bold text-white text-sm truncate">
+                        {member.username || member.discord_id}
+                      </div>
+                      <div className="text-[11px] text-purple-300/80 font-mono truncate">{member.discord_id}</div>
+                    </div>
+                    <button
+                      onClick={() => handleToggleActive(member.id, member.is_active)}
+                      title="Click to toggle active status"
+                      className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer transition border ${
+                        member.is_active
+                          ? 'bg-emerald-950/80 text-emerald-300 border-emerald-800/40 hover:bg-emerald-900/80'
+                          : 'bg-rose-950/80 text-rose-300 border-rose-800/40 hover:bg-rose-900/80'
+                      }`}
+                    >
+                      {member.is_active ? 'ACTIVE' : 'DISABLED'}
+                    </button>
+                  </div>
+
+                  {/* Role — colored badge, doubles as the change-role control */}
+                  <select
+                    value={member.role || 'moderator'}
+                    onChange={(e) => handlePromoteDemote(member.id, e.target.value)}
+                    className={`w-full rounded-lg border px-2.5 py-1.5 text-xs font-bold cursor-pointer focus:outline-none ${roleBadgeStyle(member.role)}`}
+                  >
+                    {roles.length > 0 ? (
+                      roles.map((r) => (
+                        <option key={r.id} value={r.name}>{r.name.toUpperCase()}</option>
+                      ))
+                    ) : (
+                      <option value="moderator">MODERATOR</option>
+                    )}
+                  </select>
+
+                  {/* Permissions — collapsed summary by default per [HEAD]'s
+                      "overwhelming permissions column" notice, grouped
+                      chips on expand */}
+                  <div className="rounded-lg border border-[#1e1b4b] bg-[#05091a] p-2.5">
+                    <button
+                      onClick={() => togglePermsExpanded(member.id)}
+                      className="w-full flex items-center justify-between text-[11px] text-slate-400 hover:text-white transition cursor-pointer"
+                    >
+                      <span>
+                        {perms.length > 0
+                          ? `${perms.length} permission${perms.length === 1 ? '' : 's'} across ${categoryCount} categor${categoryCount === 1 ? 'y' : 'ies'}`
+                          : 'Standard role permissions'}
+                      </span>
+                      {perms.length > 0 && (
+                        <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                      )}
+                    </button>
+                    {isExpanded && perms.length > 0 && (
+                      <div className="mt-2 space-y-1.5 max-h-40 overflow-y-auto">
+                        {(Object.entries(grouped) as [string, string[]][]).map(([ns, groupPerms]) => (
+                          <div key={ns}>
+                            <span className="text-[9px] uppercase font-mono text-slate-500 font-bold block mb-1">{ns}</span>
+                            <div className="flex flex-wrap gap-1">
+                              {groupPerms.map((p) => (
+                                <span
+                                  key={p}
+                                  className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-purple-950/60 text-purple-300 border border-purple-800/40"
+                                >
+                                  {p}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
