@@ -160,6 +160,18 @@ public final class GrimBridge {
     }
 
     /**
+     * Convenience overload — defaults server_id to DEFAULT_SERVER_ID, same
+     * as explicitly passing null to the 6-arg version. Added to match what
+     * GrimBridgeTest already asserted this class does
+     * (buildFlagPayload_defaultServerId_whenNullOrOmitted covers both null
+     * AND omitted) — the overload itself was missing, not a stale test.
+     */
+    static String buildFlagPayload(UUID playerUuid, String playerName,
+                                   String checkName, String verbose, int vl) {
+        return buildFlagPayload(playerUuid, playerName, checkName, verbose, vl, null);
+    }
+
+    /**
      * Constructs the JSON body for {@code POST /api/v1/anticheat/flag}.
      * Package-private so tests can assert on it without making network calls.
      *
