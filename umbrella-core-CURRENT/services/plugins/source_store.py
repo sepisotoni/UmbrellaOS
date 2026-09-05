@@ -55,6 +55,35 @@ _MAX_DECOMPRESSED_ENTRY_BYTES = 2 * 1024 * 1024  # 2 MiB — plugin.json and a
 # modules also separately face sandbox_guard.py's 64 KiB check once
 # extracted); 2 MiB is generous headroom, not a tight fit.
 
+# [PLUGIN] audit addition, 2026-09-05: aggregate zip-bomb guard, closing a
+# gap the per-entry cap above doesn't cover. _safe_read bounds any single
+# entry's decompressed size, but nothing previously bounded the NUMBER of
+# entries or their TOTAL decompressed size across the whole zip — a
+# crafted zip with many entries, each individually just under the 2 MiB
+# per-entry cap, still exhausts memory in aggregate inside
+# extract_sources()'s accumulator dict, which reads every top-level *.py
+# entry in the zip with no limit on how many there are. This module's own
+# design already states v1 plugins are flat, top-level *.py files with "no
+# package/subpackage support" — a real plugin realistically has
+# plugin.json plus a handful of source modules, not dozens. These caps are
+# generous relative to that (10x more entries and 4x more aggregate bytes
+# than any real plugin needs), not a tight fit, matching the same
+# generosity philosophy as the per-entry cap above.
+_MAX_ZIP_ENTRIES = 50
+_MAX_TOTAL_DECOMPRESSED_BYTES = 8 * 1024 * 1024  # 8 MiB
+
+
+def _check_entry_count(names: list[str]) -> None:
+    """Cheap, pre-decompression guard against a zip with an absurd number
+    of entries — checked immediately after namelist(), before any entry is
+    opened or read, so this closes the "many small entries" vector even
+    before considering per-entry or aggregate decompressed size."""
+    if len(names) > _MAX_ZIP_ENTRIES:
+        raise PluginPackageError(
+            f"plugin zip contains {len(names)} entries, exceeding the "
+            f"{_MAX_ZIP_ENTRIES}-entry cap"
+        )
+
 
 def _safe_read(zf: zipfile.ZipFile, name: str) -> bytes:
     """Decompress a single zip entry with a hard, streaming byte-count
@@ -134,7 +163,9 @@ def read_manifest_dict(zip_bytes: bytes) -> dict:
     validation; this function only gets the raw dict out."""
     try:
         with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
-            _check_safe_names(zf.namelist())
+            names = zf.namelist()
+            _check_safe_names(names)
+            _check_entry_count(names)
             try:
                 raw = _safe_read(zf, MANIFEST_FILENAME)
             except KeyError:
@@ -160,13 +191,25 @@ def extract_sources(zip_bytes: bytes) -> dict[str, str]:
     minimal-surface posture as the manifest's tiny param-type vocabulary —
     see docs/design/plugin-sdk-manifest-and-registration.md)."""
     sources: dict[str, str] = {}
+    total_bytes = 0
     with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
-        _check_safe_names(zf.namelist())
-        for name in zf.namelist():
+        names = zf.namelist()
+        _check_safe_names(names)
+        _check_entry_count(names)
+        for name in names:
             if name == MANIFEST_FILENAME or "/" in name or not name.endswith(".py"):
                 continue
             module_name = name[: -len(".py")]
-            sources[module_name] = _safe_read(zf, name).decode("utf-8")
+            content = _safe_read(zf, name)
+            total_bytes += len(content)
+            if total_bytes > _MAX_TOTAL_DECOMPRESSED_BYTES:
+                raise PluginPackageError(
+                    f"plugin zip's combined decompressed source size exceeds "
+                    f"the {_MAX_TOTAL_DECOMPRESSED_BYTES}-byte aggregate cap "
+                    f"(per-entry caps alone don't stop many small entries "
+                    f"adding up)"
+                )
+            sources[module_name] = content.decode("utf-8")
     return sources
 
 

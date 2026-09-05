@@ -204,3 +204,65 @@ def test_safe_read_streaming_loop_handles_multichunk_reads_correctly():
     with zipfile.ZipFile(buf) as zf:
         result = _safe_read(zf, "payload.bin")
     assert result == payload
+
+
+# ---------------------------------------------------------------------------
+# Aggregate zip-bomb guard ([PLUGIN] audit, 2026-09-05) — the per-entry cap
+# above doesn't stop many small entries adding up in total.
+# ---------------------------------------------------------------------------
+
+def test_extract_sources_rejects_too_many_entries():
+    from services.plugins.source_store import _MAX_ZIP_ENTRIES
+
+    manifest = {"name": "test", "version": "1.0.0"}
+    # One entry over the cap, each individually tiny.
+    extra = {f"mod_{i}.py": b"x = 1" for i in range(_MAX_ZIP_ENTRIES)}
+    zip_bytes = _make_zip(manifest, extra_entries=extra)
+
+    with pytest.raises(PluginPackageError, match="entries"):
+        extract_sources(zip_bytes)
+
+
+def test_read_manifest_dict_rejects_too_many_entries():
+    """The entry-count guard applies to read_manifest_dict too, not just
+    extract_sources — checked immediately after namelist() in both."""
+    from services.plugins.source_store import _MAX_ZIP_ENTRIES
+
+    manifest = {"name": "test", "version": "1.0.0"}
+    extra = {f"mod_{i}.py": b"x = 1" for i in range(_MAX_ZIP_ENTRIES)}
+    zip_bytes = _make_zip(manifest, extra_entries=extra)
+
+    with pytest.raises(PluginPackageError, match="entries"):
+        read_manifest_dict(zip_bytes)
+
+
+def test_extract_sources_rejects_aggregate_size_over_cap_even_with_small_entries():
+    """The actual bug this closes: many entries, each individually well
+    under _MAX_DECOMPRESSED_ENTRY_BYTES, but summing past
+    _MAX_TOTAL_DECOMPRESSED_BYTES in aggregate."""
+    from services.plugins.source_store import _MAX_ZIP_ENTRIES, _MAX_TOTAL_DECOMPRESSED_BYTES
+
+    manifest = {"name": "test", "version": "1.0.0"}
+    # Stay under the entry-count cap, but make each entry large enough that
+    # the total crosses the aggregate cap well before the per-entry cap
+    # would ever trigger on any single one of them.
+    per_entry_size = (_MAX_TOTAL_DECOMPRESSED_BYTES // (_MAX_ZIP_ENTRIES - 1)) + 1024
+    extra = {f"mod_{i}.py": b"x" * per_entry_size for i in range(_MAX_ZIP_ENTRIES - 1)}
+    zip_bytes = _make_zip(manifest, extra_entries=extra)
+
+    with pytest.raises(PluginPackageError, match="aggregate"):
+        extract_sources(zip_bytes)
+
+
+def test_extract_sources_accepts_several_modules_under_both_caps():
+    """Sanity check: a real, modest multi-module plugin (well under both
+    the entry-count and aggregate-size caps) still extracts fine —
+    confirms these caps don't accidentally reject legitimate plugins."""
+    manifest = {"name": "test", "version": "1.0.0"}
+    modules = {f"module_{i}": f"def entry_{i}(params): return {{}}" for i in range(5)}
+    zip_bytes = _make_zip(manifest, modules=modules)
+
+    sources = extract_sources(zip_bytes)
+    assert len(sources) == 5
+    for i in range(5):
+        assert f"module_{i}" in sources
