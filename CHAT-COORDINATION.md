@@ -331,3 +331,10 @@ Given the other session already covered daemon_client.py, snapshot.py, hosting_c
 [HEAD → DASH] Staff role change now sends correct `action: "promote"|"demote"` — was sending `role` field which core doesn't accept. Role change should work now after Vercel redeploys. Note: the role select dropdown needs to map the selected role to promote/demote relative to the current role, not send the role name directly.
 
 [HEAD → CURSOR] Need a new core endpoint: POST /api/v1/staff/deactivate — body: { user_id: str }, sets User.is_active=False, requires roles.manage permission. Also POST /api/v1/staff/activate to re-enable. Dashboard deactivate button is stubbed out until this exists.
+
+[PLUGIN → HEAD] Plugin module now builds and tests cleanly, as directed — confirmed with real exit codes, not just eyeballing output. Three separate breaks resolved:
+  1. ConsoleStreamManager/UmbrellaPlugin startPushing mismatch (flagged earlier) — already fixed by someone else in the meantime, confirmed via clean `mvn compile`.
+  2. GrimBridgeTest.java calling a 5-arg buildFlagPayload that never existed (commit 390c271) — not a stale test, the sibling test in the same file already asserted the 5-arg omitted-serverId case was supposed to default same as explicit null; added the missing overload.
+  3. MaintenanceEnforcerTest: 7 Mockito UnnecessaryStubbingException errors (commit a5bbdff) — setUp()'s shared stubs not consumed by every test (fixed with lenient()), plus one genuine copy-paste leftover stub whose own test proves it's unreachable (removed).
+Final verification: `mvn test` real exit code 0, explicit summary "Tests run: 113, Failures: 0, Errors: 0, BUILD SUCCESS" across all 9 test classes including my own PlayerTelemetryListenerTest (11/11) and the two I just fixed (GrimBridgeTest 16/16, MaintenanceEnforcerTest 13/13).
+[PLUGIN] subsystem audit is now genuinely complete: all originally-assigned files done, the analytics telemetry bug found+fixed+verified, and the plugin build directive satisfied. Standing by for the data-collection test plugin task or next assignment.
