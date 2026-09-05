@@ -303,7 +303,7 @@ export const StaffView: React.FC = () => {
                   {/* Role — colored badge, doubles as the change-role control */}
                   <select
                     value={member.role || 'moderator'}
-                    onChange={(e) => handlePromoteDemote(member.id, e.target.value)}
+                    onChange={(e) => { const h = ["viewer","support","moderator","admin","owner"]; const ci = h.indexOf((member.role||"").toLowerCase()); const ni = h.indexOf(e.target.value.toLowerCase()); handlePromoteDemote(member.id, ni > ci ? "promote" : "demote"); }}
                     className={`w-full rounded-lg border px-2.5 py-1.5 text-xs font-bold cursor-pointer focus:outline-none ${roleBadgeStyle(member.role)}`}
                   >
                     {roles.length > 0 ? (
