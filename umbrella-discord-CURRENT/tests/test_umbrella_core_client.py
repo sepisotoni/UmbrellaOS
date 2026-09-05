@@ -16,7 +16,8 @@ from bot.services.umbrella_core_client import UmbrellaCoreClient, UmbrellaCoreEr
 @pytest.mark.asyncio
 async def test_invoke_success_returns_result_dict():
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.headers["x-api-key"] == "test-key"
+        assert "x-auth-mac" in request.headers
+        assert "x-auth-timestamp" in request.headers
         assert request.url.path == "/api/v1/capabilities/investigation.run/invoke"
         body = json.loads(request.content)
         assert body == {"question": "why is it slow", "target_user_id": None}
