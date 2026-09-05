@@ -68,9 +68,9 @@ export const StaffView: React.FC = () => {
     fetchStaffData();
   }, []);
 
-  const handlePromoteDemote = async (memberId: string, role: string) => {
+  const handlePromoteDemote = async (memberId: string, action: 'promote' | 'demote') => {
     try {
-      await api.manageStaff({ user_id: memberId, role });
+      await api.manageStaff({ user_id: memberId, action });
       addToast({
         type: 'success',
         title: 'Staff Role Updated',
@@ -88,6 +88,9 @@ export const StaffView: React.FC = () => {
 
   const handleToggleActive = async (memberId: string, currentActive: boolean) => {
     try {
+      // TODO: core needs a POST /staff/deactivate endpoint — for now use promote/demote as placeholder
+      addToast({ type: 'error', title: 'Not Implemented', message: 'Staff deactivation endpoint not yet available on core.' });
+      return;
       await api.manageStaff({ user_id: memberId, is_active: !currentActive });
       addToast({
         type: 'success',
