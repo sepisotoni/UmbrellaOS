@@ -15,16 +15,34 @@ import java.util.logging.Level;
 
 /**
  * Listens to player join and quit events, capturing telemetry such as IP address,
- * client brand, ping, and protocol version. Sends player snapshots to umbrella-core
- * via {@code POST /api/v1/players/{uuid}/snapshot} and alt tracking via
+ * client brand, ping, and protocol version. Sends this as an analytics event to
+ * umbrella-core via {@code POST /api/v1/analytics/events}, and alt tracking via
  * {@code POST /api/v1/alts/track}.
+ *
+ * <p>FIX ([PLUGIN] subsystem audit): previously posted to
+ * {@code /api/v1/players/{uuid}/snapshot} — a URL that has never existed in
+ * core (that router is mounted at {@code /api/v1/snapshots}, takes no uuid
+ * path segment, and expects a completely different payload shape: in-game
+ * position/health/inventory for forensic incident replay, not connection
+ * telemetry). Every post from this listener therefore received a 404,
+ * silently swallowed (logged at FINE, which most server log configurations
+ * don't even surface) — this "snapshot" feature has likely never actually
+ * delivered a single event to core in any real deployment.
+ *
+ * <p>Retargeted at analytics.py's {@code /events} endpoint instead, which is
+ * the actual intended destination: services/analytics_service.py's own
+ * event-type alias table already maps "player_join"/"player_quit"/"snapshot"
+ * (plugin-side naming) to the canonical "join"/"quit" types, with a comment
+ * explicitly naming this class as the intended caller. The payload shape is
+ * now {@code {event_type, minecraft_uuid, data: {name, ip, brand, ping,
+ * protocol_version}}}, matching that endpoint's AnalyticsEventRequest schema
+ * exactly, rather than the old flat structure that endpoint never expected.
  *
  * All network operations run asynchronously off the main thread.
  */
 public class PlayerTelemetryListener implements Listener {
 
-    private static final String SNAPSHOT_PATH_PREFIX = "/api/v1/players/";
-    private static final String SNAPSHOT_PATH_SUFFIX = "/snapshot";
+    private static final String ANALYTICS_EVENT_PATH = "/api/v1/analytics/events";
     private static final String ALT_TRACK_PATH = "/api/v1/alts/track";
 
     private final UmbrellaPlugin plugin;
@@ -64,35 +82,35 @@ public class PlayerTelemetryListener implements Listener {
         int ping = extractPing(player);
         int protocolVersion = extractProtocolVersion(player);
 
-        String snapshotPayload = buildSnapshotPayload(uuid, name, ip, brand, ping, protocolVersion, eventType);
+        String eventPayload = buildAnalyticsEventPayload(uuid, name, ip, brand, ping, protocolVersion, eventType);
         String altPayload = buildAltTrackPayload(uuid, name, ip, brand);
 
-        sendTelemetryAsync(uuid, snapshotPayload, altPayload);
+        sendTelemetryAsync(uuid, eventPayload, altPayload);
     }
 
-    private void sendTelemetryAsync(UUID uuid, String snapshotPayload, String altPayload) {
+    private void sendTelemetryAsync(UUID uuid, String eventPayload, String altPayload) {
         if (plugin != null && plugin.isEnabled() && plugin.getServer() != null) {
-            plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> dispatchTelemetry(uuid, snapshotPayload, altPayload));
+            plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> dispatchTelemetry(uuid, eventPayload, altPayload));
         } else {
-            dispatchTelemetry(uuid, snapshotPayload, altPayload);
+            dispatchTelemetry(uuid, eventPayload, altPayload);
         }
     }
 
-    void dispatchTelemetry(UUID uuid, String snapshotPayload, String altPayload) {
-        // Send snapshot payload
+    void dispatchTelemetry(UUID uuid, String eventPayload, String altPayload) {
+        // Send analytics event payload
         try {
-            HttpResponse<String> resp = apiClient.post(SNAPSHOT_PATH_PREFIX + uuid + SNAPSHOT_PATH_SUFFIX, snapshotPayload);
-            if (resp.statusCode() >= 400 && resp.statusCode() != 404) {
-                apiClient.logger().warning("[PlayerTelemetry] Snapshot post returned HTTP " + resp.statusCode() + " for " + uuid);
+            HttpResponse<String> resp = apiClient.post(ANALYTICS_EVENT_PATH, eventPayload);
+            if (resp.statusCode() >= 400) {
+                apiClient.logger().warning("[PlayerTelemetry] Analytics event post returned HTTP " + resp.statusCode() + " for " + uuid);
             }
         } catch (Exception e) {
-            apiClient.logger().log(Level.FINE, "[PlayerTelemetry] Failed to post snapshot for " + uuid, e);
+            apiClient.logger().log(Level.FINE, "[PlayerTelemetry] Failed to post analytics event for " + uuid, e);
         }
 
         // Send alt tracking payload
         try {
             HttpResponse<String> resp = apiClient.post(ALT_TRACK_PATH, altPayload);
-            if (resp.statusCode() >= 400 && resp.statusCode() != 404) {
+            if (resp.statusCode() >= 400) {
                 apiClient.logger().warning("[PlayerTelemetry] Alt track post returned HTTP " + resp.statusCode() + " for " + uuid);
             }
         } catch (Exception e) {
@@ -100,16 +118,26 @@ public class PlayerTelemetryListener implements Listener {
         }
     }
 
-    public static String buildSnapshotPayload(UUID uuid, String name, String ip, String brand,
+    public static String buildAnalyticsEventPayload(UUID uuid, String name, String ip, String brand,
                                               int ping, int protocolVersion, String eventType) {
+        // FIX ([PLUGIN] subsystem audit): renamed from buildSnapshotPayload
+        // and restructured — the flat {uuid, name, ip, ..., event_type}
+        // shape this used to build never matched any real endpoint's schema.
+        // analytics.py's AnalyticsEventRequest expects event_type and
+        // minecraft_uuid at the top level, with everything else nested
+        // under "data" — matches record_event's actual signature
+        // (event_type, minecraft_uuid, data: dict).
+        JSONObject data = new JSONObject();
+        data.put("name", name != null ? name : "unknown");
+        data.put("ip", ip != null ? ip : "127.0.0.1");
+        data.put("brand", brand != null && !brand.isBlank() ? brand : "vanilla");
+        data.put("ping", ping);
+        data.put("protocol_version", protocolVersion);
+
         JSONObject obj = new JSONObject();
-        obj.put("uuid", uuid.toString());
-        obj.put("name", name != null ? name : "unknown");
-        obj.put("ip", ip != null ? ip : "127.0.0.1");
-        obj.put("brand", brand != null && !brand.isBlank() ? brand : "vanilla");
-        obj.put("ping", ping);
-        obj.put("protocol_version", protocolVersion);
         obj.put("event_type", eventType != null ? eventType : "snapshot");
+        obj.put("minecraft_uuid", uuid.toString());
+        obj.put("data", data);
         return obj.toString();
     }
 
