@@ -2,12 +2,9 @@ name: Bot CI
 
 on:
   push:
-    paths:
-      - 'umbrella-discord-CURRENT/**'
-      - '.github/workflows/bot-ci.yml'
+    branches: [main]
   pull_request:
-    paths:
-      - 'umbrella-discord-CURRENT/**'
+    branches: [main]
 
 jobs:
   test:
