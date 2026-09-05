@@ -4,6 +4,7 @@
 - Backend CI: pytest on every push to main — needs Postgres + Redis
 - Plugin CI: mvn test — needs Java 21, Paper API, GrimAPI from repo.grim.ac
 - Dashboard CI: tsc --noEmit build check
+- Bot CI: pytest on umbrella-discord-CURRENT/ changes — uses fake token/key env vars
 - Vercel: auto-deploys on push (two projects: umbrella-dashboard, umbrella-os)
 
 ## Before pushing
