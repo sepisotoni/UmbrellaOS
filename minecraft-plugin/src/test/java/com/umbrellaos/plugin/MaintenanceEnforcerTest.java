@@ -33,8 +33,19 @@ class MaintenanceEnforcerTest {
 
     @BeforeEach
     void setUp() {
-        when(plugin.getConfig()).thenReturn(config);
-        when(config.getBoolean("maintenance.enabled", false)).thenReturn(false);
+        // FIX ([PLUGIN] subsystem audit, blocking mvn test module-wide):
+        // these two stubs aren't consumed by every test method below (only
+        // the ones that actually exercise the legacy config.yml fallback
+        // path reach plugin.getConfig()/config.getBoolean(...)) — Mockito's
+        // strict-stubs mode (MockitoExtension's default) flags that as
+        // UnnecessaryStubbingException on every test that doesn't touch
+        // them. lenient() is Mockito's own documented remedy for exactly
+        // this shape of shared @BeforeEach fixture used across
+        // heterogeneous test methods — doesn't change any test's actual
+        // assertions or behavior, just stops strict-stubs treating an
+        // under-used shared stub as an error.
+        lenient().when(plugin.getConfig()).thenReturn(config);
+        lenient().when(config.getBoolean("maintenance.enabled", false)).thenReturn(false);
         enforcer = new MaintenanceEnforcer(plugin, configManager, null);
     }
 
@@ -106,7 +117,11 @@ class MaintenanceEnforcerTest {
 
     @Test
     void setMaintenanceOverride_true_overridesConfigManager() {
-        when(configManager.getSetting("server.maintenance_mode")).thenReturn("false");
+        // FIX ([PLUGIN] audit): removed a stray configManager.getSetting(...)
+        // stub here — this test's own assertion below proves configManager
+        // is never queried once an override is set, so the stub (likely a
+        // copy-paste leftover from the test above) could never be consumed,
+        // triggering strict-stubs UnnecessaryStubbingException.
         enforcer.setMaintenanceOverride(true);
         assertTrue(enforcer.isMaintenanceEnabled());
         // ConfigManager should not be queried when override is set
