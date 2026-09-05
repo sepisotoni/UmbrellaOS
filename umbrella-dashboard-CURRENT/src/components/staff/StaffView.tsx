@@ -70,11 +70,11 @@ export const StaffView: React.FC = () => {
 
   const handlePromoteDemote = async (memberId: string, action: 'promote' | 'demote') => {
     try {
-      await api.manageStaff({ user_id: memberId, action });
+      const result = await api.manageStaff({ user_id: memberId, action });
       addToast({
         type: 'success',
         title: 'Staff Role Updated',
-        message: `Role changed to ${role.toUpperCase()}.`,
+        message: `Role changed to ${(result?.new_role || action).toUpperCase()}.`,
       });
       fetchStaffData();
     } catch (err: any) {
@@ -303,7 +303,22 @@ export const StaffView: React.FC = () => {
                   {/* Role — colored badge, doubles as the change-role control */}
                   <select
                     value={member.role || 'moderator'}
-                    onChange={(e) => { const h = ["viewer","support","moderator","admin","owner"]; const ci = h.indexOf((member.role||"").toLowerCase()); const ni = h.indexOf(e.target.value.toLowerCase()); handlePromoteDemote(member.id, ni > ci ? "promote" : "demote"); }}
+                    onChange={(e) => {
+                      // AUDIT-2026-08-30 fix: this hierarchy previously read
+                      // ["viewer","support","moderator","admin","owner"] —
+                      // neither "viewer" nor "support" are real role names.
+                      // The actual source of truth is
+                      // services/staff_service.py::ROLE_LADDER =
+                      // ["member","helper","moderator","admin","owner"].
+                      // With the wrong array, indexOf("member")/indexOf("helper")
+                      // both returned -1, so promote/demote direction was
+                      // computed wrong (or silently defaulted to demote)
+                      // for either of the two lowest real roles.
+                      const ladder = ["member", "helper", "moderator", "admin", "owner"];
+                      const ci = ladder.indexOf((member.role || "").toLowerCase());
+                      const ni = ladder.indexOf(e.target.value.toLowerCase());
+                      handlePromoteDemote(member.id, ni > ci ? "promote" : "demote");
+                    }}
                     className={`w-full rounded-lg border px-2.5 py-1.5 text-xs font-bold cursor-pointer focus:outline-none ${roleBadgeStyle(member.role)}`}
                   >
                     {roles.length > 0 ? (
