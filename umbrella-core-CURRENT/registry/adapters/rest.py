@@ -129,4 +129,8 @@ async def invoke_capability(
         ctx = await CallContext.from_web_auth(auth, db, source=source)
 
     result = await registry.call(name, ctx, payload or {})
-    return result.model_dump(mode="json") if isinstance(result, BaseModel) else result
+    if isinstance(result, BaseModel):
+        return result.model_dump(mode="json")
+    if isinstance(result, list):
+        return [item.model_dump(mode="json") if isinstance(item, BaseModel) else item for item in result]
+    return result
