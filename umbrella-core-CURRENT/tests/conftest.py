@@ -165,6 +165,36 @@ async def client(db_session, monkeypatch):
         if node is None:
             break
 
+    # Point threat_detection_service.record() at the same per-test session
+    # factory the request's own DB dependency override uses, instead of its
+    # real module-level AsyncSessionLocal (production default — a correct
+    # choice there, since real production has one persistent event loop for
+    # the server's entire lifetime; see the module's own docstring: "own DB
+    # session... rather than piggybacking on" the request's session).
+    # Follows the exact pattern already established in
+    # tests/test_threat_detection.py and tests/test_waf_middleware.py for
+    # observing record()'s writes — applied globally here, for every test
+    # using the `client` fixture, not just the two files that needed to
+    # directly assert on a recorded SecurityEvent row.
+    #
+    # Without this, three independent middleware call sites (rate_limit.py
+    # on a 429, api_key_auth.py on an auth failure, waf.py on a blocked
+    # pattern — none of them gated by the RateLimitMiddleware no-op patch
+    # above, since none of them go through self._limiter at all) hit the
+    # real, module-level AsyncSessionLocal, which is bound to whatever
+    # event loop existed when it was first created. pytest-asyncio gives
+    # each test function its own fresh event loop by default, so whichever
+    # of the three fires first in a run leaves a connection tied to that
+    # test's (soon to be closed) loop; the next test to trigger any of the
+    # three then hits "Task attached to a different loop" trying to reuse
+    # it via pool_pre_ping's checkout-time health check — confirmed via a
+    # real CI failure (tests/registry/test_capabilities_marketplace.py),
+    # reproduced against real Postgres+Redis in a throwaway environment,
+    # not guessed at. A pure test-isolation gap, not a production defect.
+    import services.threat_detection_service as threat_detection_service_module
+
+    monkeypatch.setattr(threat_detection_service_module, "AsyncSessionLocal", db_session)
+
     # Override the DB dependency
     async def override_get_db():
         async with db_session() as session:
