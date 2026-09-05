@@ -135,8 +135,8 @@ ALL_PERMISSION_KEYS = [p[0] for p in DEFAULT_PERMISSIONS]
 # Seed data: (role_name, description, [permission_keys])
 DEFAULT_ROLES = [
     ("owner", "Full access to everything", ALL_PERMISSION_KEYS),
-    ("admin", "Full access except role management",
-     [p for p in ALL_PERMISSION_KEYS if p != "roles.manage"]),
+    ("admin", "Full access except role management and server power control",
+     [p for p in ALL_PERMISSION_KEYS if p not in ("roles.manage", "server.control", "hosting.server.control")]),
     ("moderator", "Moderation access",
      ["players.view", "punishments.view", "punishments.create", "punishments.revoke",
       "moderation.kick", "moderation.warn", "moderation.ban", "moderation.ipban",
