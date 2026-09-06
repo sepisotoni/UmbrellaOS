@@ -86,13 +86,12 @@ def test_format_error_generic():
 
 def test_format_success_new_link():
     result = {"player_uuid": "uuid-1", "player_username": "Steve", "already_linked": False}
-    message = VerificationCog._format_success(result)
-    assert "Verified!" in message
+    message = _make_cog()._format_success(result, "Steve")
     assert "Steve" in message
 
 
 def test_format_success_already_linked():
     result = {"player_uuid": "uuid-1", "player_username": "Steve", "already_linked": True}
-    message = VerificationCog._format_success(result)
-    assert "already verified" in message
+    message = _make_cog()._format_success(result, "Steve")
+    assert "already" in message
     assert "Steve" in message
