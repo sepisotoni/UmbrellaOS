@@ -9,7 +9,8 @@ Lifecycle:
 2. cog_unload() — stops the aiohttp server cleanly.
 
 Event routing:
-  staff.escalation.new   → NotificationsCog.handle_escalation_push()
+  staff.escalation.new       → NotificationsCog.handle_escalation_push()
+  bridge.dashboard_message   → BridgeCog.handle_dashboard_message_push()
   (others can be added here without touching WebhookServer or bot.py)
 
 The cog does NOT crash the bot if the server fails to start or if
@@ -42,6 +43,7 @@ class WebhookCog(commands.Cog):
 
         # Register handlers before starting so no event races during startup.
         self._server.register_handler("staff.escalation.new", self._on_escalation)
+        self._server.register_handler("bridge.dashboard_message", self._on_bridge_message)
 
         try:
             await self._server.start()
@@ -96,6 +98,30 @@ class WebhookCog(commands.Cog):
             logger.exception(
                 "NotificationsCog.handle_escalation_push raised for escalation %s",
                 payload.get("id"),
+            )
+
+    async def _on_bridge_message(self, payload: dict[str, Any]) -> None:
+        """Handle a bridge.dashboard_message push event from core — a
+        dashboard "Dispatch Embed to Discord" broadcast. Forwards to
+        BridgeCog if it's loaded; unlike escalations there's no poll
+        fallback for this event type (dashboard broadcasts are one-shot,
+        not a queryable list), so if BridgeCog isn't loaded the message
+        is simply dropped rather than delayed."""
+        bridge_cog = self.bot.cogs.get("BridgeCog")
+        if bridge_cog is None:
+            logger.warning(
+                "Received bridge.dashboard_message push but BridgeCog is not loaded — "
+                "message %s will not be delivered.",
+                payload.get("message_id"),
+            )
+            return
+
+        try:
+            await bridge_cog.handle_dashboard_message_push(payload)
+        except Exception:
+            logger.exception(
+                "BridgeCog.handle_dashboard_message_push raised for message %s",
+                payload.get("message_id"),
             )
 
 
