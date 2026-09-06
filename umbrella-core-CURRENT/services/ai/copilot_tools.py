@@ -107,9 +107,15 @@ def parse_requested_tools(model_text: str) -> list[dict[str, Any]] | None:
 
 
 async def execute_tool_calls(
-    db: AsyncSession, ctx: CallContext, requested: list[dict[str, Any]]
+    ctx: CallContext, requested: list[dict[str, Any]]
 ) -> list[ToolCallResult]:
     """Runs each requested tool as a direct, permission-scoped query.
+
+    Uses ctx.db for every query — matches the established pattern every
+    capability handler in this codebase already follows (CallContext is the
+    single source of truth for "which session is this call using," per its
+    own docstring: "capability handler's own queries share this session/
+    transaction"). Does not take a separate db parameter.
 
     Unknown tool names and permission failures both produce a
     ToolCallResult with an error string in `result` rather than raising —
@@ -118,6 +124,7 @@ async def execute_tool_calls(
     see any other tool failure, rather than the whole request 500ing over
     one bad or unauthorized tool call among several.
     """
+    db = ctx.db
     results: list[ToolCallResult] = []
     for call in requested:
         tool = call.get("tool")

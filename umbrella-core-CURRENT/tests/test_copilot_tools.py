@@ -23,13 +23,14 @@ from services.ai.copilot_tools import (
 )
 
 
-def _ctx(permissions: set[str] | None = None, is_superuser: bool = False) -> CallContext:
+def _ctx(db, permissions: set[str] | None = None, is_superuser: bool = False) -> CallContext:
     return CallContext(
         actor_id="test-staff-1",
         actor_type="staff",
         source="ai",
         permissions=permissions or set(),
         is_superuser=is_superuser,
+        db=db,
     )
 
 
@@ -83,7 +84,7 @@ async def test_lookup_player_returns_player_data(db_session):
         await db.commit()
 
         results = await execute_tool_calls(
-            db, _ctx({"players.view"}), [{"tool": "lookup_player", "username": "Notch"}]
+            _ctx(db, {"players.view"}), [{"tool": "lookup_player", "username": "Notch"}]
         )
         assert len(results) == 1
         assert results[0].tool == "lookup_player"
@@ -98,7 +99,7 @@ async def test_lookup_player_is_case_insensitive(db_session):
         await db.commit()
 
         results = await execute_tool_calls(
-            db, _ctx({"players.view"}), [{"tool": "lookup_player", "username": "dinnerbone"}]
+            _ctx(db, {"players.view"}), [{"tool": "lookup_player", "username": "dinnerbone"}]
         )
         assert results[0].result["username"] == "Dinnerbone"
 
@@ -107,7 +108,7 @@ async def test_lookup_player_is_case_insensitive(db_session):
 async def test_lookup_player_missing_player_returns_not_found_string(db_session):
     async with db_session() as db:
         results = await execute_tool_calls(
-            db, _ctx({"players.view"}), [{"tool": "lookup_player", "username": "NoSuchPlayer"}]
+            _ctx(db, {"players.view"}), [{"tool": "lookup_player", "username": "NoSuchPlayer"}]
         )
         assert "no player found" in results[0].result
 
@@ -116,7 +117,7 @@ async def test_lookup_player_missing_player_returns_not_found_string(db_session)
 async def test_lookup_player_denied_without_permission(db_session):
     async with db_session() as db:
         results = await execute_tool_calls(
-            db, _ctx(set()), [{"tool": "lookup_player", "username": "Notch"}]
+            _ctx(db, set()), [{"tool": "lookup_player", "username": "Notch"}]
         )
         assert "error" in results[0].result
         assert "players.view" in results[0].result
@@ -129,7 +130,7 @@ async def test_lookup_player_allowed_for_superuser_without_explicit_permission(d
         await db.commit()
 
         results = await execute_tool_calls(
-            db, _ctx(set(), is_superuser=True), [{"tool": "lookup_player", "username": "Grumm"}]
+            _ctx(db, set(), is_superuser=True), [{"tool": "lookup_player", "username": "Grumm"}]
         )
         assert results[0].result["username"] == "Grumm"
 
@@ -154,7 +155,7 @@ async def test_get_punishment_history_returns_rows_most_recent_first(db_session)
         await db.commit()
 
         results = await execute_tool_calls(
-            db, _ctx({"punishments.view"}),
+            _ctx(db, {"punishments.view"}),
             [{"tool": "get_punishment_history", "player_uuid": player.uuid}],
         )
         rows = results[0].result
@@ -170,7 +171,7 @@ async def test_get_punishment_history_requires_punishments_view_not_players_view
     be able to read punishment history through this tool."""
     async with db_session() as db:
         results = await execute_tool_calls(
-            db, _ctx({"players.view"}),  # NOT punishments.view
+            _ctx(db, {"players.view"}),  # NOT punishments.view
             [{"tool": "get_punishment_history", "player_uuid": "some-uuid"}],
         )
         assert "error" in results[0].result
@@ -181,7 +182,7 @@ async def test_get_punishment_history_requires_punishments_view_not_players_view
 async def test_get_punishment_history_empty_for_clean_player(db_session):
     async with db_session() as db:
         results = await execute_tool_calls(
-            db, _ctx({"punishments.view"}),
+            _ctx(db, {"punishments.view"}),
             [{"tool": "get_punishment_history", "player_uuid": "no-punishments-uuid"}],
         )
         assert "no punishment history" in results[0].result
@@ -203,7 +204,7 @@ async def test_get_anticheat_violations_returns_rows(db_session):
         await db.commit()
 
         results = await execute_tool_calls(
-            db, _ctx({"players.view"}),
+            _ctx(db, {"players.view"}),
             [{"tool": "get_anticheat_violations", "player_uuid": player.uuid}],
         )
         rows = results[0].result
@@ -224,7 +225,7 @@ async def test_get_anticheat_violations_truncates_long_verbose_text(db_session):
         await db.commit()
 
         results = await execute_tool_calls(
-            db, _ctx({"players.view"}),
+            _ctx(db, {"players.view"}),
             [{"tool": "get_anticheat_violations", "player_uuid": player.uuid}],
         )
         assert len(results[0].result[0]["verbose"]) == 200
@@ -238,7 +239,7 @@ async def test_get_anticheat_violations_truncates_long_verbose_text(db_session):
 async def test_unknown_tool_name_returns_error_not_exception(db_session):
     async with db_session() as db:
         results = await execute_tool_calls(
-            db, _ctx({"players.view"}, is_superuser=True), [{"tool": "delete_everything"}]
+            _ctx(db, {"players.view"}, is_superuser=True), [{"tool": "delete_everything"}]
         )
         assert "unknown tool" in results[0].result
 
@@ -252,7 +253,7 @@ async def test_multiple_tool_calls_in_one_request_all_execute(db_session):
         await db.commit()
 
         results = await execute_tool_calls(
-            db, _ctx({"players.view"}),  # no punishments.view
+            _ctx(db, {"players.view"}),  # no punishments.view
             [
                 {"tool": "lookup_player", "username": "Bdubs"},
                 {"tool": "get_punishment_history", "player_uuid": "77777777-7777-7777-7777-777777777777"},

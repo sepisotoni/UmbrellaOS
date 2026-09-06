@@ -181,7 +181,7 @@ async def copilot_chat(
         # No tool needed — pass 1's own answer is the final answer.
         final_result = pass1_result
     else:
-        tool_results = await execute_tool_calls(db, ctx, requested_tools)
+        tool_results = await execute_tool_calls(ctx, requested_tools)
         pass2_prompt = (
             f"{question_block}\n\n"
             f"{format_tool_results_block(tool_results)}\n\n"
