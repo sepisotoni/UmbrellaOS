@@ -33,7 +33,7 @@ from models.marketplace import PluginInstall
 from registry.registry import CapabilityRegistry
 from registry.registry import registry as default_registry
 from services.plugins.manifest import ManifestValidationError, parse_manifest
-from services.plugins.registration import register_plugin_capabilities
+from services.plugins.registration import PluginRegistrationError, register_plugin_capabilities
 from services.plugins.sandbox import ProcessSandbox
 from services.plugins.source_store import PluginPackageError, extract_sources, load_verified_zip_bytes
 from services.metrics_service import installed_plugins
@@ -84,7 +84,25 @@ async def reload_installed_plugins(
             sandbox.set_plugin_sources(install.plugin_id, sources)
             names = await register_plugin_capabilities(manifest, sandbox, db, registry=registry)
             registered.extend(names)
-        except (ManifestValidationError, PluginPackageError) as exc:
+        except (ManifestValidationError, PluginPackageError, PluginRegistrationError) as exc:
+            # FIX ([PLUGIN] subsystem audit): PluginRegistrationError was
+            # not caught here, contradicting this function's own stated
+            # design goal ("must not be able to take the entire app down
+            # at startup by leaving one bad PluginInstall row behind").
+            # register_plugin_capabilities raises exactly this (not
+            # ManifestValidationError/PluginPackageError) when an
+            # already-installed plugin's manifest references a
+            # required_permission that no longer exists — a real,
+            # plausible scenario: permissions get renamed or removed in a
+            # migration after a plugin was installed against the old set.
+            # Before this fix, that single stale install would crash the
+            # whole app's startup lifespan instead of just being skipped,
+            # exactly the failure mode this function exists to prevent.
+            # (The other two ValueError raise sites in registration.py are
+            # inside capability-call handlers, only reachable when a
+            # plugin's capability is actually invoked later at runtime —
+            # not part of register_plugin_capabilities's own registration-
+            # time exception surface, so they don't need to be caught here.)
             logger.error(
                 "Skipping plugin %r at startup re-registration: %s", install.plugin_id, exc
             )

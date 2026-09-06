@@ -148,3 +148,59 @@ async def test_reload_restores_multiple_installed_plugins(db_session):
     }
     assert "queue-tools" in sandbox._sources
     assert "another-plugin" in sandbox._sources
+
+
+def _manifest_with_unknown_permission(plugin_id="stale-perm-plugin", version="1.0.0") -> dict:
+    manifest = _manifest_dict(plugin_id, version)
+    manifest["capabilities"][0]["required_permission"] = "this.permission.does.not.exist"
+    return manifest
+
+
+async def _seed_install_with_manifest(db_session, manifest: dict) -> None:
+    """Same as _seed_install, but takes a caller-built manifest dict instead
+    of always using the default queue_status one — needed to construct a
+    manifest with a required_permission that won't validate."""
+    zip_bytes = _zip_for(manifest)
+    plugin_id = manifest["plugin_id"]
+    version = manifest["version"]
+    relative_path, sha = store_zip(plugin_id, version, zip_bytes)
+    async with db_session() as db:
+        db.add(
+            PluginInstall(
+                plugin_id=plugin_id,
+                installed_version=version,
+                manifest_json=json.dumps(manifest),
+                zip_path=relative_path,
+                sha256_hash=sha,
+                registered_capability_names=[f"plugin.{plugin_id}.queue_status"],
+            )
+        )
+        await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_reload_skips_install_referencing_a_permission_that_no_longer_exists(db_session):
+    """FIX ([PLUGIN] subsystem audit): register_plugin_capabilities raises
+    PluginRegistrationError (not ManifestValidationError/PluginPackageError)
+    when an installed plugin's manifest references a required_permission
+    that isn't a known permission key — a real, plausible scenario if a
+    permission is renamed/removed after the plugin was installed against
+    the old set. This exception type wasn't caught before this fix, so it
+    would have crashed the entire app's startup instead of just skipping
+    this one plugin, contradicting this function's own stated design goal
+    (verified by reverting the runtime.py fix locally and confirming this
+    exact test fails with an unhandled PluginRegistrationError, before
+    re-applying the fix)."""
+    await _seed_install_with_manifest(db_session, _manifest_with_unknown_permission())
+    await _seed_install(db_session, plugin_id="queue-tools")
+
+    registry = CapabilityRegistry()
+    sandbox = ProcessSandbox(sources={})
+    async with db_session() as db:
+        # Must not raise — the whole point of this fix.
+        registered = await reload_installed_plugins(db, sandbox=sandbox, registry=registry)
+
+    # The valid plugin still loads; the stale one is skipped, not crashed on.
+    assert registered == ["plugin.queue-tools.queue_status"]
+    with pytest.raises(Exception):
+        registry.get("plugin.stale-perm-plugin.queue_status")
