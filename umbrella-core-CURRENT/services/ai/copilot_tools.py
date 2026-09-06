@@ -72,6 +72,18 @@ _TOOLS_MANIFEST = """Available tools (respond with a JSON array in a ```json fen
 
 If you need a player's UUID for get_punishment_history or get_anticheat_violations and only have a username, call lookup_player first — you can request multiple tools in the same JSON array and their results will all be given back to you together."""
 
+# [CURSOR, 2026-09-02] Human-readable version of the same three tools for the
+# /commands intercept in ai_copilot.py — kept as a plain list literal (not
+# parsed out of _TOOLS_MANIFEST) so a change to one doesn't have to be
+# re-derived from awkward string parsing of the other; small enough that
+# keeping both in sync by eye is easy, and this is checked by
+# test_copilot_tools.py::test_available_tools_list_matches_manifest_count.
+AVAILABLE_TOOLS_DESCRIPTION = [
+    ("lookup_player", "Look up a player by username — UUID, risk score, suspicion score, playtime, first/last seen."),
+    ("get_punishment_history", "List a player's bans/mutes/kicks/warnings, most recent first."),
+    ("get_anticheat_violations", "List a player's recent GrimAC/anticheat flags, most recent first."),
+]
+
 
 @dataclass
 class ToolCallResult:

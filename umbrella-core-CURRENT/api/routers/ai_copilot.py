@@ -29,6 +29,7 @@ from services.ai.copilot_tools import (
     parse_requested_tools,
     execute_tool_calls,
     format_tool_results_block,
+    AVAILABLE_TOOLS_DESCRIPTION,
 )
 from services.operational_intelligence.crash_prevention import (
     assess_crash_risk,
@@ -93,6 +94,26 @@ async def copilot_chat(
     """
     ctx = await CallContext.from_web_auth(auth, db, source="ai")
 
+    # [2026-09-02, feedback from live testing] "/commands" intercept — placed
+    # here, before the fleet DB query and permission-summary work below, so
+    # it's genuinely zero extra DB work as well as zero LLM cost/latency —
+    # not just skipping the model call while still paying for queries this
+    # answer doesn't need. Deterministic answer to "what can you do," since
+    # the model can't reliably self-report its own tool manifest (it only
+    # sees _TOOLS_MANIFEST during an actual tool-selection pass, not as a
+    # standing fact about itself) — also serves the context-efficiency goal
+    # from the marketplace-tools proposal: a hardcoded fast path is free
+    # compared to routing "what can you do" through a real model call.
+    if body.message.strip().lower() in ("/commands", "/help", "/tools"):
+        lines = ["Here's what I can currently look up:\n"]
+        for name, desc in AVAILABLE_TOOLS_DESCRIPTION:
+            lines.append(f"- **{name}** — {desc}")
+        lines.append(
+            "\nJust ask naturally (e.g. \"look up player Steve's punishment history\") "
+            "— I'll figure out which tool(s) to use."
+        )
+        return CopilotResponse(response="\n".join(lines), model_used="none (local)", latency_ms=0)
+
     # [HEAD gap #3 — permission scoping, 2026-08-31] The copilot itself is
     # read/advice-only — it has no direct write path (see the prompt-injection
     # fix's comment below), so it doesn't need a permission gate to be
@@ -138,9 +159,11 @@ async def copilot_chat(
         f"actor_type: {ctx.actor_type}\n"
         f"permissions: {permission_summary}\n"
         f"</caller>\n"
-        f"<fleet>\n"
-        f"servers_in_scope: {', '.join(fleet_lines)}\n"
-        f"</fleet>"
+        f"<fleet_data>\n"
+        f"This is factual data about the Minecraft server fleet this system manages "
+        f"(not about you, the assistant — you are not 'registered' with anything; this "
+        f"is just a data table). Servers currently in the database: {', '.join(fleet_lines)}\n"
+        f"</fleet_data>"
     )
 
     # Bug fix (AUDIT-VERIFICATION-2026-08-29 #8 — prompt injection): body.message
