@@ -31,6 +31,7 @@ from api.middleware.auth import require_admin_key
 from api.dependencies.permissions import require_permission
 from services.translation_service import translate_message, get_player_language
 from services.settings_service import SettingsService
+import services.bot_push_service as bot_push_service
 
 router = APIRouter(prefix="/api/v1/bridge", tags=["bridge"])
 
@@ -184,6 +185,28 @@ async def receive_bridge_message(
 
     await db.commit()
     await db.refresh(chat_message)
+
+    # AUDIT-2026-08-30 fix: this endpoint computed forwarded/targets
+    # correctly but never actually delivered anything — confirmed broken
+    # in live testing (staff clicking "Dispatch Embed to Discord" got a
+    # success response with nothing ever posted to Discord). Uses the
+    # same push mechanism already proven for staff.escalation.new
+    # (services/bot_push_service.py); bot/cogs/bridge_cog.py handles
+    # bridge.dashboard_message on the receiving end. Fire-and-forget by
+    # design (see bot_push_service's own docstring) — a failed push here
+    # doesn't fail the request or roll back the already-committed
+    # ChatMessage row, matching how every other push in this codebase
+    # degrades.
+    if body.source == "DASHBOARD" and "discord" in targets:
+        await bot_push_service.push_event(
+            "bridge.dashboard_message",
+            {
+                "message_id": chat_message.id,
+                "message": body.message,
+                "player_name": body.player_name,
+                "channel_id": body.channel_id,
+            },
+        )
 
     return BridgeMessageResponse(
         forwarded=forwarded,
