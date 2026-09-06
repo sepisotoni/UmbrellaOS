@@ -365,10 +365,19 @@ def parse_manifest(raw: dict) -> PluginManifest:
     """Entry point the install flow calls with the parsed JSON body of
     `plugin.json`. Wraps pydantic's ValidationError into our own
     ManifestValidationError so callers only need to catch one exception
-    type regardless of which validator inside the model tripped."""
+    type regardless of which validator inside the model tripped.
+
+    Note: every field_validator/model_validator above raises
+    ManifestValidationError directly, but pydantic v2 always wraps ANY
+    exception (including ValueError subclasses like this one) raised
+    inside a validator into its own pydantic.ValidationError before it
+    ever reaches this function — confirmed empirically, not assumed. So
+    model_validate() below never actually raises a bare
+    ManifestValidationError; every validator's specific message survives
+    as the string content of pydantic's ValidationError, caught and
+    re-wrapped by the except Exception branch below on every real path.
+    """
     try:
         return PluginManifest.model_validate(raw)
-    except ManifestValidationError:
-        raise
-    except Exception as exc:  # pydantic.ValidationError and friends
+    except Exception as exc:  # always pydantic.ValidationError in practice
         raise ManifestValidationError(str(exc)) from exc
