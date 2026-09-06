@@ -192,8 +192,7 @@ class VerificationCog(commands.Cog):
             return f"\u2705 You're already verified as **{player}**."
         return render(self._t("verification.success_message"), player=player)
 
-    @staticmethod
-    def _format_error(exc: UmbrellaCoreError) -> str:
+    def _format_error(self, exc: UmbrellaCoreError) -> str:
         if exc.status_code == 403:
             return "I'm not able to confirm verification codes right now — please contact staff."
         if exc.status_code == 409:

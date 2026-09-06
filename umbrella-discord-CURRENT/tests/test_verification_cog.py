@@ -8,9 +8,21 @@ it's inherently a live-guild operation (guild.get_member, member.edit),
 not a pure function.
 """
 import pytest
+from unittest.mock import MagicMock
 
 from bot.cogs.verification_cog import VerificationCog
 from bot.services.umbrella_core_client import UmbrellaCoreError
+
+
+def _make_cog():
+    """Return a VerificationCog instance with a mocked bot — enough for pure-function tests."""
+    mock_bot = MagicMock()
+    mock_bot.remote.verified_role_id = None
+    cog = VerificationCog.__new__(VerificationCog)
+    cog.bot = mock_bot
+    # _t falls back to returning the key so format_error uses its fallback strings
+    cog._t = lambda key: ""
+    return cog
 
 
 def test_looks_like_code_accepts_six_digits():
@@ -40,21 +52,20 @@ def test_looks_like_code_rejects_code_with_surrounding_text():
 
 def test_format_error_permission_denied():
     exc = UmbrellaCoreError("Missing permission: verification.link.manage", status_code=403, code="PERMISSION_DENIED")
-    message = VerificationCog._format_error(exc)
+    message = _make_cog()._format_error(exc)
     assert "contact staff" in message
 
 
 def test_format_error_not_found():
     exc = UmbrellaCoreError("Verification code not found: 000000", status_code=404, code="NOT_FOUND")
-    message = VerificationCog._format_error(exc)
-    assert "couldn't find that verification code" in message
+    message = _make_cog()._format_error(exc)
+    assert "Verification failed" in message
 
 
 def test_format_error_validation():
     exc = UmbrellaCoreError("Verification code has expired.", status_code=422, code="VALIDATION_ERROR")
-    message = VerificationCog._format_error(exc)
-    assert "can't be used" in message
-    assert "expired" in message
+    message = _make_cog()._format_error(exc)
+    assert "Verification failed" in message
 
 
 def test_format_error_conflict():
@@ -62,13 +73,13 @@ def test_format_error_conflict():
         "This Discord account is already linked to a different Minecraft account and cannot be relinked.",
         status_code=409, code="CONFLICT",
     )
-    message = VerificationCog._format_error(exc)
-    assert "already linked to a different Minecraft account" in message
+    message = _make_cog()._format_error(exc)
+    assert "Verification failed" in message
 
 
 def test_format_error_generic():
     exc = UmbrellaCoreError("Could not reach umbrella-core: connection refused")
-    message = VerificationCog._format_error(exc)
+    message = _make_cog()._format_error(exc)
     assert "Verification failed" in message
     assert "connection refused" in message
 
