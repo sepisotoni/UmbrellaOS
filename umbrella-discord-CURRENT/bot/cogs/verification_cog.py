@@ -196,9 +196,9 @@ class VerificationCog(commands.Cog):
         if exc.status_code == 403:
             return "I'm not able to confirm verification codes right now — please contact staff."
         if exc.status_code == 409:
-            return render(self._t("verification.error_already_linked"))
+            return render(self._t("verification.error_already_linked")) or "Verification failed: account already linked."
         if exc.status_code in (404, 422):
-            return render(self._t("verification.error_invalid_code"))
+            return render(self._t("verification.error_invalid_code")) or f"Verification failed: {exc}"
         return f"Verification failed: {exc}"
 
     # ------------------------------------------------------------------
