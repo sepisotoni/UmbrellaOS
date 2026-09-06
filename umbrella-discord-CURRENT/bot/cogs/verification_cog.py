@@ -190,7 +190,7 @@ class VerificationCog(commands.Cog):
     def _format_success(self, result: dict, player: str) -> str:
         if result.get("already_linked"):
             return f"\u2705 You're already verified as **{player}**."
-        return render(self._t("verification.success_message"), player=player)
+        return render(self._t("verification.success_message"), player=player) or f"\u2705 Verified! You're linked as **{player}**."
 
     def _format_error(self, exc: UmbrellaCoreError) -> str:
         if exc.status_code == 403:
