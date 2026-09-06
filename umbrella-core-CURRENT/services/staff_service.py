@@ -24,10 +24,11 @@ async def manage_staff_role(
     user_id: str,
     action: str,
     *,
+    target_role: str | None = None,
     actor_role_name: str | None = None,
 ) -> dict:
-    if action not in ("promote", "demote"):
-        raise StaffManageError("action must be 'promote' or 'demote'")
+    if action not in ("promote", "demote", "set"):
+        raise StaffManageError("action must be 'promote', 'demote', or 'set'")
 
     user = await db.scalar(select(User).where(User.id == user_id))
     if user is None:
@@ -43,7 +44,64 @@ async def manage_staff_role(
     except ValueError:
         idx = 0
 
-    if action == "promote":
+    if action == "set":
+        # Direct role assignment — the dashboard's role-select dropdown
+        # (StaffView.tsx) picks any role in the ladder in one action,
+        # unlike promote/demote which only ever move one hierarchy step.
+        # Reuses every safety check below that promote/demote already
+        # enforce, evaluated relative to whichever direction this jump
+        # actually represents, rather than skipping them for a "bigger"
+        # single-call change.
+        if target_role is None:
+            raise StaffManageError("target_role is required for action='set'")
+        try:
+            new_idx = ROLE_LADDER.index(target_role)
+        except ValueError:
+            raise StaffManageError(f"Unknown role '{target_role}'")
+
+        if new_idx == idx:
+            # No-op: re-selecting the role a user already has. Not an
+            # error — the dashboard's <select> always shows the current
+            # value selected, so this is a normal, harmless outcome if
+            # the user re-picks it (e.g. opening then closing the list).
+            return {
+                "user_id": user.id,
+                "username": user.username,
+                "previous_role": current_name,
+                "new_role": current_name,
+                "action": "set",
+            }
+
+        if new_idx > idx:
+            # This jump promotes the user, possibly across several tiers
+            # at once. Only owners may grant owner, exactly as promote
+            # already enforces one step at a time.
+            if target_role == "owner" and actor_role_name != "owner":
+                raise StaffManageError("Only owners can promote to owner", 403)
+        else:
+            # This jump demotes the user, possibly across several tiers
+            # at once. Only owners may change an owner's role at all, and
+            # the last-remaining-owner lockout guard applies exactly as
+            # it does for a single-step demote.
+            if current_name == "owner" and actor_role_name != "owner":
+                raise StaffManageError("Only owners can demote an owner", 403)
+            if current_name == "owner":
+                owner_role = current_role
+                remaining_owners = await db.scalar(
+                    select(func.count(User.id)).where(
+                        User.role_id == owner_role.id,
+                        User.is_active == True,  # noqa: E712
+                        User.id != user.id,
+                    )
+                )
+                if remaining_owners == 0:
+                    raise StaffManageError(
+                        "Cannot demote the last remaining owner — promote another "
+                        "user to owner first",
+                        409,
+                    )
+        new_name = target_role
+    elif action == "promote":
         if idx >= len(ROLE_LADDER) - 1:
             raise StaffManageError("User already has the highest role")
         if ROLE_LADDER[idx + 1] == "owner" and actor_role_name != "owner":

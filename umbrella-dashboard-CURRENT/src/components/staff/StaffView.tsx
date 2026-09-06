@@ -68,13 +68,13 @@ export const StaffView: React.FC = () => {
     fetchStaffData();
   }, []);
 
-  const handlePromoteDemote = async (memberId: string, action: 'promote' | 'demote') => {
+  const handleSetRole = async (memberId: string, targetRole: string) => {
     try {
-      const result = await api.manageStaff({ user_id: memberId, action });
+      const result = await api.manageStaff({ user_id: memberId, action: 'set', target_role: targetRole });
       addToast({
         type: 'success',
         title: 'Staff Role Updated',
-        message: `Role changed to ${(result?.new_role || action).toUpperCase()}.`,
+        message: `Role changed to ${(result?.new_role || targetRole).toUpperCase()}.`,
       });
       fetchStaffData();
     } catch (err: any) {
@@ -300,25 +300,15 @@ export const StaffView: React.FC = () => {
                     </button>
                   </div>
 
-                  {/* Role — colored badge, doubles as the change-role control */}
+                  {/* Role — colored badge, doubles as the change-role control.
+                      Directly sets whichever role is picked in one call
+                      (services/staff_service.py's "set" action) rather than
+                      the old promote/demote-one-step-at-a-time behavior,
+                      which silently only moved one tier per selection and
+                      didn't match what a plain <select> implies it does. */}
                   <select
                     value={member.role || 'moderator'}
-                    onChange={(e) => {
-                      // AUDIT-2026-08-30 fix: this hierarchy previously read
-                      // ["viewer","support","moderator","admin","owner"] —
-                      // neither "viewer" nor "support" are real role names.
-                      // The actual source of truth is
-                      // services/staff_service.py::ROLE_LADDER =
-                      // ["member","helper","moderator","admin","owner"].
-                      // With the wrong array, indexOf("member")/indexOf("helper")
-                      // both returned -1, so promote/demote direction was
-                      // computed wrong (or silently defaulted to demote)
-                      // for either of the two lowest real roles.
-                      const ladder = ["member", "helper", "moderator", "admin", "owner"];
-                      const ci = ladder.indexOf((member.role || "").toLowerCase());
-                      const ni = ladder.indexOf(e.target.value.toLowerCase());
-                      handlePromoteDemote(member.id, ni > ci ? "promote" : "demote");
-                    }}
+                    onChange={(e) => handleSetRole(member.id, e.target.value)}
                     className={`w-full rounded-lg border px-2.5 py-1.5 text-xs font-bold cursor-pointer focus:outline-none ${roleBadgeStyle(member.role)}`}
                   >
                     {roles.length > 0 ? (

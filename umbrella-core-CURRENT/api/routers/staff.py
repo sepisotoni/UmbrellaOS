@@ -27,7 +27,8 @@ class StaffAddRequest(BaseModel):
 
 class StaffManageRequest(BaseModel):
     user_id: str
-    action: Literal["promote", "demote"]
+    action: Literal["promote", "demote", "set"]
+    target_role: str | None = None
 
 
 class StaffManageResponse(BaseModel):
@@ -51,7 +52,8 @@ async def staff_manage(
 
     try:
         result = await manage_staff_role(
-            db, body.user_id, body.action, actor_role_name=actor_role_name,
+            db, body.user_id, body.action,
+            target_role=body.target_role, actor_role_name=actor_role_name,
         )
         return StaffManageResponse(**result)
     except StaffManageError as exc:

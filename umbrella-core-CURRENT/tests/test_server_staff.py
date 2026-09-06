@@ -365,3 +365,167 @@ async def test_list_staff_includes_is_active(client, db_session):
     owner_member = next(m for m in members if m["discord_id"] == "owner-discord")
     assert "is_active" in owner_member
     assert owner_member["is_active"] is True
+
+
+@pytest.mark.asyncio
+async def test_staff_set_role_jumps_directly_not_one_step(client, db_session):
+    """The dashboard's staff role <select> should set the picked role
+    directly, in one call — not silently move only one hierarchy tier
+    per selection like promote/demote do. Jumping from member straight
+    to admin (3 tiers) must land on admin immediately."""
+    owner_headers = await _owner_headers(db_session)
+
+    async with db_session() as db:
+        member_role = await db.scalar(select(Role).where(Role.name == "member"))
+        target_user = User(discord_id="set-role-target", username="set_role_target", role_id=member_role.id)
+        db.add(target_user)
+        await db.commit()
+        target_id = target_user.id
+
+    response = await client.post(
+        "/api/v1/staff/manage",
+        json={"user_id": target_id, "action": "set", "target_role": "admin"},
+        headers=owner_headers,
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["previous_role"] == "member"
+    assert body["new_role"] == "admin"
+    assert body["action"] == "set"
+
+
+@pytest.mark.asyncio
+async def test_staff_set_role_to_owner_requires_owner_actor(client, db_session):
+    """Setting a user directly to owner must still require the actor to
+    already be an owner — the same restriction promote already enforces
+    one step at a time must hold for a direct multi-tier jump too."""
+    helper_headers = await _helper_headers(db_session)
+
+    async with db_session() as db:
+        # _helper_headers presumably creates a helper-role actor; give
+        # them roles.manage via extra_permissions so the request reaches
+        # manage_staff_role's own actor-role check rather than failing
+        # earlier at the permission-dependency layer.
+        helper_user = await db.scalar(select(User).where(User.username == "helper_user"))
+        if helper_user is not None:
+            helper_user.extra_permissions = list(set(helper_user.extra_permissions or []) | {"roles.manage"})
+            await db.commit()
+
+        member_role = await db.scalar(select(Role).where(Role.name == "member"))
+        target_user = User(discord_id="set-role-owner-target", username="set_role_owner_target", role_id=member_role.id)
+        db.add(target_user)
+        await db.commit()
+        target_id = target_user.id
+
+    response = await client.post(
+        "/api/v1/staff/manage",
+        json={"user_id": target_id, "action": "set", "target_role": "owner"},
+        headers=helper_headers,
+    )
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_staff_set_role_blocks_demoting_last_owner(client, db_session):
+    """Setting the last remaining owner to any lower role must be blocked
+    by the same last-owner lockout guard promote/demote already enforce."""
+    owner_headers = await _owner_headers(db_session)
+
+    async with db_session() as db:
+        owner_role = await db.scalar(select(Role).where(Role.name == "owner"))
+        owner_user = await db.scalar(select(User).where(User.role_id == owner_role.id))
+        owner_id = owner_user.id
+
+    response = await client.post(
+        "/api/v1/staff/manage",
+        json={"user_id": owner_id, "action": "set", "target_role": "admin"},
+        headers=owner_headers,
+    )
+    assert response.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_staff_set_role_to_unknown_role_rejected(client, db_session):
+    owner_headers = await _owner_headers(db_session)
+
+    async with db_session() as db:
+        member_role = await db.scalar(select(Role).where(Role.name == "member"))
+        target_user = User(discord_id="set-role-bad-target", username="set_role_bad_target", role_id=member_role.id)
+        db.add(target_user)
+        await db.commit()
+        target_id = target_user.id
+
+    response = await client.post(
+        "/api/v1/staff/manage",
+        json={"user_id": target_id, "action": "set", "target_role": "definitely-not-a-role"},
+        headers=owner_headers,
+    )
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_staff_set_role_to_same_role_is_a_harmless_noop(client, db_session):
+    """Re-selecting the role a user already has (e.g. opening then closing
+    the dropdown without changing anything) must succeed harmlessly, not
+    error — the <select> always shows the current value selected."""
+    owner_headers = await _owner_headers(db_session)
+
+    async with db_session() as db:
+        member_role = await db.scalar(select(Role).where(Role.name == "member"))
+        target_user = User(discord_id="set-role-noop-target", username="set_role_noop_target", role_id=member_role.id)
+        db.add(target_user)
+        await db.commit()
+        target_id = target_user.id
+
+    response = await client.post(
+        "/api/v1/staff/manage",
+        json={"user_id": target_id, "action": "set", "target_role": "member"},
+        headers=owner_headers,
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["previous_role"] == "member"
+    assert body["new_role"] == "member"
+
+
+@pytest.mark.asyncio
+async def test_staff_set_role_requires_target_role_field(client, db_session):
+    owner_headers = await _owner_headers(db_session)
+
+    async with db_session() as db:
+        member_role = await db.scalar(select(Role).where(Role.name == "member"))
+        target_user = User(discord_id="set-role-missing-target", username="set_role_missing_target", role_id=member_role.id)
+        db.add(target_user)
+        await db.commit()
+        target_id = target_user.id
+
+    response = await client.post(
+        "/api/v1/staff/manage",
+        json={"user_id": target_id, "action": "set"},
+        headers=owner_headers,
+    )
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_promote_demote_actions_still_work_unchanged(client, db_session):
+    """Existing promote/demote callers must be completely unaffected by
+    adding the new 'set' action — one-step-at-a-time behavior unchanged."""
+    owner_headers = await _owner_headers(db_session)
+
+    async with db_session() as db:
+        member_role = await db.scalar(select(Role).where(Role.name == "member"))
+        target_user = User(discord_id="promote-unchanged-target", username="promote_unchanged_target", role_id=member_role.id)
+        db.add(target_user)
+        await db.commit()
+        target_id = target_user.id
+
+    response = await client.post(
+        "/api/v1/staff/manage",
+        json={"user_id": target_id, "action": "promote"},
+        headers=owner_headers,
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["previous_role"] == "member"
+    assert body["new_role"] == "helper"  # one step only, not further
