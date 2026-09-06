@@ -24,6 +24,12 @@ from models.hosting import Server
 from services.ai.orchestrator import Orchestrator
 from services.ai.provider_factory import ProviderFactory
 from services.ai.base import ProviderError
+from services.ai.copilot_tools import (
+    build_tool_selection_prompt,
+    parse_requested_tools,
+    execute_tool_calls,
+    format_tool_results_block,
+)
 from services.operational_intelligence.crash_prevention import (
     assess_crash_risk,
     CrashRiskLevel,
@@ -143,16 +149,23 @@ async def copilot_chat(
     # no direct write path of its own — any capability it invokes (investigation.run,
     # knowledge.*) still goes through action_guard's hard, code-level restrictions —
     # but this is cheap defense in depth on the most user-facing AI surface.
-    prompt = f"{identity_block}\n\n<user_question>\n{body.message}\n</user_question>"
+    question_block = f"{identity_block}\n\n<user_question>\n{body.message}\n</user_question>"
     if body.context:
-        prompt = f"<context>\n{body.context}\n</context>\n\n{prompt}"
+        question_block = f"<context>\n{body.context}\n</context>\n\n{question_block}"
 
     t0 = time.monotonic()
+
+    # [HEAD → CURSOR, 2026-09-01] Confirmed live: the copilot had zero tools
+    # wired to real data, so it could only ask clarifying questions instead
+    # of fetching player/punishment/anticheat info. Two-pass text-based tool
+    # protocol — see services/ai/copilot_tools.py's module docstring for why
+    # this shape instead of native per-provider function-calling.
+    pass1_prompt = build_tool_selection_prompt(question_block)
     try:
-        result = await Orchestrator.run(
+        pass1_result = await Orchestrator.run(
             db=db,
             task_type="copilot",
-            task_prompt=prompt,
+            task_prompt=pass1_prompt,
             requested_by=ctx.actor_id,
             require_dual_review=False,  # copilot is low-stakes; skip dual review
         )
@@ -162,13 +175,40 @@ async def copilot_chat(
             detail=f"AI orchestrator unavailable: {exc}",
         ) from exc
 
+    requested_tools = parse_requested_tools(pass1_result.text)
+
+    if not requested_tools:
+        # No tool needed — pass 1's own answer is the final answer.
+        final_result = pass1_result
+    else:
+        tool_results = await execute_tool_calls(db, ctx, requested_tools)
+        pass2_prompt = (
+            f"{question_block}\n\n"
+            f"{format_tool_results_block(tool_results)}\n\n"
+            "Using the tool results above, answer the user's question. "
+            "Do not mention that you used tools — just answer naturally with the data."
+        )
+        try:
+            final_result = await Orchestrator.run(
+                db=db,
+                task_type="copilot",
+                task_prompt=pass2_prompt,
+                requested_by=ctx.actor_id,
+                require_dual_review=False,
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=f"AI orchestrator unavailable on tool-result synthesis: {exc}",
+            ) from exc
+
     latency_ms = int((time.monotonic() - t0) * 1000)
-    model_label = result.primary_provider
-    if result.primary_model:
-        model_label = f"{result.primary_provider}/{result.primary_model}"
+    model_label = final_result.primary_provider
+    if final_result.primary_model:
+        model_label = f"{final_result.primary_provider}/{final_result.primary_model}"
 
     return CopilotResponse(
-        response=result.text,
+        response=final_result.text,
         model_used=model_label,
         latency_ms=latency_ms,
     )
