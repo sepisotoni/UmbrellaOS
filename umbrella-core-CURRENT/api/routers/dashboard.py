@@ -51,31 +51,42 @@ async def list_plugins(
     db: AsyncSession = Depends(get_db),
     _auth=Depends(require_permission("players.view")),
 ) -> list[dict]:
-    """List connected plugins (Umbrella + Grim status per server)."""
+    """List UmbrellaOS + GrimAC connection status, one entry per server.
+
+    FIX ([PLUGIN] subsystem audit): previously returned a flat list of
+    independent "plugin" rows (one for UmbrellaOS, a SEPARATE optional
+    one for GrimAC per server) with lowercase-only status: "connected"
+    and no umbrella_status/grimac_status fields at all. The dashboard's
+    PluginsView.tsx / api.ts already expects ONE combined object per
+    server with BOTH umbrella_status and grimac_status as sibling fields
+    (checked against the literal string 'ACTIVE' to control status-badge
+    color) -- confirmed by reading api.ts's field-mapping fallback chains
+    and PluginsView.tsx's conditional styling directly, not assumed.
+
+    The old shape meant the UmbrellaOS Bridge badge ALWAYS rendered red/
+    disconnected on this page (the real "connected" string never equals
+    'ACTIVE') even for genuinely healthy, actively-heartbeating servers,
+    and the GrimAC Hook badge ALWAYS rendered green/active regardless of
+    whether Grim was actually connected on that server (the field was
+    never populated by real data at all, so the frontend's hardcoded
+    'ACTIVE' fallback always won) -- a monitoring page showing the
+    opposite of the true state for one signal and a permanently-false-
+    positive for the other. Confirmed via grep that getPluginsHeartbeat()
+    in api.ts is this endpoint's only caller anywhere in the codebase, so
+    this reshape has no other consumer to break.
+    """
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=3)
     result = await db.execute(
         select(PluginHeartbeat).where(PluginHeartbeat.last_seen >= cutoff)
     )
     plugins = []
     for hb in result.scalars().all():
-        ms = int((datetime.now(timezone.utc) - hb.last_seen).total_seconds() * 1000)
         plugins.append({
-            "id": f"umbrella-{hb.server_id}",
-            "name": "UmbrellaOS",
-            "version": hb.plugin_version,
-            "server": hb.server_name,
-            "status": "connected",
-            "heartbeatMs": ms,
-            "lastSeen": hb.last_seen.isoformat(),
+            "server_id": hb.server_id,
+            "server_name": hb.server_name,
+            "umbrella_status": "ACTIVE",
+            "umbrella_version": hb.plugin_version,
+            "grimac_status": "ACTIVE" if hb.grim_connected else "STANDALONE",
+            "last_heartbeat": hb.last_seen.isoformat(),
         })
-        if hb.grim_connected:
-            plugins.append({
-                "id": f"grim-{hb.server_id}",
-                "name": "GrimAC",
-                "version": "2.3.x",
-                "server": hb.server_name,
-                "status": "connected",
-                "heartbeatMs": ms,
-                "lastSeen": hb.last_seen.isoformat(),
-            })
     return plugins
