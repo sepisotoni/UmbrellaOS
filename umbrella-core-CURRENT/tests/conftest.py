@@ -72,6 +72,33 @@ class _NoOpRateLimiter:
 
 
 @pytest.fixture(scope="session", autouse=True)
+def _test_rate_limit_bypass():
+    """
+    Sets request.app.state.rate_limit_disabled_for_tests = True exactly
+    once for the whole test session, read by RateLimitMiddleware.dispatch()'s
+    early bypass check (api/middleware/rate_limit.py).
+
+    Session-scoped and autouse rather than folded into the per-function
+    `client` fixture's middleware-stack-walking patch below (which is left
+    in place as defense in depth, not replaced) — that patch is re-applied
+    fresh on every single test function and depends on successfully
+    locating the RateLimitMiddleware node in the live ASGI stack each time.
+    Confirmed empirically (2026-09-04) that this per-test approach let some
+    requests slip through to the real, Redis-backed limiter under heavy
+    full-suite load, and — because real Redis was reachable in the test
+    environment — that created persistent cross-test rate-limit state,
+    cascading into 59 failures across many unrelated test files (running
+    tests/registry/ as a whole vs. 0 failures running the same tests
+    individually or in small groups). This fixture removes any dependence
+    on per-test patch timing/success: the flag is set once, checked first
+    in dispatch(), before self._limiter is ever touched.
+    """
+    import main as main_module
+    main_module.app.state.rate_limit_disabled_for_tests = True
+    yield
+
+
+@pytest.fixture(scope="session", autouse=True)
 def _test_secrets_encryption_key():
     """
     Phase 4's secrets encryption (services/secrets_service.py) requires a
