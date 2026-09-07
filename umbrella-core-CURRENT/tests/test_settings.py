@@ -72,10 +72,24 @@ async def test_get_setting_not_found(client):
 @pytest.mark.asyncio
 async def test_sensitive_settings_are_masked(client, db_session):
     """discord.bot_token is sensitive — value must come back as '***' for
-    a session-authenticated (dashboard) user. Admin-key callers (bot,
-    plugin) deliberately get the real value instead - see
-    api/routers/settings.py's get_setting() and its comment. Using
-    ADMIN_HEADERS here would test the wrong auth path entirely."""
+    a session-authenticated (dashboard) user, PROVIDED a real value is
+    actually configured. Admin-key callers (bot, plugin) deliberately
+    get the real value instead - see api/routers/settings.py's
+    get_setting() and its comment. Using ADMIN_HEADERS here would test
+    the wrong auth path entirely.
+
+    AUDIT-2026-08-30: this test used to pass even against
+    discord.bot_token's genuinely-empty seeded default, meaning it was
+    actually verifying the bug this fix corrects (an empty sensitive
+    value being masked as "***" same as a real one, misleading the
+    dashboard into showing a configured-looking field for an unset key).
+    Seeding a real value first so this test verifies what it claims to.
+    """
+    await client.patch(
+        "/api/v1/settings/discord.bot_token",
+        json={"value": "a-real-token-value"},
+        headers=ADMIN_HEADERS,
+    )
     headers = await session_headers_for_role(db_session, "owner")
     response = await client.get("/api/v1/settings/discord.bot_token", headers=headers)
     assert response.status_code == 200
@@ -151,3 +165,29 @@ async def test_patch_sensitive_setting_returns_masked(client, tmp_path, monkeypa
     # Confirm the write really happened (this test's actual point), just
     # into the isolated temp file instead of the project's real .env.
     assert "DISCORD_BOT_TOKEN=real-token-123" in env_file.read_text()
+
+
+@pytest.mark.asyncio
+async def test_empty_sensitive_setting_not_masked(client, db_session):
+    """
+    AUDIT-2026-08-30 regression test: an unset/empty sensitive setting was
+    previously masked as "***" the same as a real stored secret — the
+    dashboard then rendered that literal "***" as the field's value, so
+    an empty API-key field looked exactly like a real one was already
+    configured. Only a genuinely non-empty sensitive value should mask.
+    """
+    from models import Setting
+    async with db_session() as db:
+        db.add(Setting(
+            key="test.empty_sensitive_key",
+            value="",
+            category="test",
+            description="test",
+            sensitive=True,
+        ))
+        await db.commit()
+
+    headers = await session_headers_for_role(db_session, "owner")
+    response = await client.get("/api/v1/settings/test.empty_sensitive_key", headers=headers)
+    assert response.status_code == 200
+    assert response.json()["value"] == ""

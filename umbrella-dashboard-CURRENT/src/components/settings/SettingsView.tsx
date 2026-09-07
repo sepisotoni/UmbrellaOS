@@ -122,13 +122,36 @@ const SettingsField: React.FC<FieldProps> = ({ record, value, onChange, saving, 
                 onBlur={() => onSave(record.key)}
                 onKeyDown={(e) => e.key === 'Enter' && onSave(record.key)}
                 className={inputClass}
-                placeholder={record.sensitive ? '••••••••' : 'Not set'}
+                placeholder={
+                  // AUDIT-2026-08-30 fix: this always showed the dot
+                  // placeholder for any sensitive field, so an empty,
+                  // never-configured API key looked exactly like a real
+                  // secret was already stored. Placeholder should just
+                  // say what it is — "Not set" — regardless of
+                  // sensitivity; masking (type="password") only matters
+                  // once there's a real value to obscure.
+                  record.sensitive && record.value ? '••••••••' : 'Not set'
+                }
               />
             </div>
             {record.sensitive && (
               <button
                 type="button"
                 onClick={() => setMasked((m) => !m)}
+                title={
+                  // AUDIT-2026-08-30: dashboard sessions can never see an
+                  // already-stored secret's real value — that's a
+                  // deliberate backend security boundary
+                  // (api/routers/settings.py::_unmask_settings: "Dashboard
+                  // sessions must never see raw secrets"), not something
+                  // this button should try to bypass. It only reveals
+                  // what you've actually typed while setting a NEW value —
+                  // toggling it on an untouched field just shows the
+                  // literal mask string, which isn't useful, so say so.
+                  value === '***'
+                    ? "Existing secrets can't be viewed from the dashboard by design — type a new value to replace it"
+                    : (masked ? 'Show typed value' : 'Hide typed value')
+                }
                 className="shrink-0 text-slate-500 hover:text-slate-300 transition cursor-pointer"
               >
                 {masked ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}

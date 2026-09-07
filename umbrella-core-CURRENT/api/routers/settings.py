@@ -49,8 +49,13 @@ async def get_setting(
     setting = await SettingsService.get_by_key(db, key, unmasked=unmasked)
     if setting is None:
         raise HTTPException(status_code=404, detail=f"Setting '{key}' not found")
-    if not unmasked and setting.get("sensitive"):
-        setting = {**setting, "value": "***"}
+    # AUDIT-2026-08-30 fix: this used to unconditionally re-mask any
+    # sensitive setting to "***" here, redundantly duplicating (and, once
+    # SettingsService._to_dict was fixed to only mask non-empty values,
+    # actively overriding/undoing) the masking decision get_by_key already
+    # makes correctly. list_settings below has no equivalent duplicate
+    # check and was never affected. Removed rather than fixed in parallel —
+    # get_by_key's return value is already correct on its own.
     return setting
 
 

@@ -413,10 +413,19 @@ class SettingsService:
 
     @staticmethod
     def _to_dict(setting: Setting, unmasked: bool = False) -> dict:
+        # AUDIT-2026-08-30 fix: this always masked sensitive settings with
+        # the literal string "***", even when setting.value was genuinely
+        # empty/unset — the dashboard then rendered that literal "***" as
+        # the field's value, making an empty API-key field look exactly
+        # like a real secret was already stored. Only mask when there's
+        # an actual non-empty value to hide; an empty sensitive setting
+        # now correctly comes through as empty, so the frontend's "Not
+        # set" placeholder can render instead of a misleading mask.
+        should_mask = setting.sensitive and not unmasked and bool(setting.value)
         return {
             "id": setting.id,
             "key": setting.key,
-            "value": setting.value if (unmasked or not setting.sensitive) else SENSITIVE_MASK,
+            "value": SENSITIVE_MASK if should_mask else setting.value,
             "category": setting.category,
             "description": setting.description,
             "sensitive": setting.sensitive,
