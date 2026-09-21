@@ -7,6 +7,7 @@ GET  /api/v1/snapshots/players/{minecraft_uuid}/latest
 GET  /api/v1/snapshots/{snapshot_id}
 GET  /api/v1/snapshots/replay/{replay_id}
 """
+
 import json
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -82,7 +83,8 @@ async def create_snapshot(
                 logger.warning(
                     "snapshot %s field failed to parse as JSON — storing as null. "
                     "Raw value (truncated): %r",
-                    field_name, val[:200],
+                    field_name,
+                    val[:200],
                 )
                 return None
         return val

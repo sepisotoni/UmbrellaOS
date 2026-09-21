@@ -12,6 +12,7 @@ Public surface:
     list_flags(db)                  -> list[FeatureFlag]
     delete_flag(db, name)           -> bool    (True if existed)
 """
+
 from __future__ import annotations
 
 from sqlalchemy import select
@@ -55,6 +56,7 @@ async def set_flag(
         if description is not None:
             flag.description = description
         from datetime import datetime, timezone
+
         flag.updated_at = datetime.now(timezone.utc)
 
     await db.flush()

@@ -9,6 +9,7 @@ generator, generalized to data-driven manifests instead of a fixed list of
 Python classes, and to a sandboxed executor instead of a direct in-process
 call.
 """
+
 from __future__ import annotations
 
 from typing import Any, Protocol
@@ -23,7 +24,12 @@ from registry.registry import CapabilityRegistry
 from registry.registry import registry as default_registry
 from registry.spec import CapabilitySpec
 from services.plugin_kv.service import PluginKvService
-from services.plugins.manifest import ConfigFieldDecl, ParamField, PluginCapability, PluginManifest
+from services.plugins.manifest import (
+    ConfigFieldDecl,
+    ParamField,
+    PluginCapability,
+    PluginManifest,
+)
 
 _TYPE_MAP: dict[str, type] = {
     "string": str,
@@ -79,7 +85,9 @@ class SandboxExecutor(Protocol):
         ...
 
 
-def _build_pydantic_model(model_name: str, fields: dict[str, ParamField]) -> type[BaseModel]:
+def _build_pydantic_model(
+    model_name: str, fields: dict[str, ParamField]
+) -> type[BaseModel]:
     field_defs: dict[str, Any] = {}
     for field_name, spec in fields.items():
         py_type = _TYPE_MAP[spec.type]
@@ -150,7 +158,10 @@ async def register_plugin_capabilities(
     known_permissions = await _known_permission_keys(db)
 
     for cap in manifest.capabilities:
-        if cap.required_permission is not None and cap.required_permission not in known_permissions:
+        if (
+            cap.required_permission is not None
+            and cap.required_permission not in known_permissions
+        ):
             raise PluginRegistrationError(
                 f"Plugin '{manifest.plugin_id}' capability '{cap.local_name}' declares "
                 f"required_permission={cap.required_permission!r}, which is not a known "
@@ -183,7 +194,9 @@ async def register_plugin_capabilities(
     return registered
 
 
-async def _get_or_create_permission(db: AsyncSession, *, key: str, description: str) -> Permission:
+async def _get_or_create_permission(
+    db: AsyncSession, *, key: str, description: str
+) -> Permission:
     """Idempotent get-or-create, same pattern as
     services/roles_service.py::RolesService.seed_defaults — the only other
     place in this codebase that mints Permission rows dynamically rather
@@ -200,7 +213,9 @@ async def _get_or_create_permission(db: AsyncSession, *, key: str, description: 
     return perm
 
 
-def _make_config_set_handler(manifest: PluginManifest, fields_by_key: dict[str, ConfigFieldDecl]):
+def _make_config_set_handler(
+    manifest: PluginManifest, fields_by_key: dict[str, ConfigFieldDecl]
+):
     """Phase 10, Tier 2, Decision 2 Option A: the write path is entirely
     platform-owned code, not a sandboxed plugin call — unlike
     _make_plugin_capability_handler above, there is no sandbox.run() here
@@ -226,13 +241,17 @@ def _make_config_set_handler(manifest: PluginManifest, fields_by_key: dict[str, 
         # enforcement — pydantic's own validation is.
         if field.type == "boolean" and not isinstance(value, bool):
             raise ValueError(f"config field '{key}' expects a boolean value.")
-        await PluginKvService.set(ctx.db, plugin_id=manifest.plugin_id, key=key, value=value)
+        await PluginKvService.set(
+            ctx.db, plugin_id=manifest.plugin_id, key=key, value=value
+        )
         return ConfigSetResult(key=key, value=value)
 
     return handler
 
 
-def _make_config_get_handler(manifest: PluginManifest, fields_by_key: dict[str, ConfigFieldDecl]):
+def _make_config_get_handler(
+    manifest: PluginManifest, fields_by_key: dict[str, ConfigFieldDecl]
+):
     async def handler(ctx: CallContext, params: BaseModel) -> BaseModel:
         entries = await PluginKvService.get_all(ctx.db, plugin_id=manifest.plugin_id)
         stored = {e.key: PluginKvService.parse_value(e) for e in entries}
@@ -246,7 +265,9 @@ def _make_config_get_handler(manifest: PluginManifest, fields_by_key: dict[str, 
             # effective value.
             current = stored.get(key, field.default_value)
             values.append(
-                ConfigFieldValue(key=key, label=field.label, type=field.type, value=current)
+                ConfigFieldValue(
+                    key=key, label=field.label, type=field.type, value=current
+                )
             )
         return ConfigGetResult(values=values)
 
@@ -306,7 +327,8 @@ async def register_plugin_config_capabilities(
     fields_by_key = {f.key: f for f in manifest.config_fields}
     write_key = f"plugin.{manifest.plugin_id}.config.write"
     await _get_or_create_permission(
-        db, key=write_key,
+        db,
+        key=write_key,
         description=f"Write {manifest.plugin_id}'s dashboard-configurable settings",
     )
 

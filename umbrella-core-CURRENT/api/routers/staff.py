@@ -1,4 +1,5 @@
 """Staff management — promote and demote."""
+
 from typing import Literal
 import uuid as uuid_lib
 
@@ -14,7 +15,12 @@ from api.middleware.auth import require_plugin_key
 from models import User
 from models.discord import DiscordAccount
 from models.permissions import Role
-from services.staff_service import StaffManageError, manage_staff_role, find_or_add_staff, ROLE_LADDER
+from services.staff_service import (
+    StaffManageError,
+    manage_staff_role,
+    find_or_add_staff,
+    ROLE_LADDER,
+)
 
 router = APIRouter(prefix="/api/v1/staff", tags=["staff"])
 
@@ -52,8 +58,11 @@ async def staff_manage(
 
     try:
         result = await manage_staff_role(
-            db, body.user_id, body.action,
-            target_role=body.target_role, actor_role_name=actor_role_name,
+            db,
+            body.user_id,
+            body.action,
+            target_role=body.target_role,
+            actor_role_name=actor_role_name,
         )
         return StaffManageResponse(**result)
     except StaffManageError as exc:
@@ -67,9 +76,13 @@ async def staff_add(
     auth: User | str = Depends(require_permission("roles.manage")),
 ) -> StaffManageResponse:
     if body.role == "owner":
-        raise HTTPException(status_code=403, detail="Cannot add staff directly as owner")
+        raise HTTPException(
+            status_code=403, detail="Cannot add staff directly as owner"
+        )
     try:
-        result = await find_or_add_staff(db, body.discord_id, body.role, username=body.username)
+        result = await find_or_add_staff(
+            db, body.discord_id, body.role, username=body.username
+        )
         return StaffManageResponse(**result)
     except StaffManageError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
@@ -85,13 +98,21 @@ async def discord_members(
     from models.setting import Setting
 
     settings = get_settings()
-    guild_id_setting = await db.scalar(select(Setting).where(Setting.key == "discord.guild_id"))
+    guild_id_setting = await db.scalar(
+        select(Setting).where(Setting.key == "discord.guild_id")
+    )
     guild_id = guild_id_setting.value if guild_id_setting else ""
-    bot_token_setting = await db.scalar(select(Setting).where(Setting.key == "discord.bot_token"))
-    bot_token = bot_token_setting.value if bot_token_setting else settings.discord_bot_token
+    bot_token_setting = await db.scalar(
+        select(Setting).where(Setting.key == "discord.bot_token")
+    )
+    bot_token = (
+        bot_token_setting.value if bot_token_setting else settings.discord_bot_token
+    )
 
     if not guild_id or not bot_token:
-        raise HTTPException(status_code=503, detail="Discord guild ID or bot token not configured")
+        raise HTTPException(
+            status_code=503, detail="Discord guild ID or bot token not configured"
+        )
 
     async with httpx.AsyncClient() as client:
         response = await client.get(
@@ -99,7 +120,9 @@ async def discord_members(
             headers={"Authorization": f"Bot {bot_token}"},
         )
         if response.status_code != 200:
-            raise HTTPException(status_code=502, detail=f"Discord API error: {response.text}")
+            raise HTTPException(
+                status_code=502, detail=f"Discord API error: {response.text}"
+            )
         members = response.json()
 
     existing_result = await db.execute(select(User.discord_id))
@@ -187,12 +210,13 @@ async def list_staff(
         permissions: list[str] = list(user.extra_permissions or [])
         if role_obj and hasattr(role_obj, "permissions"):
             permissions = sorted(
-                {p.permission_key for p in role_obj.permissions} | set(user.extra_permissions or [])
+                {p.permission_key for p in role_obj.permissions}
+                | set(user.extra_permissions or [])
             )
 
         da = discord_map.get(user.discord_id)
         # Build Discord CDN avatar URL if we have it stored; fall back to default avatar
-        avatar_hash = getattr(da, 'avatar_hash', None) if da else None
+        avatar_hash = getattr(da, "avatar_hash", None) if da else None
         if avatar_hash:
             avatar_url = f"https://cdn.discordapp.com/avatars/{user.discord_id}/{avatar_hash}.png?size=64"
         else:
@@ -201,29 +225,31 @@ async def list_staff(
             except (ValueError, TypeError):
                 avatar_index = 0
             avatar_url = f"https://cdn.discordapp.com/embed/avatars/{avatar_index}.png"
-        staff_members.append(StaffMemberSchema(
-            id=user.id,
-            discord_id=user.discord_id,
-            username=user.username,
-            discriminator="0",
-            avatar_url=avatar_url,
-            role=role_name,
-            permissions=permissions,
-            email=user.email,
-            linked_minecraft_uuid=da.player_uuid if da and da.verified else None,
-            linked_minecraft_username=None,  # would need Player lookup; skip for performance
-            # AUDIT-2026-08-30 fix: this field was entirely missing from
-            # StaffMemberSchema — the dashboard's status badge read
-            # member.is_active on a response that never included it,
-            # so it was always undefined -> always falsy -> every staff
-            # member showed DISABLED regardless of their real status.
-            # This list_staff query only ever selects is_active==True
-            # rows (see the WHERE clause above), so today this is always
-            # True in practice — populated from the real column rather
-            # than hardcoded, so it stays correct if that WHERE clause
-            # is ever relaxed (e.g. to support showing disabled staff).
-            is_active=user.is_active,
-        ))
+        staff_members.append(
+            StaffMemberSchema(
+                id=user.id,
+                discord_id=user.discord_id,
+                username=user.username,
+                discriminator="0",
+                avatar_url=avatar_url,
+                role=role_name,
+                permissions=permissions,
+                email=user.email,
+                linked_minecraft_uuid=da.player_uuid if da and da.verified else None,
+                linked_minecraft_username=None,  # would need Player lookup; skip for performance
+                # AUDIT-2026-08-30 fix: this field was entirely missing from
+                # StaffMemberSchema — the dashboard's status badge read
+                # member.is_active on a response that never included it,
+                # so it was always undefined -> always falsy -> every staff
+                # member showed DISABLED regardless of their real status.
+                # This list_staff query only ever selects is_active==True
+                # rows (see the WHERE clause above), so today this is always
+                # True in practice — populated from the real column rather
+                # than hardcoded, so it stays correct if that WHERE clause
+                # is ever relaxed (e.g. to support showing disabled staff).
+                is_active=user.is_active,
+            )
+        )
 
     return staff_members
 
@@ -307,7 +333,9 @@ async def staff_lookup(
         return StaffLookupResponse(is_staff=False, discord_id=discord_id)
 
     role = await db.scalar(
-        select(Role).options(selectinload(Role.permissions)).where(Role.id == user.role_id)
+        select(Role)
+        .options(selectinload(Role.permissions))
+        .where(Role.id == user.role_id)
     )
     role_name = role.name if role else None
 
@@ -320,7 +348,8 @@ async def staff_lookup(
     permissions: list[str] = list(user.extra_permissions or [])
     if role and hasattr(role, "permissions"):
         permissions = sorted(
-            {p.permission_key for p in role.permissions} | set(user.extra_permissions or [])
+            {p.permission_key for p in role.permissions}
+            | set(user.extra_permissions or [])
         )
 
     return StaffLookupResponse(

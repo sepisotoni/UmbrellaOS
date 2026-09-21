@@ -11,6 +11,7 @@ services/webhooks/service.py::WebhookDeliveryService and is invoked by the
 global event subscriber in services/events/subscribers.py, not from here —
 these capabilities only manage the subscription rows.
 """
+
 from __future__ import annotations
 
 from pydantic import BaseModel
@@ -28,7 +29,9 @@ async def _resolve_created_by(ctx: CallContext) -> str | None:
     a real user id; an API-key-authenticated caller creating a webhook
     subscription for itself has no dashboard user to attribute it to."""
     if ctx.actor_type == "staff":
-        result = await ctx.db.execute(select(User).where(User.discord_id == ctx.actor_id))
+        result = await ctx.db.execute(
+            select(User).where(User.discord_id == ctx.actor_id)
+        )
         user = result.scalar_one_or_none()
         return user.id if user else None
     return None
@@ -39,10 +42,14 @@ class WebhookSubscriptionResult(BaseModel):
     topic: str
     url: str
     active: bool
-    secret: str | None = None  # only populated on creation — see WebhookService.create's docstring
+    secret: str | None = (
+        None  # only populated on creation — see WebhookService.create's docstring
+    )
 
     @classmethod
-    def from_model(cls, subscription, secret: str | None = None) -> "WebhookSubscriptionResult":
+    def from_model(
+        cls, subscription, secret: str | None = None
+    ) -> "WebhookSubscriptionResult":
         return cls(
             id=subscription.id,
             topic=subscription.topic,

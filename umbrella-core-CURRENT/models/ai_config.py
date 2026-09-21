@@ -3,6 +3,7 @@ models/ai_config.py — AI configuration actions model.
 
 Stores AI-generated configuration suggestions and their approval status.
 """
+
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, Integer, String, Text, func
@@ -13,6 +14,7 @@ from database.engine import Base
 
 class AIConfigAction(Base):
     """AI-generated configuration suggestions."""
+
     __tablename__ = "ai_config_actions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -34,8 +36,12 @@ class AIConfigAction(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
-    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    applied_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     def __repr__(self) -> str:

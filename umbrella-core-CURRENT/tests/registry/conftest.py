@@ -7,6 +7,7 @@ building a second test-database setup — the registry test suite exercises
 the same seeded `owner`/`admin`/`moderator`/`helper`/`member` roles every
 other router's tests already assume exist.
 """
+
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
@@ -15,7 +16,9 @@ from models import Session, User
 from models.permissions import Role
 
 
-async def session_headers_for_role(db_session, role_name: str, suffix: str = "") -> dict:
+async def session_headers_for_role(
+    db_session, role_name: str, suffix: str = ""
+) -> dict:
     """
     Create a User with the given seeded role plus a valid Session token,
     returning the Bearer header a REST test can use. Mirrors the identical
@@ -27,7 +30,9 @@ async def session_headers_for_role(db_session, role_name: str, suffix: str = "")
     token = f"token-{role_name}{suffix}"
     async with db_session() as db:
         role = await db.scalar(select(Role).where(Role.name == role_name))
-        user = User(discord_id=discord_id, username=f"user_{role_name}{suffix}", role_id=role.id)
+        user = User(
+            discord_id=discord_id, username=f"user_{role_name}{suffix}", role_id=role.id
+        )
         db.add(user)
         await db.flush()
         db.add(

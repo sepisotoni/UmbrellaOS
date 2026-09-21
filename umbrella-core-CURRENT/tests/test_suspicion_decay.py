@@ -4,6 +4,7 @@ services/alt_detection_service.py::decay_stale_suspicion_scores (and its
 capability wrapper,
 capabilities/alt_detection_maintenance.py::decay_stale).
 """
+
 import datetime as dt
 import uuid as uuid_lib
 
@@ -23,17 +24,23 @@ def _make_player(suspicion_score: int) -> Player:
 
 
 @pytest.mark.asyncio
-async def test_decay_reduces_score_for_player_with_no_recent_trigger(db_session, monkeypatch):
+async def test_decay_reduces_score_for_player_with_no_recent_trigger(
+    db_session, monkeypatch
+):
     monkeypatch.setattr(get_settings(), "suspicion_score_decay_points", 10)
     monkeypatch.setattr(get_settings(), "suspicion_score_decay_after_days", 30)
     async with db_session() as db:
         stale_player = _make_player(suspicion_score=50)
         db.add(stale_player)
         old_event = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=60)
-        db.add(SuspicionEvent(
-            player_uuid=stale_player.uuid, trigger="alt_ip_match",
-            points=50, created_at=old_event,
-        ))
+        db.add(
+            SuspicionEvent(
+                player_uuid=stale_player.uuid,
+                trigger="alt_ip_match",
+                points=50,
+                created_at=old_event,
+            )
+        )
         await db.flush()
 
         decayed_count = await decay_stale_suspicion_scores(db)
@@ -51,10 +58,14 @@ async def test_decay_exempts_player_with_recent_trigger(db_session, monkeypatch)
         active_player = _make_player(suspicion_score=50)
         db.add(active_player)
         recent_event = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=1)
-        db.add(SuspicionEvent(
-            player_uuid=active_player.uuid, trigger="alt_ip_match",
-            points=50, created_at=recent_event,
-        ))
+        db.add(
+            SuspicionEvent(
+                player_uuid=active_player.uuid,
+                trigger="alt_ip_match",
+                points=50,
+                created_at=recent_event,
+            )
+        )
         await db.flush()
 
         decayed_count = await decay_stale_suspicion_scores(db)

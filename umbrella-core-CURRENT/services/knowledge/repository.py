@@ -4,6 +4,7 @@ ported from Moo-assistant's KnowledgeReviewRepository plus the raw queries
 KnowledgeIndexer/KnowledgeRetriever did inline. Adapted to umbrella-core's
 dependency-injected AsyncSession convention.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -16,13 +17,19 @@ from models.knowledge import KnowledgeEntry, KnowledgeReviewStatus, KnowledgeVer
 
 class KnowledgeRepository:
     @staticmethod
-    async def get_by_discord_message_id(db: AsyncSession, discord_message_id: str) -> KnowledgeEntry | None:
-        stmt = select(KnowledgeEntry).where(KnowledgeEntry.discord_message_id == discord_message_id)
+    async def get_by_discord_message_id(
+        db: AsyncSession, discord_message_id: str
+    ) -> KnowledgeEntry | None:
+        stmt = select(KnowledgeEntry).where(
+            KnowledgeEntry.discord_message_id == discord_message_id
+        )
         result = await db.execute(stmt)
         return result.scalar_one_or_none()
 
     @staticmethod
-    async def search(db: AsyncSession, query: str, limit: int = 5) -> list[KnowledgeEntry]:
+    async def search(
+        db: AsyncSession, query: str, limit: int = 5
+    ) -> list[KnowledgeEntry]:
         """
         Simple ILIKE keyword search over approved, non-superseded entries -
         intentionally lightweight (no external embedding/vector-store
@@ -49,7 +56,9 @@ class KnowledgeRepository:
         return list(result.scalars().all())
 
     @staticmethod
-    async def snapshot_version(db: AsyncSession, entry: KnowledgeEntry, *, edited_by: str | None) -> KnowledgeVersion:
+    async def snapshot_version(
+        db: AsyncSession, entry: KnowledgeEntry, *, edited_by: str | None
+    ) -> KnowledgeVersion:
         """Archives the entry's *current* content as a new version row
         before it changes. Uses a SQL MAX() rather than fetching every
         existing version just to compute it in Python (the source's
@@ -62,14 +71,19 @@ class KnowledgeRepository:
         next_version = (current_max or 0) + 1
 
         version = KnowledgeVersion(
-            knowledge_entry_id=entry.id, version_number=next_version, content=entry.content, edited_by=edited_by
+            knowledge_entry_id=entry.id,
+            version_number=next_version,
+            content=entry.content,
+            edited_by=edited_by,
         )
         db.add(version)
         await db.flush()
         return version
 
     @staticmethod
-    async def history(db: AsyncSession, knowledge_entry_id: str) -> list[KnowledgeVersion]:
+    async def history(
+        db: AsyncSession, knowledge_entry_id: str
+    ) -> list[KnowledgeVersion]:
         stmt = (
             select(KnowledgeVersion)
             .where(KnowledgeVersion.knowledge_entry_id == knowledge_entry_id)
@@ -111,12 +125,16 @@ class KnowledgeRepository:
 
     @staticmethod
     async def list_pending(db: AsyncSession) -> list[KnowledgeEntry]:
-        stmt = select(KnowledgeEntry).where(KnowledgeEntry.review_status == KnowledgeReviewStatus.PENDING)
+        stmt = select(KnowledgeEntry).where(
+            KnowledgeEntry.review_status == KnowledgeReviewStatus.PENDING
+        )
         result = await db.execute(stmt)
         return list(result.scalars().all())
 
     @staticmethod
-    async def approve(db: AsyncSession, entry_id: str, *, reviewed_by: str) -> KnowledgeEntry | None:
+    async def approve(
+        db: AsyncSession, entry_id: str, *, reviewed_by: str
+    ) -> KnowledgeEntry | None:
         entry = await db.get(KnowledgeEntry, entry_id)
         if entry is None:
             return None
@@ -134,7 +152,9 @@ class KnowledgeRepository:
         return entry
 
     @staticmethod
-    async def reject(db: AsyncSession, entry_id: str, *, reviewed_by: str) -> KnowledgeEntry | None:
+    async def reject(
+        db: AsyncSession, entry_id: str, *, reviewed_by: str
+    ) -> KnowledgeEntry | None:
         entry = await db.get(KnowledgeEntry, entry_id)
         if entry is None:
             return None

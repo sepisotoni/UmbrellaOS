@@ -21,6 +21,7 @@ to keep existing in the chain. Only the upgrade()/downgrade() bodies are
 neutered — same approach as 011_add_suspicion_score.py's fix for the
 identical bug pattern.
 """
+
 import sqlalchemy as sa
 from alembic import op
 

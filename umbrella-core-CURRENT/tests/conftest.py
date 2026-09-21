@@ -19,6 +19,7 @@ Rate limiter hermetics (Critical Finding #1):
   The real RateLimiter and its fixed-window algorithm are tested separately
   in tests/test_rate_limit.py using a mock Redis client.
 """
+
 import os
 
 # AUDIT-2026-08-29 fix: main.py now calls validate_secrets(settings) at
@@ -62,7 +63,9 @@ class _NoOpRateLimiter:
     test file (Critical Finding #1 fix).
     """
 
-    async def check(self, identifier: str, limit: int, window_seconds: int) -> RateLimitResult:
+    async def check(
+        self, identifier: str, limit: int, window_seconds: int
+    ) -> RateLimitResult:
         return RateLimitResult(
             allowed=True,
             limit=limit,
@@ -94,6 +97,7 @@ def _test_rate_limit_bypass():
     in dispatch(), before self._limiter is ever touched.
     """
     import main as main_module
+
     main_module.app.state.rate_limit_disabled_for_tests = True
     yield
 
@@ -161,12 +165,14 @@ async def client(db_session, monkeypatch):
     """
     # Patch API keys used by auth middleware (admin + plugin share test value)
     import config.settings as cfg_module
+
     settings = cfg_module.get_settings()
     monkeypatch.setattr(settings, "secret_key", TEST_SECRET_KEY)
     monkeypatch.setattr(settings, "admin_key", TEST_SECRET_KEY)
 
     import api.middleware.auth as auth_middleware
     import api.middleware.session as session_middleware
+
     monkeypatch.setattr(auth_middleware, "settings", settings)
     monkeypatch.setattr(session_middleware, "settings", settings)
 
@@ -220,7 +226,9 @@ async def client(db_session, monkeypatch):
     # not guessed at. A pure test-isolation gap, not a production defect.
     import services.threat_detection_service as threat_detection_service_module
 
-    monkeypatch.setattr(threat_detection_service_module, "AsyncSessionLocal", db_session)
+    monkeypatch.setattr(
+        threat_detection_service_module, "AsyncSessionLocal", db_session
+    )
 
     # Override the DB dependency
     async def override_get_db():
@@ -235,6 +243,7 @@ async def client(db_session, monkeypatch):
                 await session.close()
 
     from main import app
+
     app.dependency_overrides[get_db] = override_get_db
 
     async with AsyncClient(

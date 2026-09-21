@@ -26,6 +26,7 @@ lib/dashboard-layout.ts on the dashboard side — this table only stores
 what was explicitly customized, never a full snapshot that would need
 migrating every time a plugin is installed or removed.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -44,10 +45,15 @@ class DashboardLayout(Base):
         UniqueConstraint("user_id", "page_id", name="uq_dashboard_layouts_user_page"),
     )
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
 
     user_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+        String(36),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
 
     # One of services/dashboard_layout/pages.py::CUSTOMIZABLE_PAGES's keys.
@@ -65,7 +71,10 @@ class DashboardLayout(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
     )
 
     user: Mapped["User"] = relationship("User")

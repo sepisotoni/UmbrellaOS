@@ -12,6 +12,7 @@ different mechanisms, not two implementations of the same thing; see
 docs/adr/0003-hosting-domain.md for the explicit reasoning on why this
 phase doesn't attempt to unify or migrate the legacy path now.
 """
+
 import uuid
 from datetime import datetime, timezone
 
@@ -37,10 +38,14 @@ class Node(Base):
 
     __tablename__ = "nodes"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
     name: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
     daemon_url: Mapped[str] = mapped_column(
-        String(256), nullable=False, doc="Base URL of this node's umbrella-daemon, e.g. https://node1.example.com:8443"
+        String(256),
+        nullable=False,
+        doc="Base URL of this node's umbrella-daemon, e.g. https://node1.example.com:8443",
     )
 
     # The shared secret this node was registered with — used to verify the
@@ -53,12 +58,16 @@ class Node(Base):
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="pending", server_default="pending"
     )  # pending | online | offline | draining
-    labels: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
+    labels: Mapped[dict] = mapped_column(
+        JSON, nullable=False, default=dict, server_default="{}"
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
-    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_seen_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     allocations: Mapped[list["Allocation"]] = relationship(
         "Allocation", back_populates="node", cascade="all, delete-orphan"
@@ -84,16 +93,26 @@ class ServerTemplate(Base):
 
     __tablename__ = "server_templates"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
 
     image: Mapped[str] = mapped_column(String(256), nullable=False)
-    startup_command: Mapped[list] = mapped_column(JSON, nullable=False, default=list, server_default="[]")
-    default_env: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
+    startup_command: Mapped[list] = mapped_column(
+        JSON, nullable=False, default=list, server_default="[]"
+    )
+    default_env: Mapped[dict] = mapped_column(
+        JSON, nullable=False, default=dict, server_default="{}"
+    )
 
-    default_memory_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=1_073_741_824)
+    default_memory_bytes: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1_073_741_824
+    )
     default_cpu_cores: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
 
     created_at: Mapped[datetime] = mapped_column(
@@ -103,25 +122,45 @@ class ServerTemplate(Base):
     servers: Mapped[list["Server"]] = relationship("Server", back_populates="template")
 
     def __repr__(self) -> str:
-        return f"<ServerTemplate id={self.id!r} name={self.name!r} version={self.version}>"
+        return (
+            f"<ServerTemplate id={self.id!r} name={self.name!r} version={self.version}>"
+        )
 
 
 class Allocation(Base):
     """One port on one node — either free, or bound to a Server."""
 
     __tablename__ = "allocations"
-    __table_args__ = (UniqueConstraint("node_id", "port", "protocol", name="uq_allocation_node_port_protocol"),)
+    __table_args__ = (
+        UniqueConstraint(
+            "node_id", "port", "protocol", name="uq_allocation_node_port_protocol"
+        ),
+    )
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    node_id: Mapped[str] = mapped_column(String(36), ForeignKey("nodes.id", ondelete="CASCADE"), nullable=False, index=True)
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    node_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("nodes.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     port: Mapped[int] = mapped_column(Integer, nullable=False)
-    protocol: Mapped[str] = mapped_column(String(8), nullable=False, default="tcp", server_default="tcp")
+    protocol: Mapped[str] = mapped_column(
+        String(8), nullable=False, default="tcp", server_default="tcp"
+    )
 
     server_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("servers.id", ondelete="SET NULL"), nullable=True, index=True
+        String(36),
+        ForeignKey("servers.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     container_port: Mapped[int | None] = mapped_column(
-        Integer, nullable=True, doc="The port inside the container this host port maps to, once bound to a Server."
+        Integer,
+        nullable=True,
+        doc="The port inside the container this host port maps to, once bound to a Server.",
     )
 
     created_at: Mapped[datetime] = mapped_column(
@@ -129,7 +168,9 @@ class Allocation(Base):
     )
 
     node: Mapped["Node"] = relationship("Node", back_populates="allocations")
-    server: Mapped["Server | None"] = relationship("Server", back_populates="allocations")
+    server: Mapped["Server | None"] = relationship(
+        "Server", back_populates="allocations"
+    )
 
     def __repr__(self) -> str:
         return f"<Allocation node_id={self.node_id!r} port={self.port} protocol={self.protocol!r}>"
@@ -140,15 +181,26 @@ class Server(Base):
 
     __tablename__ = "servers"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
     name: Mapped[str] = mapped_column(String(128), nullable=False)
 
-    node_id: Mapped[str] = mapped_column(String(36), ForeignKey("nodes.id", ondelete="RESTRICT"), nullable=False, index=True)
+    node_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("nodes.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
     template_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("server_templates.id", ondelete="RESTRICT"), nullable=False
+        String(36),
+        ForeignKey("server_templates.id", ondelete="RESTRICT"),
+        nullable=False,
     )
     template_version: Mapped[int] = mapped_column(
-        Integer, nullable=False, doc="ServerTemplate.version at the time this Server was created — pinned, not live."
+        Integer,
+        nullable=False,
+        doc="ServerTemplate.version at the time this Server was created — pinned, not live.",
     )
 
     # Runtime-agnostic status, mirrors environment.ContainerStatus's string
@@ -157,31 +209,47 @@ class Server(Base):
     # enum type across the Go/Python boundary) since the two are separate
     # processes; the *string values* are the contract, documented in
     # docs/adr/0003-hosting-domain.md, not a shared code artifact.
-    status: Mapped[str] = mapped_column(String(16), nullable=False, default="unknown", server_default="unknown")
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="unknown", server_default="unknown"
+    )
 
     working_dir: Mapped[str] = mapped_column(String(512), nullable=False)
-    env_overrides: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
+    env_overrides: Mapped[dict] = mapped_column(
+        JSON, nullable=False, default=dict, server_default="{}"
+    )
     memory_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     cpu_cores: Mapped[float] = mapped_column(Float, nullable=False)
 
-    is_suspended: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    is_suspended: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
 
     # Self-healing (Phase 4). crash_count resets to 0 on any
     # operator-initiated start/restart — it only tracks *consecutive*
     # unattended crashes, which is what should drive escalating backoff,
     # not a lifetime crash tally that would eventually suspend a
     # perfectly healthy server that happened to crash once months ago.
-    crash_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
-    last_crash_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    crash_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    last_crash_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
-    last_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     node: Mapped["Node"] = relationship("Node", back_populates="servers")
-    template: Mapped["ServerTemplate"] = relationship("ServerTemplate", back_populates="servers")
-    allocations: Mapped[list["Allocation"]] = relationship("Allocation", back_populates="server")
+    template: Mapped["ServerTemplate"] = relationship(
+        "ServerTemplate", back_populates="servers"
+    )
+    allocations: Mapped[list["Allocation"]] = relationship(
+        "Allocation", back_populates="server"
+    )
 
     def __repr__(self) -> str:
         return f"<Server id={self.id!r} name={self.name!r} status={self.status!r}>"
@@ -200,12 +268,19 @@ class Backup(Base):
 
     __tablename__ = "backups"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
     server_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("servers.id", ondelete="CASCADE"), nullable=False, index=True
+        String(36),
+        ForeignKey("servers.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
 
-    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending", server_default="pending")
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="pending", server_default="pending"
+    )
     size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -220,9 +295,13 @@ class Backup(Base):
     # identically on SQLite and Postgres rather than relying on either
     # engine's specific timestamp precision.
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
     )
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     server: Mapped["Server"] = relationship("Server")
 

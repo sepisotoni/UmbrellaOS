@@ -3,6 +3,7 @@ tests/registry/test_capabilities_investigation.py — REST integration tests
 for the investigation capabilities: listing, RBAC, and the aggregator's
 end-to-end round trip through the real HTTP stack.
 """
+
 import pytest
 
 from tests.conftest import ADMIN_HEADERS

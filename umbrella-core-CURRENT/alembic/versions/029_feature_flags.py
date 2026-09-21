@@ -12,6 +12,7 @@ Revision ID: 029_feature_flags
 Revises: 028_plugin_execution_records
 Create Date: 2026-08-19
 """
+
 import uuid
 import sqlalchemy as sa
 from alembic import op

@@ -8,6 +8,7 @@ submitting one valid code (`confirm_enrollment`) before MFA is considered
 active. This avoids a user locking themselves out by "enabling" MFA against
 a secret their authenticator app never actually received.
 """
+
 import pyotp
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,7 +39,9 @@ class MFAService:
         user.mfa_enabled = False
         await db.flush()
 
-        uri = pyotp.totp.TOTP(secret).provisioning_uri(name=user.username, issuer_name=ISSUER_NAME)
+        uri = pyotp.totp.TOTP(secret).provisioning_uri(
+            name=user.username, issuer_name=ISSUER_NAME
+        )
         return secret, uri
 
     @staticmethod

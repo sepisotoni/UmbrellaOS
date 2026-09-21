@@ -11,6 +11,7 @@ GET  /api/v1/moderation/active     — Get active punishments for a player
 
 All responses require admin key authentication.
 """
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -86,7 +87,9 @@ async def kick_player(
     player = player_result.scalar_one_or_none()
 
     if player is None:
-        raise HTTPException(status_code=404, detail=f"Player '{body.player_uuid}' not found")
+        raise HTTPException(
+            status_code=404, detail=f"Player '{body.player_uuid}' not found"
+        )
 
     # Create temporary "kick" record for audit
     kick_record = Punishment(
@@ -120,7 +123,9 @@ async def warn_player(
     player = player_result.scalar_one_or_none()
 
     if player is None:
-        raise HTTPException(status_code=404, detail=f"Player '{body.player_uuid}' not found")
+        raise HTTPException(
+            status_code=404, detail=f"Player '{body.player_uuid}' not found"
+        )
 
     warning = Punishment(
         player_uuid=body.player_uuid,
@@ -148,7 +153,9 @@ async def ban_player(
     player = player_result.scalar_one_or_none()
 
     if player is None:
-        raise HTTPException(status_code=404, detail=f"Player '{body.player_uuid}' not found")
+        raise HTTPException(
+            status_code=404, detail=f"Player '{body.player_uuid}' not found"
+        )
 
     ban = Punishment(
         player_uuid=body.player_uuid,
@@ -174,16 +181,17 @@ async def unban_player(
     # Get active ban
     ban_result = await db.execute(
         select(Punishment).where(
-            (Punishment.player_uuid == body.player_uuid) &
-            (Punishment.type.in_(["ban", "tempban"])) &
-            (Punishment.active == True)
+            (Punishment.player_uuid == body.player_uuid)
+            & (Punishment.type.in_(["ban", "tempban"]))
+            & (Punishment.active == True)
         )
     )
     bans = ban_result.scalars().all()
 
     if not bans:
         raise HTTPException(
-            status_code=404, detail=f"No active ban found for player '{body.player_uuid}'"
+            status_code=404,
+            detail=f"No active ban found for player '{body.player_uuid}'",
         )
 
     # Deactivate ALL active bans — a player may have >1 if an admin issued
@@ -239,9 +247,9 @@ async def ipunban_address(
     # Find active IP ban
     ipban_result = await db.execute(
         select(Punishment).where(
-            (Punishment.type == "ipban") &
-            (Punishment.ban_ip_address == body.ip_address) &
-            (Punishment.active == True)
+            (Punishment.type == "ipban")
+            & (Punishment.ban_ip_address == body.ip_address)
+            & (Punishment.active == True)
         )
     )
     ipban = ipban_result.scalar_one_or_none()
@@ -276,9 +284,9 @@ async def get_active_punishments(
     now = datetime.now(timezone.utc)
     result = await db.execute(
         select(Punishment).where(
-            (Punishment.player_uuid == player_uuid) &
-            (Punishment.active == True) &
-            ((Punishment.expires_at == None) | (Punishment.expires_at > now))
+            (Punishment.player_uuid == player_uuid)
+            & (Punishment.active == True)
+            & ((Punishment.expires_at == None) | (Punishment.expires_at > now))
         )
     )
     punishments = result.scalars().all()

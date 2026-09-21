@@ -23,6 +23,7 @@ Revision ID: 041_fix_ipban_player_uuid_and_punishment_nullable
 Revises:     040_add_users_sessions_discord_oauth
 Create Date: 2026-08-27
 """
+
 import sqlalchemy as sa
 from alembic import op
 
@@ -50,25 +51,29 @@ def upgrade() -> None:
 
     # Back-fill ban_ip_address for any existing ipban rows that used the old
     # "IP: <ip> - <reason>" format in the reason column.
-    op.execute(sa.text("""
+    op.execute(
+        sa.text("""
         UPDATE punishments
         SET ban_ip_address = TRIM(SPLIT_PART(REPLACE(reason, 'IP: ', ''), ' - ', 1)),
             player_uuid = NULL
         WHERE type = 'ipban'
           AND reason LIKE 'IP: %'
           AND ban_ip_address IS NULL
-    """))
+    """)
+    )
 
 
 def downgrade() -> None:
     # Restore the reason-string encoding for any ipban rows before dropping the column.
-    op.execute(sa.text("""
+    op.execute(
+        sa.text("""
         UPDATE punishments
         SET reason = 'IP: ' || ban_ip_address || ' - ' || reason,
             player_uuid = 'SYSTEM'
         WHERE type = 'ipban'
           AND ban_ip_address IS NOT NULL
-    """))
+    """)
+    )
 
     op.drop_column("punishments", "ban_ip_address")
 

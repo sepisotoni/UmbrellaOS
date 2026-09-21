@@ -5,6 +5,7 @@ _format_query_result, _format_postmortem). See test_investigation_cog.py's
 module docstring for why the actual slash-command handlers aren't tested
 here.
 """
+
 import discord
 import pytest
 
@@ -13,7 +14,11 @@ from bot.services.umbrella_core_client import UmbrellaCoreError
 
 
 def test_format_error_permission_denied():
-    exc = UmbrellaCoreError("Missing permission: operational_intelligence.view", status_code=403, code="PERMISSION_DENIED")
+    exc = UmbrellaCoreError(
+        "Missing permission: operational_intelligence.view",
+        status_code=403,
+        code="PERMISSION_DENIED",
+    )
     message = OperationalIntelligenceCog._format_error(exc)
     assert "don't have permission" in message
 
@@ -45,7 +50,14 @@ def test_format_crash_risk_critical():
 
 
 def test_format_crash_risk_insufficient_data_handles_missing_metrics():
-    result = {"server_id": "srv-1", "risk_level": "insufficient_data", "current_tps": None, "trend_delta": None, "samples_analyzed": 1, "reasoning": "Not enough data."}
+    result = {
+        "server_id": "srv-1",
+        "risk_level": "insufficient_data",
+        "current_tps": None,
+        "trend_delta": None,
+        "samples_analyzed": 1,
+        "reasoning": "Not enough data.",
+    }
     embed = OperationalIntelligenceCog._format_crash_risk(result)
     field_values = {f.name: f.value for f in embed.fields}
     assert field_values["Current TPS"] == "—"
@@ -53,7 +65,12 @@ def test_format_crash_risk_insufficient_data_handles_missing_metrics():
 
 
 def test_format_query_result_escalated():
-    result = {"answer": "Lag was caused by a chunk-loading spike.", "confidence": 0.72, "escalated": True, "evidence": "..."}
+    result = {
+        "answer": "Lag was caused by a chunk-loading spike.",
+        "confidence": 0.72,
+        "escalated": True,
+        "evidence": "...",
+    }
     embed = OperationalIntelligenceCog._format_query_result("Why did it lag?", result)
     assert embed.description == "Why did it lag?"
     field_names = {f.name for f in embed.fields}
@@ -62,7 +79,12 @@ def test_format_query_result_escalated():
 
 
 def test_format_query_result_not_escalated():
-    result = {"answer": "No anomalies found.", "confidence": 0.9, "escalated": False, "evidence": "..."}
+    result = {
+        "answer": "No anomalies found.",
+        "confidence": 0.9,
+        "escalated": False,
+        "evidence": "...",
+    }
     embed = OperationalIntelligenceCog._format_query_result("q", result)
     field_names = {f.name for f in embed.fields}
     assert "⚠️ Status" not in field_names
@@ -70,14 +92,28 @@ def test_format_query_result_not_escalated():
 
 def test_format_postmortem_truncates_long_draft():
     long_draft = "x" * 1500
-    result = {"server_id": "srv-1", "draft": long_draft, "confidence": 0.5, "escalated": False, "evidence": "...", "status": "pending_review"}
+    result = {
+        "server_id": "srv-1",
+        "draft": long_draft,
+        "confidence": 0.5,
+        "escalated": False,
+        "evidence": "...",
+        "status": "pending_review",
+    }
     embed = OperationalIntelligenceCog._format_postmortem(result)
     assert embed.description.endswith("…")
     assert len(embed.description) == 1001
 
 
 def test_format_postmortem_shows_escalated_field():
-    result = {"server_id": "srv-1", "draft": "short draft", "confidence": 0.4, "escalated": True, "evidence": "...", "status": "pending_review"}
+    result = {
+        "server_id": "srv-1",
+        "draft": "short draft",
+        "confidence": 0.4,
+        "escalated": True,
+        "evidence": "...",
+        "status": "pending_review",
+    }
     embed = OperationalIntelligenceCog._format_postmortem(result)
     field_names = {f.name for f in embed.fields}
     assert "⚠️ Escalated" in field_names

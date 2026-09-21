@@ -20,6 +20,7 @@ trade-off here - unlike services/ai/model_router.py's health-tracking
 race, which is hit on every single AI call under load and got a proper
 atomic SQL UPDATE instead.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -34,7 +35,9 @@ from models.memory import MemoryEntry, MemoryScope
 class MemoryRepository:
     @staticmethod
     async def get(db: AsyncSession, scope: MemoryScope, key: str) -> MemoryEntry | None:
-        stmt = select(MemoryEntry).where(MemoryEntry.scope == scope, MemoryEntry.key == key)
+        stmt = select(MemoryEntry).where(
+            MemoryEntry.scope == scope, MemoryEntry.key == key
+        )
         result = await db.execute(stmt)
         entry = result.scalar_one_or_none()
         if entry is not None and entry.expires_at is not None:
@@ -55,7 +58,9 @@ class MemoryRepository:
         expires_at: dt.datetime | None,
         increment_hit: bool = True,
     ) -> MemoryEntry:
-        stmt = select(MemoryEntry).where(MemoryEntry.scope == scope, MemoryEntry.key == key)
+        stmt = select(MemoryEntry).where(
+            MemoryEntry.scope == scope, MemoryEntry.key == key
+        )
         result = await db.execute(stmt)
         entry = result.scalar_one_or_none()
 
@@ -93,7 +98,9 @@ class MemoryRepository:
         return entry
 
     @staticmethod
-    async def list_scope(db: AsyncSession, scope: MemoryScope, limit: int = 50) -> list[MemoryEntry]:
+    async def list_scope(
+        db: AsyncSession, scope: MemoryScope, limit: int = 50
+    ) -> list[MemoryEntry]:
         stmt = (
             select(MemoryEntry)
             .where(MemoryEntry.scope == scope)
@@ -107,6 +114,8 @@ class MemoryRepository:
     async def purge_expired(db: AsyncSession) -> int:
         """Sweep expired entries. Returns the number removed. Safe to call periodically."""
         now = dt.datetime.now(dt.timezone.utc)
-        stmt = delete(MemoryEntry).where(MemoryEntry.expires_at.is_not(None), MemoryEntry.expires_at < now)
+        stmt = delete(MemoryEntry).where(
+            MemoryEntry.expires_at.is_not(None), MemoryEntry.expires_at < now
+        )
         result = await db.execute(stmt)
         return result.rowcount

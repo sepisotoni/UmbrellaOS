@@ -23,6 +23,7 @@ Revision ID: 039_fix_check_constraints
 Revises:     038_bot_guild_roles
 Create Date: 2026-08-26
 """
+
 from alembic import op
 
 revision = "039_fix_check_constraints"

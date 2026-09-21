@@ -8,6 +8,7 @@ Revision ID: 050_add_mfa_recovery_codes
 Revises:     049_fix_retired_gemini_model
 Create Date: 2026-08-31
 """
+
 import sqlalchemy as sa
 from alembic import op
 
@@ -20,21 +21,25 @@ depends_on = None
 def upgrade() -> None:
     bind = op.get_bind()
     if bind.dialect.name == "postgresql":
-        op.execute(sa.text("""
+        op.execute(
+            sa.text("""
             DO $$
             BEGIN
                 ALTER TABLE users ADD COLUMN mfa_recovery_codes_hash JSON;
             EXCEPTION
                 WHEN duplicate_column THEN NULL;
             END $$;
-        """))
+        """)
+        )
     else:
         # SQLite (tests): plain ADD COLUMN, no duplicate-guard syntax needed
         # or available — create_all()-bootstrapped databases already have
         # this from the model directly, so this only runs on a genuine
         # migration-based SQLite database (uncommon, but supported).
         try:
-            op.add_column("users", sa.Column("mfa_recovery_codes_hash", sa.JSON(), nullable=True))
+            op.add_column(
+                "users", sa.Column("mfa_recovery_codes_hash", sa.JSON(), nullable=True)
+            )
         except Exception:
             pass
 

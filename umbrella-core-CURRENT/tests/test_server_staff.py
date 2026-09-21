@@ -1,4 +1,5 @@
 """Tests for server control and staff management endpoints."""
+
 import pytest
 from sqlalchemy import select
 
@@ -19,7 +20,13 @@ async def _owner_headers(db_session):
         db.add(user)
         await db.flush()
         token = "owner-token"
-        db.add(Session(user_id=user.id, token=token, expires_at=datetime.now(timezone.utc) + timedelta(days=1)))
+        db.add(
+            Session(
+                user_id=user.id,
+                token=token,
+                expires_at=datetime.now(timezone.utc) + timedelta(days=1),
+            )
+        )
         await db.commit()
     return {"Authorization": "Bearer owner-token"}
 
@@ -30,11 +37,19 @@ async def _helper_headers(db_session):
 
     async with db_session() as db:
         role = await db.scalar(select(Role).where(Role.name == "helper"))
-        user = User(discord_id="helper-discord", username="helper_user", role_id=role.id)
+        user = User(
+            discord_id="helper-discord", username="helper_user", role_id=role.id
+        )
         db.add(user)
         await db.flush()
         token = "helper-token"
-        db.add(Session(user_id=user.id, token=token, expires_at=datetime.now(timezone.utc) + timedelta(days=1)))
+        db.add(
+            Session(
+                user_id=user.id,
+                token=token,
+                expires_at=datetime.now(timezone.utc) + timedelta(days=1),
+            )
+        )
         await db.commit()
     return {"Authorization": "Bearer helper-token"}
 
@@ -61,7 +76,11 @@ async def test_server_control_restart_runs_command(client, db_session, monkeypat
     async with db_session() as db:
         db.add(PluginHeartbeat(server_id="srv1", server_name="Test"))
         await SettingsService.update(
-            db, "server.control.restart_cmd", "echo restarted", actor="test", actor_type="system",
+            db,
+            "server.control.restart_cmd",
+            "echo restarted",
+            actor="test",
+            actor_type="system",
         )
         await db.commit()
 
@@ -148,7 +167,13 @@ async def test_staff_manage_requires_roles_permission(client, db_session):
         db.add(user)
         await db.flush()
         token = "admin-token"
-        db.add(Session(user_id=user.id, token=token, expires_at=datetime.now(timezone.utc) + timedelta(days=1)))
+        db.add(
+            Session(
+                user_id=user.id,
+                token=token,
+                expires_at=datetime.now(timezone.utc) + timedelta(days=1),
+            )
+        )
         helper_role = await db.scalar(select(Role).where(Role.name == "helper"))
         target = User(discord_id="target-1", username="Target", role_id=helper_role.id)
         db.add(target)
@@ -209,7 +234,9 @@ async def test_staff_demote_second_owner_succeeds(client, db_session):
 
     async with db_session() as db:
         owner_role = await db.scalar(select(Role).where(Role.name == "owner"))
-        second_owner = UserModel(discord_id="owner-discord-2", username="owner_user_2", role_id=owner_role.id)
+        second_owner = UserModel(
+            discord_id="owner-discord-2", username="owner_user_2", role_id=owner_role.id
+        )
         db.add(second_owner)
         await db.commit()
         second_owner_id = second_owner.id
@@ -229,12 +256,16 @@ async def test_staff_demote_second_owner_succeeds(client, db_session):
 # by Discord ID or Minecraft UUID to grant matching in-game permissions).
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_staff_lookup_by_discord_id_finds_staff(client, db_session):
     from datetime import datetime, timezone
+
     async with db_session() as db:
         role = await db.scalar(select(Role).where(Role.name == "helper"))
-        user = User(discord_id="lookup-discord-1", username="LookupHelper", role_id=role.id)
+        user = User(
+            discord_id="lookup-discord-1", username="LookupHelper", role_id=role.id
+        )
         db.add(user)
         await db.commit()
 
@@ -268,14 +299,18 @@ async def test_staff_lookup_by_minecraft_uuid_finds_staff(client, db_session):
     test_uuid = "aaaaaaaa-1111-2222-3333-444444444444"
     async with db_session() as db:
         role = await db.scalar(select(Role).where(Role.name == "moderator"))
-        user = User(discord_id="lookup-discord-2", username="LookupMod", role_id=role.id)
+        user = User(
+            discord_id="lookup-discord-2", username="LookupMod", role_id=role.id
+        )
         db.add(user)
         db.add(Player(uuid=test_uuid, username="ModPlayer"))
-        db.add(DiscordAccount(
-            discord_id="lookup-discord-2",
-            player_uuid=test_uuid,
-            verified=True,
-        ))
+        db.add(
+            DiscordAccount(
+                discord_id="lookup-discord-2",
+                player_uuid=test_uuid,
+                verified=True,
+            )
+        )
         await db.commit()
 
     response = await client.get(
@@ -300,14 +335,18 @@ async def test_staff_lookup_by_unverified_uuid_not_staff(client, db_session):
     test_uuid = "bbbbbbbb-1111-2222-3333-444444444444"
     async with db_session() as db:
         role = await db.scalar(select(Role).where(Role.name == "helper"))
-        user = User(discord_id="lookup-discord-3", username="LookupUnverified", role_id=role.id)
+        user = User(
+            discord_id="lookup-discord-3", username="LookupUnverified", role_id=role.id
+        )
         db.add(user)
         db.add(Player(uuid=test_uuid, username="UnverifiedPlayer"))
-        db.add(DiscordAccount(
-            discord_id="lookup-discord-3",
-            player_uuid=test_uuid,
-            verified=False,
-        ))
+        db.add(
+            DiscordAccount(
+                discord_id="lookup-discord-3",
+                player_uuid=test_uuid,
+                verified=False,
+            )
+        )
         await db.commit()
 
     response = await client.get(
@@ -325,7 +364,11 @@ async def test_staff_lookup_player_role_excluded(client, db_session):
     async with db_session() as db:
         role = await db.scalar(select(Role).where(Role.name == "player"))
         if role is not None:
-            user = User(discord_id="lookup-discord-player", username="JustAPlayer", role_id=role.id)
+            user = User(
+                discord_id="lookup-discord-player",
+                username="JustAPlayer",
+                role_id=role.id,
+            )
             db.add(user)
             await db.commit()
         else:
@@ -377,7 +420,11 @@ async def test_staff_set_role_jumps_directly_not_one_step(client, db_session):
 
     async with db_session() as db:
         member_role = await db.scalar(select(Role).where(Role.name == "member"))
-        target_user = User(discord_id="set-role-target", username="set_role_target", role_id=member_role.id)
+        target_user = User(
+            discord_id="set-role-target",
+            username="set_role_target",
+            role_id=member_role.id,
+        )
         db.add(target_user)
         await db.commit()
         target_id = target_user.id
@@ -406,13 +453,21 @@ async def test_staff_set_role_to_owner_requires_owner_actor(client, db_session):
         # them roles.manage via extra_permissions so the request reaches
         # manage_staff_role's own actor-role check rather than failing
         # earlier at the permission-dependency layer.
-        helper_user = await db.scalar(select(User).where(User.username == "helper_user"))
+        helper_user = await db.scalar(
+            select(User).where(User.username == "helper_user")
+        )
         if helper_user is not None:
-            helper_user.extra_permissions = list(set(helper_user.extra_permissions or []) | {"roles.manage"})
+            helper_user.extra_permissions = list(
+                set(helper_user.extra_permissions or []) | {"roles.manage"}
+            )
             await db.commit()
 
         member_role = await db.scalar(select(Role).where(Role.name == "member"))
-        target_user = User(discord_id="set-role-owner-target", username="set_role_owner_target", role_id=member_role.id)
+        target_user = User(
+            discord_id="set-role-owner-target",
+            username="set_role_owner_target",
+            role_id=member_role.id,
+        )
         db.add(target_user)
         await db.commit()
         target_id = target_user.id
@@ -450,14 +505,22 @@ async def test_staff_set_role_to_unknown_role_rejected(client, db_session):
 
     async with db_session() as db:
         member_role = await db.scalar(select(Role).where(Role.name == "member"))
-        target_user = User(discord_id="set-role-bad-target", username="set_role_bad_target", role_id=member_role.id)
+        target_user = User(
+            discord_id="set-role-bad-target",
+            username="set_role_bad_target",
+            role_id=member_role.id,
+        )
         db.add(target_user)
         await db.commit()
         target_id = target_user.id
 
     response = await client.post(
         "/api/v1/staff/manage",
-        json={"user_id": target_id, "action": "set", "target_role": "definitely-not-a-role"},
+        json={
+            "user_id": target_id,
+            "action": "set",
+            "target_role": "definitely-not-a-role",
+        },
         headers=owner_headers,
     )
     assert response.status_code == 400
@@ -472,7 +535,11 @@ async def test_staff_set_role_to_same_role_is_a_harmless_noop(client, db_session
 
     async with db_session() as db:
         member_role = await db.scalar(select(Role).where(Role.name == "member"))
-        target_user = User(discord_id="set-role-noop-target", username="set_role_noop_target", role_id=member_role.id)
+        target_user = User(
+            discord_id="set-role-noop-target",
+            username="set_role_noop_target",
+            role_id=member_role.id,
+        )
         db.add(target_user)
         await db.commit()
         target_id = target_user.id
@@ -494,7 +561,11 @@ async def test_staff_set_role_requires_target_role_field(client, db_session):
 
     async with db_session() as db:
         member_role = await db.scalar(select(Role).where(Role.name == "member"))
-        target_user = User(discord_id="set-role-missing-target", username="set_role_missing_target", role_id=member_role.id)
+        target_user = User(
+            discord_id="set-role-missing-target",
+            username="set_role_missing_target",
+            role_id=member_role.id,
+        )
         db.add(target_user)
         await db.commit()
         target_id = target_user.id
@@ -515,7 +586,11 @@ async def test_promote_demote_actions_still_work_unchanged(client, db_session):
 
     async with db_session() as db:
         member_role = await db.scalar(select(Role).where(Role.name == "member"))
-        target_user = User(discord_id="promote-unchanged-target", username="promote_unchanged_target", role_id=member_role.id)
+        target_user = User(
+            discord_id="promote-unchanged-target",
+            username="promote_unchanged_target",
+            role_id=member_role.id,
+        )
         db.add(target_user)
         await db.commit()
         target_id = target_user.id

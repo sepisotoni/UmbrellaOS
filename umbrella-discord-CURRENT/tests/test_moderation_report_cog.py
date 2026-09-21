@@ -6,6 +6,7 @@ end-to-end - see tests/test_investigation_cog.py's module docstring for
 why (needs a live discord.Interaction/gateway connection dpytest would
 normally provide, not available in this sandbox).
 """
+
 from types import SimpleNamespace
 
 import pytest
@@ -25,7 +26,11 @@ def _fake_member(mention: str = "<@123>") -> SimpleNamespace:
 
 
 def test_format_error_permission_denied():
-    exc = UmbrellaCoreError("Missing permission: moderation_intelligence.report.manage", status_code=403, code="PERMISSION_DENIED")
+    exc = UmbrellaCoreError(
+        "Missing permission: moderation_intelligence.report.manage",
+        status_code=403,
+        code="PERMISSION_DENIED",
+    )
     message = ModerationReportCog._format_error(exc)
     assert "don't have permission" in message
 
@@ -67,6 +72,11 @@ def test_format_result_not_escalated_shows_recommended_action():
 
 
 def test_format_result_includes_member_mention():
-    analysis = {"risk_score": 0.5, "confidence": 0.5, "recommended_action": "warn", "escalated": False}
+    analysis = {
+        "risk_score": 0.5,
+        "confidence": 0.5,
+        "recommended_action": "warn",
+        "escalated": False,
+    }
     message = ModerationReportCog._format_result(_fake_member("<@999>"), analysis)
     assert "<@999>" in message

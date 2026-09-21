@@ -26,6 +26,7 @@ services/operational_intelligence/crash_prevention.py: an auditable "+30
 for a confirmed alt group, +15 for 3 moderation actions" is more useful to
 a staff member deciding what to do about a player than an opaque score.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -62,7 +63,9 @@ class RiskScoreResult:
 
 
 async def _resolve_discord_id(db: AsyncSession, player_uuid: str) -> str | None:
-    stmt = select(DiscordAccount).where(DiscordAccount.player_uuid == player_uuid, DiscordAccount.verified.is_(True))
+    stmt = select(DiscordAccount).where(
+        DiscordAccount.player_uuid == player_uuid, DiscordAccount.verified.is_(True)
+    )
     result = await db.execute(stmt)
     account = result.scalar_one_or_none()
     return account.discord_id if account is not None else None
@@ -116,31 +119,53 @@ async def compute_risk_score(db: AsyncSession, player_uuid: str) -> RiskScoreRes
         moderation_count = await _moderation_action_count(db, discord_id)
         investigation_count = await _investigation_count(db, discord_id)
 
-    anticheat_component = min(anticheat_points, settings.risk_score_anticheat_points_cap)
+    anticheat_component = min(
+        anticheat_points, settings.risk_score_anticheat_points_cap
+    )
     alt_component = settings.risk_score_confirmed_alt_penalty if confirmed_alt else 0
     moderation_component = min(
-        moderation_count * settings.risk_score_per_moderation_action, settings.risk_score_moderation_action_cap
+        moderation_count * settings.risk_score_per_moderation_action,
+        settings.risk_score_moderation_action_cap,
     )
     investigation_component = min(
-        investigation_count * settings.risk_score_per_investigation, settings.risk_score_investigation_cap
+        investigation_count * settings.risk_score_per_investigation,
+        settings.risk_score_investigation_cap,
     )
 
-    total = min(100, anticheat_component + alt_component + moderation_component + investigation_component)
+    total = min(
+        100,
+        anticheat_component
+        + alt_component
+        + moderation_component
+        + investigation_component,
+    )
 
     reasoning_parts = []
     if anticheat_component:
-        reasoning_parts.append(f"{anticheat_component} points from unreviewed anticheat/suspicion signals")
+        reasoning_parts.append(
+            f"{anticheat_component} points from unreviewed anticheat/suspicion signals"
+        )
     if alt_component:
-        reasoning_parts.append(f"{alt_component} points for being in a confirmed alt group")
+        reasoning_parts.append(
+            f"{alt_component} points for being in a confirmed alt group"
+        )
     if moderation_component:
-        reasoning_parts.append(f"{moderation_component} points from {moderation_count} moderation action(s)")
+        reasoning_parts.append(
+            f"{moderation_component} points from {moderation_count} moderation action(s)"
+        )
     if investigation_component:
-        reasoning_parts.append(f"{investigation_component} points from {investigation_count} investigation(s)")
+        reasoning_parts.append(
+            f"{investigation_component} points from {investigation_count} investigation(s)"
+        )
     if discord_id is None:
         reasoning_parts.append(
             "no verified Discord link - moderation/investigation history unavailable, not itself a risk signal"
         )
-    reasoning = "; ".join(reasoning_parts) if reasoning_parts else "No risk signals found for this player."
+    reasoning = (
+        "; ".join(reasoning_parts)
+        if reasoning_parts
+        else "No risk signals found for this player."
+    )
 
     return RiskScoreResult(
         player_uuid=player_uuid,

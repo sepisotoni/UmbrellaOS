@@ -5,6 +5,7 @@ POST /api/v1/translation/language        — Set player language preference
 GET  /api/v1/translation/language/{uuid}  — Get player language preference
 POST /api/v1/translation/translate       — Translate a message
 """
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -72,7 +73,7 @@ async def set_player_language_endpoint(
         auto_translate_incoming=body.auto_translate_incoming,
         auto_translate_outgoing=body.auto_translate_outgoing,
     )
-    
+
     return PlayerLanguageResponse.model_validate(player_lang)
 
 
@@ -103,7 +104,7 @@ async def get_player_language_endpoint(
         select(PlayerLanguage).where(PlayerLanguage.player_uuid == player_uuid)
     )
     player_lang = result.scalar_one_or_none()
-    
+
     if not player_lang:
         # Return default language preference
         default_lang = PlayerLanguage(
@@ -117,7 +118,7 @@ async def get_player_language_endpoint(
             updated_at=datetime.now(timezone.utc),
         )
         return PlayerLanguageResponse.model_validate(default_lang)
-    
+
     return PlayerLanguageResponse.model_validate(player_lang)
 
 
@@ -136,7 +137,7 @@ async def translate_message_endpoint(
         target_language=body.target_language,
         db=db,
     )
-    
+
     return TranslateResponse(
         original=body.text,
         translated=translated,

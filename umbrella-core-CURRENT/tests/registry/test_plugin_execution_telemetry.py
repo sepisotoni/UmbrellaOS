@@ -11,11 +11,16 @@ name (`services.plugins.sandbox.AsyncSessionLocal`) to the per-test
 isolated engine from tests/conftest.py's `db_session` fixture, rather than
 touching the real database/engine.py singleton.
 """
+
 import pytest
 from sqlalchemy import select
 
 from models.plugin_execution import PluginExecutionRecord
-from services.plugins.sandbox import ProcessSandbox, ResourceLimits, SandboxExecutionError
+from services.plugins.sandbox import (
+    ProcessSandbox,
+    ResourceLimits,
+    SandboxExecutionError,
+)
 
 OK_SOURCE = """
 def handle(params):
@@ -50,11 +55,16 @@ async def _all_records(db_session) -> list[PluginExecutionRecord]:
 
 
 @pytest.mark.asyncio
-async def test_successful_execution_writes_a_record_with_real_telemetry(_patched_session, db_session):
+async def test_successful_execution_writes_a_record_with_real_telemetry(
+    _patched_session, db_session
+):
     sandbox = ProcessSandbox({"demo-plugin": {"main": OK_SOURCE}})
 
     result = await sandbox.run(
-        plugin_id="demo-plugin", entrypoint="main:handle", params={"value": 42}, actor_id="user-1"
+        plugin_id="demo-plugin",
+        entrypoint="main:handle",
+        params={"value": 42},
+        actor_id="user-1",
     )
     assert result == {"ok": True, "echo": 42}
 
@@ -87,11 +97,18 @@ async def test_successful_execution_writes_a_record_with_real_telemetry(_patched
 
 
 @pytest.mark.asyncio
-async def test_uncaught_exception_writes_an_error_record_with_telemetry_and_detail(_patched_session, db_session):
+async def test_uncaught_exception_writes_an_error_record_with_telemetry_and_detail(
+    _patched_session, db_session
+):
     sandbox = ProcessSandbox({"demo-plugin": {"main": RAISES_SOURCE}})
 
     with pytest.raises(SandboxExecutionError):
-        await sandbox.run(plugin_id="demo-plugin", entrypoint="main:handle", params={}, actor_id="user-1")
+        await sandbox.run(
+            plugin_id="demo-plugin",
+            entrypoint="main:handle",
+            params={},
+            actor_id="user-1",
+        )
 
     rows = await _all_records(db_session)
     assert len(rows) == 1
@@ -108,16 +125,25 @@ async def test_uncaught_exception_writes_an_error_record_with_telemetry_and_deta
 
 
 @pytest.mark.asyncio
-async def test_resource_limit_kill_writes_a_record_with_null_telemetry(_patched_session, db_session):
+async def test_resource_limit_kill_writes_a_record_with_null_telemetry(
+    _patched_session, db_session
+):
     """A CPU-limit kill (RLIMIT_CPU -> SIGXCPU) terminates the child before
     it ever reaches _self_rusage_telemetry() — per this module's own
     documented, deliberate nullability, the record must still be written,
     just with cpu_time_ms/peak_memory_bytes left null rather than guessed."""
-    limits = ResourceLimits(cpu_seconds=1, memory_bytes=256 * 1024 * 1024, wall_timeout_seconds=10)
+    limits = ResourceLimits(
+        cpu_seconds=1, memory_bytes=256 * 1024 * 1024, wall_timeout_seconds=10
+    )
     sandbox = ProcessSandbox({"demo-plugin": {"main": BUSY_LOOP_SOURCE}}, limits=limits)
 
     with pytest.raises(SandboxExecutionError):
-        await sandbox.run(plugin_id="demo-plugin", entrypoint="main:handle", params={}, actor_id="user-1")
+        await sandbox.run(
+            plugin_id="demo-plugin",
+            entrypoint="main:handle",
+            params={},
+            actor_id="user-1",
+        )
 
     rows = await _all_records(db_session)
     assert len(rows) == 1
@@ -129,7 +155,9 @@ async def test_resource_limit_kill_writes_a_record_with_null_telemetry(_patched_
 
 
 @pytest.mark.asyncio
-async def test_static_guard_rejection_writes_no_execution_record(_patched_session, db_session):
+async def test_static_guard_rejection_writes_no_execution_record(
+    _patched_session, db_session
+):
     """A static-guard rejection never spawns a process — per this module's
     own comment on that branch, it's deliberately not a
     PluginExecutionRecord (threat_detection_service already gives it its
@@ -139,7 +167,12 @@ async def test_static_guard_rejection_writes_no_execution_record(_patched_sessio
     sandbox = ProcessSandbox({"demo-plugin": {"main": disallowed_source}})
 
     with pytest.raises(Exception):
-        await sandbox.run(plugin_id="demo-plugin", entrypoint="main:handle", params={}, actor_id="user-1")
+        await sandbox.run(
+            plugin_id="demo-plugin",
+            entrypoint="main:handle",
+            params={},
+            actor_id="user-1",
+        )
 
     rows = await _all_records(db_session)
     assert len(rows) == 0
@@ -162,6 +195,9 @@ async def test_telemetry_write_failure_does_not_break_the_capability_call(monkey
 
     sandbox = ProcessSandbox({"demo-plugin": {"main": OK_SOURCE}})
     result = await sandbox.run(
-        plugin_id="demo-plugin", entrypoint="main:handle", params={"value": 1}, actor_id="user-1"
+        plugin_id="demo-plugin",
+        entrypoint="main:handle",
+        params={"value": 1},
+        actor_id="user-1",
     )
     assert result == {"ok": True, "echo": 1}

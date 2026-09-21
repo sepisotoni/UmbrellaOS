@@ -2,6 +2,7 @@
 SHA-256 integrity verification, and {module_name: source_text} extraction
 for the marketplace install flow.
 """
+
 import io
 import json
 import zipfile
@@ -20,7 +21,11 @@ from services.plugins.source_store import (
 )
 
 
-def _make_zip(manifest: dict, modules: dict[str, str] | None = None, extra_entries: dict[str, bytes] | None = None) -> bytes:
+def _make_zip(
+    manifest: dict,
+    modules: dict[str, str] | None = None,
+    extra_entries: dict[str, bytes] | None = None,
+) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
         zf.writestr("plugin.json", json.dumps(manifest))
@@ -33,7 +38,9 @@ def _make_zip(manifest: dict, modules: dict[str, str] | None = None, extra_entri
 
 @pytest.fixture(autouse=True)
 def _plugin_storage_root(tmp_path, monkeypatch):
-    monkeypatch.setattr(get_settings(), "plugin_storage_root", str(tmp_path / "plugins"))
+    monkeypatch.setattr(
+        get_settings(), "plugin_storage_root", str(tmp_path / "plugins")
+    )
     yield
 
 
@@ -144,7 +151,9 @@ def test_read_manifest_dict_rejects_oversized_declared_manifest():
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
         zf.writestr("plugin.json", bomb)
     zip_bytes = buf.getvalue()
-    assert len(zip_bytes) < 100_000, "sanity check: the zip itself must stay small — it's the ratio that matters"
+    assert len(zip_bytes) < 100_000, (
+        "sanity check: the zip itself must stay small — it's the ratio that matters"
+    )
 
     with pytest.raises(PluginPackageError, match="exceeding the .* cap"):
         read_manifest_dict(zip_bytes)
@@ -211,6 +220,7 @@ def test_safe_read_streaming_loop_handles_multichunk_reads_correctly():
 # above doesn't stop many small entries adding up in total.
 # ---------------------------------------------------------------------------
 
+
 def test_extract_sources_rejects_too_many_entries():
     from services.plugins.source_store import _MAX_ZIP_ENTRIES
 
@@ -240,7 +250,10 @@ def test_extract_sources_rejects_aggregate_size_over_cap_even_with_small_entries
     """The actual bug this closes: many entries, each individually well
     under _MAX_DECOMPRESSED_ENTRY_BYTES, but summing past
     _MAX_TOTAL_DECOMPRESSED_BYTES in aggregate."""
-    from services.plugins.source_store import _MAX_ZIP_ENTRIES, _MAX_TOTAL_DECOMPRESSED_BYTES
+    from services.plugins.source_store import (
+        _MAX_ZIP_ENTRIES,
+        _MAX_TOTAL_DECOMPRESSED_BYTES,
+    )
 
     manifest = {"name": "test", "version": "1.0.0"}
     # Stay under the entry-count cap, but make each entry large enough that

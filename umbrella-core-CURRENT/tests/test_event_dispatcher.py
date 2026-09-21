@@ -6,6 +6,7 @@ tests/test_scheduler_service.py's approach to SchedulerService.run_due_schedules
 and run_event_dispatcher_loop's stop/iteration behavior (mirrors
 tests/test_scheduler_loop.py exactly).
 """
+
 import asyncio
 from datetime import datetime, timedelta, timezone
 
@@ -203,7 +204,9 @@ async def test_dispatch_pending_calls_global_subscriber_with_topic(db_session):
 
 
 @pytest.mark.asyncio
-async def test_dispatch_pending_calls_global_subscriber_for_topic_with_no_topic_subscribers(db_session):
+async def test_dispatch_pending_calls_global_subscriber_for_topic_with_no_topic_subscribers(
+    db_session,
+):
     """A global subscriber (webhooks) must still run for a topic that has
     no per-topic in-process subscriber registered — that's the entire
     point of it existing rather than requiring static per-topic
@@ -216,7 +219,9 @@ async def test_dispatch_pending_calls_global_subscriber_for_topic_with_no_topic_
     EventBus.subscribe_global(global_handler)
 
     async with db_session() as db:
-        event = await EventBus.publish(db, topic="nobody.subscribed.per_topic", payload={})
+        event = await EventBus.publish(
+            db, topic="nobody.subscribed.per_topic", payload={}
+        )
         await db.commit()
 
         dispatched = await EventDispatcher.dispatch_pending(db)
@@ -227,7 +232,9 @@ async def test_dispatch_pending_calls_global_subscriber_for_topic_with_no_topic_
 
 
 @pytest.mark.asyncio
-async def test_dispatch_pending_retries_whole_event_when_global_subscriber_fails(db_session):
+async def test_dispatch_pending_retries_whole_event_when_global_subscriber_fails(
+    db_session,
+):
     async def failing_global_handler(payload, db, topic, event_id):
         raise ValueError("webhook delivery failed")
 
@@ -251,7 +258,9 @@ async def test_dispatch_pending_retries_whole_event_when_global_subscriber_fails
 @pytest.mark.asyncio
 async def test_loop_stops_promptly_when_stop_event_is_set():
     stop_event = asyncio.Event()
-    task = asyncio.create_task(run_event_dispatcher_loop(stop_event, poll_interval_seconds=60))
+    task = asyncio.create_task(
+        run_event_dispatcher_loop(stop_event, poll_interval_seconds=60)
+    )
 
     await asyncio.sleep(0.05)
     stop_event.set()
@@ -271,11 +280,15 @@ async def test_loop_runs_at_least_one_iteration_before_stopping(monkeypatch):
     import services.events.dispatcher as dispatcher_module
 
     monkeypatch.setattr(
-        dispatcher_module.EventDispatcher, "dispatch_pending", staticmethod(fake_dispatch_pending)
+        dispatcher_module.EventDispatcher,
+        "dispatch_pending",
+        staticmethod(fake_dispatch_pending),
     )
 
     stop_event = asyncio.Event()
-    task = asyncio.create_task(run_event_dispatcher_loop(stop_event, poll_interval_seconds=60))
+    task = asyncio.create_task(
+        run_event_dispatcher_loop(stop_event, poll_interval_seconds=60)
+    )
     await asyncio.sleep(0.1)
     stop_event.set()
     await asyncio.wait_for(task, timeout=2.0)

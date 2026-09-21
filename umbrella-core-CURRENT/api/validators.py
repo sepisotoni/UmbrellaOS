@@ -7,6 +7,7 @@ originally fixed independently in api/routers/verification.py, then
 extracted here so capabilities/verification.py's VerificationStatusParams
 uses the exact same rule instead of a second, possibly-drifting copy).
 """
+
 import uuid as uuid_lib
 
 

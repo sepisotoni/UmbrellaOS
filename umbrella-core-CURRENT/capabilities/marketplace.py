@@ -25,6 +25,7 @@ carries real size overhead for large plugin packages; that's an accepted
 v1 tradeoff, not an oversight — worth revisiting if plugin packages in
 practice turn out to be large enough for it to matter.
 """
+
 from __future__ import annotations
 
 import base64
@@ -50,7 +51,9 @@ async def _resolve_actor(ctx: CallContext) -> str | None:
     id; an API-key-authenticated caller has no dashboard user to
     attribute a publish/install/uninstall to."""
     if ctx.actor_type == "staff":
-        result = await ctx.db.execute(select(User).where(User.discord_id == ctx.actor_id))
+        result = await ctx.db.execute(
+            select(User).where(User.discord_id == ctx.actor_id)
+        )
         user = result.scalar_one_or_none()
         return user.id if user else None
     return None
@@ -125,8 +128,10 @@ class DiscordCommandResult(BaseModel):
     @classmethod
     def from_entry(cls, entry) -> "DiscordCommandResult":
         return cls(
-            plugin_id=entry.plugin_id, name=entry.name,
-            description=entry.description, capability_name=entry.capability_name,
+            plugin_id=entry.plugin_id,
+            name=entry.name,
+            description=entry.description,
+            capability_name=entry.capability_name,
         )
 
 
@@ -145,8 +150,10 @@ class DashboardSlotResult(BaseModel):
     @classmethod
     def from_entry(cls, entry) -> "DashboardSlotResult":
         return cls(
-            plugin_id=entry.plugin_id, slot=entry.slot,
-            label=entry.label, capability_name=entry.capability_name,
+            plugin_id=entry.plugin_id,
+            slot=entry.slot,
+            label=entry.label,
+            capability_name=entry.capability_name,
             render_as=entry.render_as,
         )
 
@@ -170,10 +177,14 @@ class PublishListingParams(BaseModel):
     reversible=False,
     audit_category="marketplace",
 )
-async def publish_listing(ctx: CallContext, params: PublishListingParams) -> PluginVersionResult:
+async def publish_listing(
+    ctx: CallContext, params: PublishListingParams
+) -> PluginVersionResult:
     zip_bytes = _decode_zip(params.zip_base64)
     published_by = await _resolve_actor(ctx)
-    version = await MarketplaceService.publish_version(ctx.db, zip_bytes=zip_bytes, published_by=published_by)
+    version = await MarketplaceService.publish_version(
+        ctx.db, zip_bytes=zip_bytes, published_by=published_by
+    )
     return PluginVersionResult.from_model(version)
 
 
@@ -195,7 +206,9 @@ class ListListingsParams(BaseModel):
     destructive=False,
     audited=False,
 )
-async def list_listings(ctx: CallContext, params: ListListingsParams) -> list[PluginListingResult]:
+async def list_listings(
+    ctx: CallContext, params: ListListingsParams
+) -> list[PluginListingResult]:
     listings = await MarketplaceService.list_listings(ctx.db)
     return [PluginListingResult.from_model(listing) for listing in listings]
 
@@ -218,7 +231,9 @@ class ListVersionsParams(BaseModel):
     destructive=False,
     audited=False,
 )
-async def list_versions(ctx: CallContext, params: ListVersionsParams) -> list[PluginVersionResult]:
+async def list_versions(
+    ctx: CallContext, params: ListVersionsParams
+) -> list[PluginVersionResult]:
     versions = await MarketplaceService.list_versions(ctx.db, params.plugin_id)
     return [PluginVersionResult.from_model(v) for v in versions]
 
@@ -287,7 +302,10 @@ class UninstallResult(BaseModel):
 )
 async def uninstall(ctx: CallContext, params: UninstallParams) -> UninstallResult:
     await MarketplaceService.uninstall(
-        ctx.db, plugin_id=params.plugin_id, sandbox=plugin_sandbox, registry=default_registry
+        ctx.db,
+        plugin_id=params.plugin_id,
+        sandbox=plugin_sandbox,
+        registry=default_registry,
     )
     return UninstallResult(uninstalled=True)
 
@@ -310,7 +328,9 @@ class ListInstalledParams(BaseModel):
     destructive=False,
     audited=False,
 )
-async def list_installed(ctx: CallContext, params: ListInstalledParams) -> list[PluginInstallResult]:
+async def list_installed(
+    ctx: CallContext, params: ListInstalledParams
+) -> list[PluginInstallResult]:
     installs = await MarketplaceService.list_installed(ctx.db)
     return [PluginInstallResult.from_model(i) for i in installs]
 
@@ -336,7 +356,9 @@ class ListDiscordCommandsParams(BaseModel):
     destructive=False,
     audited=False,
 )
-async def discord_commands(ctx: CallContext, params: ListDiscordCommandsParams) -> list[DiscordCommandResult]:
+async def discord_commands(
+    ctx: CallContext, params: ListDiscordCommandsParams
+) -> list[DiscordCommandResult]:
     entries = await MarketplaceService.discord_commands(ctx.db)
     return [DiscordCommandResult.from_entry(e) for e in entries]
 
@@ -354,7 +376,11 @@ class PageWidgetResult(BaseModel):
 
     @classmethod
     def from_entry(cls, entry) -> "PageWidgetResult":
-        return cls(label=entry.label, capability_name=entry.capability_name, render_as=entry.render_as)
+        return cls(
+            label=entry.label,
+            capability_name=entry.capability_name,
+            render_as=entry.render_as,
+        )
 
 
 class PageNavResult(BaseModel):
@@ -364,7 +390,11 @@ class PageNavResult(BaseModel):
 
     @classmethod
     def from_entry(cls, entry) -> "PageNavResult":
-        return cls(plugin_id=entry.plugin_id, nav_label=entry.nav_label, nav_icon=entry.nav_icon)
+        return cls(
+            plugin_id=entry.plugin_id,
+            nav_label=entry.nav_label,
+            nav_icon=entry.nav_icon,
+        )
 
 
 class PageLayoutResult(BaseModel):
@@ -396,7 +426,9 @@ class ListDashboardSlotsParams(BaseModel):
     destructive=False,
     audited=False,
 )
-async def dashboard_slots(ctx: CallContext, params: ListDashboardSlotsParams) -> list[DashboardSlotResult]:
+async def dashboard_slots(
+    ctx: CallContext, params: ListDashboardSlotsParams
+) -> list[DashboardSlotResult]:
     entries = await MarketplaceService.dashboard_slots(ctx.db, slot=params.slot)
     return [DashboardSlotResult.from_entry(e) for e in entries]
 
@@ -444,7 +476,8 @@ class ConfigurablePluginResult(BaseModel):
     @classmethod
     def from_entry(cls, entry) -> "ConfigurablePluginResult":
         return cls(
-            plugin_id=entry.plugin_id, plugin_name=entry.plugin_name,
+            plugin_id=entry.plugin_id,
+            plugin_name=entry.plugin_name,
             field_count=entry.field_count,
         )
 
@@ -490,6 +523,8 @@ class GetPageLayoutParams(BaseModel):
     destructive=False,
     audited=False,
 )
-async def page_layout(ctx: CallContext, params: GetPageLayoutParams) -> PageLayoutResult:
+async def page_layout(
+    ctx: CallContext, params: GetPageLayoutParams
+) -> PageLayoutResult:
     entry = await MarketplaceService.page_layout(ctx.db, params.plugin_id)
     return PageLayoutResult.from_entry(entry)

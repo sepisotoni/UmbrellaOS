@@ -6,6 +6,7 @@ registering it in provider_factory.py — nothing else in the AI layer
 "one new implementation, everything else stays put" pattern used for
 umbrella-daemon's Environment interface.
 """
+
 from __future__ import annotations
 
 import time
@@ -120,7 +121,12 @@ class HTTPProvider(AIProvider):
         raise NotImplementedError
 
     def _request_body(
-        self, model: str, system_prompt: str, user_prompt: str, max_tokens: int, temperature: float
+        self,
+        model: str,
+        system_prompt: str,
+        user_prompt: str,
+        max_tokens: int,
+        temperature: float,
     ) -> dict:
         raise NotImplementedError
 
@@ -141,11 +147,15 @@ class HTTPProvider(AIProvider):
     ) -> GenerationResult:
         started = time.monotonic()
         try:
-            async with httpx.AsyncClient(timeout=self._timeout, transport=self._transport) as client:
+            async with httpx.AsyncClient(
+                timeout=self._timeout, transport=self._transport
+            ) as client:
                 response = await client.post(
                     self._endpoint_url(model),
                     headers=self._request_headers(),
-                    json=self._request_body(model, system_prompt, user_prompt, max_tokens, temperature),
+                    json=self._request_body(
+                        model, system_prompt, user_prompt, max_tokens, temperature
+                    ),
                 )
         except httpx.RequestError as exc:
             raise ProviderError(f"{self.display_name} request failed: {exc}") from exc
@@ -160,7 +170,9 @@ class HTTPProvider(AIProvider):
             data = response.json()
             text, prompt_tokens, completion_tokens = self._parse_generation(data)
         except (KeyError, IndexError, ValueError) as exc:
-            raise ProviderError(f"{self.display_name} response had an unexpected shape: {exc}") from exc
+            raise ProviderError(
+                f"{self.display_name} response had an unexpected shape: {exc}"
+            ) from exc
 
         return GenerationResult(
             text=text,

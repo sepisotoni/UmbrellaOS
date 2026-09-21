@@ -2,6 +2,7 @@
 alembic/env.py — Alembic migration environment.
 Configured for async SQLAlchemy with autogenerate support.
 """
+
 import asyncio
 from logging.config import fileConfig
 from sqlalchemy import pool
@@ -12,6 +13,7 @@ from alembic import context
 # Load all models so autogenerate can detect them
 import sys
 import os
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from config.settings import get_settings

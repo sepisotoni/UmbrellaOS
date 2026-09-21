@@ -27,6 +27,7 @@ Consequences of that difference, also not carried over from Moo:
   docs/adr/phase-7-notes-from-phase-5.md on the core side). Nothing here
   reintroduces it.
 """
+
 from __future__ import annotations
 
 import logging
@@ -77,7 +78,9 @@ class UmbrellaBot(commands.Bot):
         # and 30s provider timeout, a slow-but-valid LLM response causes the bot
         # to raise "Could not reach umbrella-core" before core even replies.
         # 90s gives the provider its full 30s plus 60s of headroom.
-        self.core = UmbrellaCoreClient(settings.umbrella_core_url, settings.umbrella_core_api_key, timeout=90.0)
+        self.core = UmbrellaCoreClient(
+            settings.umbrella_core_url, settings.umbrella_core_api_key, timeout=90.0
+        )
         # Populated by setup_hook after fetching from core's settings API.
         self.remote: RemoteConfig | None = None
 
@@ -127,10 +130,15 @@ class UmbrellaBot(commands.Bot):
             self.tree.clear_commands(guild=None)
             await self.tree.sync(guild=None)  # wipe stale global registrations
             await self.tree.sync(guild=guild)
-            logger.info("Slash commands synced to guild %s (guild-only, global tree cleared).", guild_id)
+            logger.info(
+                "Slash commands synced to guild %s (guild-only, global tree cleared).",
+                guild_id,
+            )
         else:
             await self.tree.sync()
-            logger.info("Slash commands synced globally (up to 1hr propagation — set discord.guild_id in core settings for instant registration).")
+            logger.info(
+                "Slash commands synced globally (up to 1hr propagation — set discord.guild_id in core settings for instant registration)."
+            )
 
         # Push command manifest to core so the dashboard can read real command data.
         try:
@@ -138,18 +146,20 @@ class UmbrellaBot(commands.Bot):
             tree_commands = self.tree.get_commands(guild=guild_obj_for_cmds)
             manifest = []
             for cmd in tree_commands:
-                manifest.append({
-                    "name": cmd.name,
-                    "description": getattr(cmd, "description", "") or "",
-                    "args": " ".join(
-                        f"<{p.name}>" if p.required else f"[{p.name}]"
-                        for p in (getattr(cmd, "parameters", []) or [])
-                    ),
-                    "owner_only": any(
-                        c.__class__.__name__ == "OwnerRoleCheck"
-                        for c in (getattr(cmd, "checks", []) or [])
-                    ),
-                })
+                manifest.append(
+                    {
+                        "name": cmd.name,
+                        "description": getattr(cmd, "description", "") or "",
+                        "args": " ".join(
+                            f"<{p.name}>" if p.required else f"[{p.name}]"
+                            for p in (getattr(cmd, "parameters", []) or [])
+                        ),
+                        "owner_only": any(
+                            c.__class__.__name__ == "OwnerRoleCheck"
+                            for c in (getattr(cmd, "checks", []) or [])
+                        ),
+                    }
+                )
             await self.core.push_command_manifest(manifest)
             logger.info("Pushed %d commands to core manifest.", len(manifest))
         except Exception as exc:  # noqa: BLE001
@@ -174,7 +184,8 @@ class UmbrellaBot(commands.Bot):
 
         if guild_obj is None:
             logger.warning(
-                "_push_guild_data: guild %s not in cache yet — will retry in on_ready.", guild_id
+                "_push_guild_data: guild %s not in cache yet — will retry in on_ready.",
+                guild_id,
             )
             return
 
@@ -209,7 +220,9 @@ class UmbrellaBot(commands.Bot):
         logger.info("Logged in as %s (id=%s)", self.user, getattr(self.user, "id", "?"))
         await self.change_presence(
             status=discord.Status.online,
-            activity=discord.Activity(type=discord.ActivityType.watching, name="the server | /investigate"),
+            activity=discord.Activity(
+                type=discord.ActivityType.watching, name="the server | /investigate"
+            ),
         )
         # Retry channel + role push now that guild cache is guaranteed warm.
         await self._push_guild_data()

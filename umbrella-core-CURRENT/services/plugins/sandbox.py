@@ -41,6 +41,7 @@ services/plugins/registration.py is already async on the *caller* side
 (register_plugin_capabilities's handler wrapper), this only constrains
 what plugin authors themselves write.
 """
+
 from __future__ import annotations
 
 import json
@@ -68,7 +69,9 @@ _SAFE_MODULE_NAMES = ("json", "math", "re", "datetime", "collections")
 _DEFAULT_CPU_SECONDS = 5
 _DEFAULT_MEMORY_BYTES = 64 * 1024 * 1024  # 64 MiB
 _DEFAULT_WALL_TIMEOUT_SECONDS = 8  # slightly above CPU limit; catches I/O-bound hangs
-_DEFAULT_SQLITE_QUOTA_BYTES = 10 * 1024 * 1024  # 10 MiB, per Decision 2's disk-quota rule
+_DEFAULT_SQLITE_QUOTA_BYTES = (
+    10 * 1024 * 1024
+)  # 10 MiB, per Decision 2's disk-quota rule
 
 
 class SandboxExecutionError(RuntimeError):
@@ -109,11 +112,40 @@ def _build_safe_globals() -> dict[str, Any]:
     safe_builtins = {
         name: getattr(builtins, name)
         for name in (
-            "abs", "all", "any", "bool", "dict", "enumerate", "filter", "float",
-            "int", "len", "list", "map", "max", "min", "range", "repr", "reversed",
-            "round", "set", "sorted", "str", "sum", "tuple", "zip", "isinstance",
-            "True", "False", "None", "ValueError", "TypeError", "KeyError",
-            "IndexError", "StopIteration", "Exception",
+            "abs",
+            "all",
+            "any",
+            "bool",
+            "dict",
+            "enumerate",
+            "filter",
+            "float",
+            "int",
+            "len",
+            "list",
+            "map",
+            "max",
+            "min",
+            "range",
+            "repr",
+            "reversed",
+            "round",
+            "set",
+            "sorted",
+            "str",
+            "sum",
+            "tuple",
+            "zip",
+            "isinstance",
+            "True",
+            "False",
+            "None",
+            "ValueError",
+            "TypeError",
+            "KeyError",
+            "IndexError",
+            "StopIteration",
+            "Exception",
         )
     }
     return {
@@ -198,9 +230,18 @@ def _child_main(
         # files SQLite needs — see SqliteSandboxConnection below.
         resource.setrlimit(resource.RLIMIT_FSIZE, (0, 0))
         resource.setrlimit(resource.RLIMIT_NOFILE, (8, 8))
-        resource.setrlimit(resource.RLIMIT_NPROC, (0, 0) if hasattr(resource, "RLIMIT_NPROC") else (1, 1))
+        resource.setrlimit(
+            resource.RLIMIT_NPROC,
+            (0, 0) if hasattr(resource, "RLIMIT_NPROC") else (1, 1),
+        )
     except (ValueError, OSError) as exc:
-        conn.send(("error", f"failed to apply resource limits: {exc}", _self_rusage_telemetry()))
+        conn.send(
+            (
+                "error",
+                f"failed to apply resource limits: {exc}",
+                _self_rusage_telemetry(),
+            )
+        )
         conn.close()
         return
 
@@ -210,7 +251,9 @@ def _child_main(
         exec(compiled, sandbox_globals)
         fn = sandbox_globals.get(function_name)
         if not callable(fn):
-            raise SandboxExecutionError(f"entrypoint function {function_name!r} not found or not callable")
+            raise SandboxExecutionError(
+                f"entrypoint function {function_name!r} not found or not callable"
+            )
         params = json.loads(params_json)
         result = fn(params)
         if not isinstance(result, dict):
@@ -493,9 +536,15 @@ class ProcessSandbox:
             try:
                 outcome, payload, telemetry = parent_conn.recv()
             except EOFError:
-                outcome, payload = "error", "sandboxed process closed its pipe without responding"
+                outcome, payload = (
+                    "error",
+                    "sandboxed process closed its pipe without responding",
+                )
         else:
-            outcome, payload = "error", f"sandbox execution exceeded wall timeout of {self._limits.wall_timeout_seconds}s"
+            outcome, payload = (
+                "error",
+                f"sandbox execution exceeded wall timeout of {self._limits.wall_timeout_seconds}s",
+            )
 
         process.join(timeout=1)
         if process.is_alive():
@@ -534,7 +583,9 @@ class SqliteSandboxConnection:
     size check this code could race past between checking and writing.
     """
 
-    def __init__(self, path: str, quota_bytes: int = _DEFAULT_SQLITE_QUOTA_BYTES) -> None:
+    def __init__(
+        self, path: str, quota_bytes: int = _DEFAULT_SQLITE_QUOTA_BYTES
+    ) -> None:
         self._conn = sqlite3.connect(path)
         page_size = self._conn.execute("PRAGMA page_size").fetchone()[0]
         max_pages = max(1, quota_bytes // page_size)

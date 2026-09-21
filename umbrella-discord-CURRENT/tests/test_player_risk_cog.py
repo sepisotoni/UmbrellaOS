@@ -4,6 +4,7 @@ PlayerRiskCog (_format_error, _format_risk_score). See
 test_investigation_cog.py's module docstring for why the actual
 slash-command handler isn't tested here.
 """
+
 import discord
 import pytest
 
@@ -12,7 +13,11 @@ from bot.services.umbrella_core_client import UmbrellaCoreError
 
 
 def test_format_error_permission_denied():
-    exc = UmbrellaCoreError("Missing permission: player_risk.view", status_code=403, code="PERMISSION_DENIED")
+    exc = UmbrellaCoreError(
+        "Missing permission: player_risk.view",
+        status_code=403,
+        code="PERMISSION_DENIED",
+    )
     message = PlayerRiskCog._format_error(exc)
     assert "don't have permission" in message
 
@@ -57,7 +62,9 @@ def test_format_risk_score_with_linked_discord():
 
 
 def test_player_risk_by_discord_command_is_registered():
-    assert "player_risk_by_discord" in {cmd.name for cmd in PlayerRiskCog.__cog_app_commands__}
+    assert "player_risk_by_discord" in {
+        cmd.name for cmd in PlayerRiskCog.__cog_app_commands__
+    }
 
 
 def test_format_risk_score_without_linked_discord():

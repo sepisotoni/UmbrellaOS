@@ -53,6 +53,7 @@ conditions. This is the same "malformed input is an expected condition,
 not a bug" stance services/plugins/manifest.py's own
 `ManifestValidationError` docstring already takes for manifests generally.
 """
+
 from __future__ import annotations
 
 import keyword
@@ -73,7 +74,12 @@ logger = logging.getLogger(__name__)
 # these are the only param types a plugin capability can ever declare, so
 # there is deliberately no fallback/"unknown type" handling beyond this set.
 _ALLOWED_SCHEMA_TYPES = {"string", "integer", "number", "boolean"}
-_PY_TYPE_NAMES = {"string": "str", "integer": "int", "number": "float", "boolean": "bool"}
+_PY_TYPE_NAMES = {
+    "string": "str",
+    "integer": "int",
+    "number": "float",
+    "boolean": "bool",
+}
 
 # Deliberately more conservative than Discord's actual allowed command-name
 # character set (which permits many unicode ranges) - ASCII lowercase only,
@@ -132,7 +138,11 @@ def _is_valid_discord_name(name: str) -> bool:
 
 
 def _is_valid_option_name(name: str) -> bool:
-    return bool(_OPTION_NAME_RE.match(name)) and not keyword.iskeyword(name) and name != "interaction"
+    return (
+        bool(_OPTION_NAME_RE.match(name))
+        and not keyword.iskeyword(name)
+        and name != "interaction"
+    )
 
 
 def _resolve_option_type(prop_schema: dict) -> str | None:
@@ -161,8 +171,12 @@ def _options_from_schema(schema: dict) -> list[OptionSpec]:
             )
         option_type = _resolve_option_type(prop_schema)
         if option_type is None:
-            raise _UnsupportedParamError(f"parameter {prop_name!r} has an unsupported/unresolvable type.")
-        options.append(OptionSpec(name=prop_name, type=option_type, required=prop_name in required))
+            raise _UnsupportedParamError(
+                f"parameter {prop_name!r} has an unsupported/unresolvable type."
+            )
+        options.append(
+            OptionSpec(name=prop_name, type=option_type, required=prop_name in required)
+        )
     return options
 
 
@@ -202,7 +216,9 @@ def build_desired_specs(
         capability_name = entry.get("capability_name", "")
 
         if not _is_valid_discord_name(name):
-            warnings.append(f"plugin {plugin_id!r} command {name!r} skipped: not a valid Discord command name.")
+            warnings.append(
+                f"plugin {plugin_id!r} command {name!r} skipped: not a valid Discord command name."
+            )
             continue
         if name in used_names:
             warnings.append(
@@ -250,7 +266,9 @@ def build_desired_specs(
 
 def _build_dynamic_callback(
     spec: PluginCommandSpec,
-    run_capability: Callable[[PluginCommandSpec, discord.Interaction, dict[str, Any]], Awaitable[None]],
+    run_capability: Callable[
+        [PluginCommandSpec, discord.Interaction, dict[str, Any]], Awaitable[None]
+    ],
 ) -> Callable[..., Awaitable[None]]:
     """Builds a real, individually-signatured async function via `exec` so
     discord.py's `inspect.signature()`-based parameter extraction
@@ -297,7 +315,10 @@ def _build_dynamic_callback(
         await run_capability(spec, interaction, kwargs)
 
     namespace: dict[str, Any] = {"_run": _run}
-    exec(compile(source, f"<umbrella-marketplace:{spec.discord_name}>", "exec"), namespace)  # noqa: S102
+    exec(
+        compile(source, f"<umbrella-marketplace:{spec.discord_name}>", "exec"),
+        namespace,
+    )  # noqa: S102
     return namespace["_plugin_command"]
 
 
@@ -316,7 +337,9 @@ class MarketplaceCommandSync:
 
     async def sync(self) -> SyncOutcome:
         try:
-            discord_commands = await self.bot.core.invoke("marketplace.install.discord_commands", {})
+            discord_commands = await self.bot.core.invoke(
+                "marketplace.install.discord_commands", {}
+            )
         except UmbrellaCoreError:
             logger.exception(
                 "marketplace command sync: failed to fetch discord_commands from umbrella-core; "
@@ -333,8 +356,14 @@ class MarketplaceCommandSync:
             )
             return SyncOutcome(added=[], removed=[], warnings=[])
 
-        reserved = {cmd.name for cmd in self.bot.tree.get_commands() if cmd.name not in self._active}
-        desired_specs, warnings = build_desired_specs(discord_commands, capabilities, reserved)
+        reserved = {
+            cmd.name
+            for cmd in self.bot.tree.get_commands()
+            if cmd.name not in self._active
+        }
+        desired_specs, warnings = build_desired_specs(
+            discord_commands, capabilities, reserved
+        )
         for warning in warnings:
             logger.warning("marketplace command sync: %s", warning)
         desired_by_name = {s.discord_name: s for s in desired_specs}
@@ -364,7 +393,8 @@ class MarketplaceCommandSync:
             await self.bot.tree.sync()
             logger.info(
                 "marketplace command sync: pushed to Discord (%d added/updated, %d removed).",
-                len(added), len(removed),
+                len(added),
+                len(removed),
             )
 
         return SyncOutcome(added=added, removed=removed, warnings=warnings)
@@ -378,10 +408,15 @@ class MarketplaceCommandSync:
         # test_build_dynamic_callback_has_real_inspectable_signature and
         # the end-to-end sync() tests that add the resulting Command to a
         # real CommandTree and inspect its actual .parameters.
-        return app_commands.Command(name=spec.discord_name, description=spec.description, callback=callback)  # type: ignore[arg-type]
+        return app_commands.Command(
+            name=spec.discord_name, description=spec.description, callback=callback
+        )  # type: ignore[arg-type]
 
     async def _run_capability(
-        self, spec: PluginCommandSpec, interaction: discord.Interaction, kwargs: dict[str, Any]
+        self,
+        spec: PluginCommandSpec,
+        interaction: discord.Interaction,
+        kwargs: dict[str, Any],
     ) -> None:
         # discord_user_id is always sent here, same as every other cog's
         # invoke() calls (Phase 6's slash-command -> REST-permission
@@ -415,7 +450,9 @@ class MarketplaceCommandSync:
         capability returns one) with a plain string fallback for anything
         else is honest about that rather than pretending to understand a
         shape it can't know ahead of time."""
-        embed = discord.Embed(title=f"/{spec.discord_name}", color=discord.Color.blurple())
+        embed = discord.Embed(
+            title=f"/{spec.discord_name}", color=discord.Color.blurple()
+        )
         embed.set_footer(text=f"Plugin: {spec.plugin_id}")
         if isinstance(result, dict) and result:
             for key, value in result.items():

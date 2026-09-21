@@ -2,6 +2,7 @@
 tests/test_backup_service.py — Tests for services/backup_service.py, using
 an injected fake DaemonClient (same DI pattern as test_hosting_services.py).
 """
+
 import pytest
 
 from services.allocation_service import AllocationService
@@ -19,9 +20,17 @@ class FakeBackupDaemonClient:
 
     async def create(self, server_id, **kwargs):
         from services.daemon_client import ContainerState
+
         self.calls.append(("create", server_id))
-        return ContainerState(server_id=server_id, runtime_id="d", status="created",
-                               started_at=None, finished_at=None, exit_code=None, oom_killed=False)
+        return ContainerState(
+            server_id=server_id,
+            runtime_id="d",
+            status="created",
+            started_at=None,
+            finished_at=None,
+            exit_code=None,
+            oom_killed=False,
+        )
 
     async def create_backup(self, server_id, backup_id):
         self.calls.append(("create_backup", server_id, backup_id))
@@ -42,8 +51,12 @@ class FakeBackupDaemonClient:
 
 async def _setup_server(db_session, fake_client):
     async with db_session() as db:
-        node, _ = await NodeService.register_node(db, "node-backup-test", "https://node:8443")
-        template = await ServerTemplateService.create_template(db, "Paper", image="itzg/minecraft-server")
+        node, _ = await NodeService.register_node(
+            db, "node-backup-test", "https://node:8443"
+        )
+        template = await ServerTemplateService.create_template(
+            db, "Paper", image="itzg/minecraft-server"
+        )
         await db.commit()
         node_id, template_id = node.id, template.id
 
@@ -54,7 +67,12 @@ async def _setup_server(db_session, fake_client):
 
     async with db_session() as db:
         server = await ServerService.create_server(
-            db, "Survival", node_id, template_id, [allocation_id], daemon_client=fake_client
+            db,
+            "Survival",
+            node_id,
+            template_id,
+            [allocation_id],
+            daemon_client=fake_client,
         )
         await db.commit()
         return server.id
@@ -66,7 +84,9 @@ async def test_create_backup_happy_path(db_session):
     server_id = await _setup_server(db_session, fake_client)
 
     async with db_session() as db:
-        backup = await BackupService.create_backup(db, server_id, daemon_client=fake_client)
+        backup = await BackupService.create_backup(
+            db, server_id, daemon_client=fake_client
+        )
         await db.commit()
         assert backup.status == "completed"
         assert backup.size_bytes == 12345
@@ -98,10 +118,14 @@ async def test_list_backups_orders_newest_first(db_session):
     server_id = await _setup_server(db_session, fake_client)
 
     async with db_session() as db:
-        first = await BackupService.create_backup(db, server_id, daemon_client=fake_client)
+        first = await BackupService.create_backup(
+            db, server_id, daemon_client=fake_client
+        )
         await db.commit()
     async with db_session() as db:
-        second = await BackupService.create_backup(db, server_id, daemon_client=fake_client)
+        second = await BackupService.create_backup(
+            db, server_id, daemon_client=fake_client
+        )
         await db.commit()
 
     async with db_session() as db:
@@ -115,7 +139,9 @@ async def test_restore_backup_happy_path(db_session):
     server_id = await _setup_server(db_session, fake_client)
 
     async with db_session() as db:
-        backup = await BackupService.create_backup(db, server_id, daemon_client=fake_client)
+        backup = await BackupService.create_backup(
+            db, server_id, daemon_client=fake_client
+        )
         await db.commit()
         backup_id = backup.id
 
@@ -142,7 +168,9 @@ async def test_restore_refuses_a_failed_backup(db_session):
     fake_client2 = FakeBackupDaemonClient()
     async with db_session() as db:
         with pytest.raises(BackupError, match="not 'completed'"):
-            await BackupService.restore_backup(db, failed_backup_id, daemon_client=fake_client2)
+            await BackupService.restore_backup(
+                db, failed_backup_id, daemon_client=fake_client2
+            )
 
 
 @pytest.mark.asyncio
@@ -151,7 +179,9 @@ async def test_delete_backup_removes_row_and_calls_daemon(db_session):
     server_id = await _setup_server(db_session, fake_client)
 
     async with db_session() as db:
-        backup = await BackupService.create_backup(db, server_id, daemon_client=fake_client)
+        backup = await BackupService.create_backup(
+            db, server_id, daemon_client=fake_client
+        )
         await db.commit()
         backup_id = backup.id
 

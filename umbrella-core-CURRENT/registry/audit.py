@@ -11,6 +11,7 @@ is not removed by Phase 0, but every *new* capability going forward gets this
 for free instead of hand-rolling it, which is the concrete fix for audit
 logging having been duplicated ad hoc per service.
 """
+
 from __future__ import annotations
 
 import json

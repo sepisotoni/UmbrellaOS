@@ -7,6 +7,7 @@ POST /api/v1/moderation/ban        — Ban a player
 POST /api/v1/moderation/ipban      — IP ban
 GET  /api/v1/moderation/active     — Get active punishments
 """
+
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -49,7 +50,9 @@ async def test_player(db_session):
 
 
 @pytest.mark.asyncio
-async def test_kick_requires_moderation_kick_permission(client, db_session, test_player):
+async def test_kick_requires_moderation_kick_permission(
+    client, db_session, test_player
+):
     headers = await _session_headers_for_role(db_session, "moderator")
     response = await client.post(
         "/api/v1/moderation/kick",
@@ -60,7 +63,9 @@ async def test_kick_requires_moderation_kick_permission(client, db_session, test
 
 
 @pytest.mark.asyncio
-async def test_warn_requires_moderation_warn_permission(client, db_session, test_player):
+async def test_warn_requires_moderation_warn_permission(
+    client, db_session, test_player
+):
     headers = await _session_headers_for_role(db_session, "moderator")
     response = await client.post(
         "/api/v1/moderation/warn",
@@ -104,7 +109,9 @@ async def test_helper_cannot_kick(client, db_session, test_player):
 
 
 @pytest.mark.asyncio
-async def test_x_admin_key_bypasses_all_permission_checks(client, db_session, test_player):
+async def test_x_admin_key_bypasses_all_permission_checks(
+    client, db_session, test_player
+):
     """X-Admin-Key should bypass all permission checks."""
     response = await client.post(
         "/api/v1/moderation/kick",
@@ -115,7 +122,9 @@ async def test_x_admin_key_bypasses_all_permission_checks(client, db_session, te
 
 
 @pytest.mark.asyncio
-async def test_get_active_punishments_requires_punishments_view(client, db_session, test_player):
+async def test_get_active_punishments_requires_punishments_view(
+    client, db_session, test_player
+):
     """Create a punishment first, then test getting active punishments."""
     # Create a punishment via admin key
     await client.post(
@@ -127,9 +136,11 @@ async def test_get_active_punishments_requires_punishments_view(client, db_sessi
         },
         headers=ADMIN_HEADERS,
     )
-    
+
     headers = await _session_headers_for_role(db_session, "helper")
-    response = await client.get(f"/api/v1/moderation/active/{TEST_PLAYER_UUID}", headers=headers)
+    response = await client.get(
+        f"/api/v1/moderation/active/{TEST_PLAYER_UUID}", headers=headers
+    )
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, list)

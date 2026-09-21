@@ -11,6 +11,7 @@ declared in `config_fields`?) belongs at the capability layer
 (`capabilities/plugin_config.py`), not here — same separation
 DashboardLayoutService keeps for its own page_id allow-list check.
 """
+
 from __future__ import annotations
 
 import json
@@ -24,7 +25,9 @@ from models.plugin_kv import PluginKvEntry
 
 class PluginKvService:
     @staticmethod
-    async def get(db: AsyncSession, *, plugin_id: str, key: str) -> PluginKvEntry | None:
+    async def get(
+        db: AsyncSession, *, plugin_id: str, key: str
+    ) -> PluginKvEntry | None:
         result = await db.execute(
             select(PluginKvEntry).where(
                 PluginKvEntry.plugin_id == plugin_id, PluginKvEntry.key == key
@@ -40,7 +43,9 @@ class PluginKvService:
         return list(result.scalars().all())
 
     @staticmethod
-    async def set(db: AsyncSession, *, plugin_id: str, key: str, value: Any) -> PluginKvEntry:
+    async def set(
+        db: AsyncSession, *, plugin_id: str, key: str, value: Any
+    ) -> PluginKvEntry:
         """Upsert: one row per (plugin_id, key), enforced by the table's
         unique constraint. Not an audit trail — the capability call itself
         is audited (audited=True on the config.set CapabilitySpec), this

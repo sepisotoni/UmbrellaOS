@@ -26,6 +26,7 @@ Revision ID: 042_add_reduced_appeal_status
 Revises:     041_fix_ipban_player_uuid_and_punishment_nullable
 Create Date: 2026-08-29
 """
+
 from alembic import op
 
 revision = "042_add_reduced_appeal_status"

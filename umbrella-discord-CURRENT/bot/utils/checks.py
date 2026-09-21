@@ -22,6 +22,7 @@ If `owner_role_id` is 0 / unset in config, the check falls back to
 `interaction.user.guild_permissions.administrator` so commands remain
 guarded even in a dev environment without a specific role configured.
 """
+
 from __future__ import annotations
 
 import discord

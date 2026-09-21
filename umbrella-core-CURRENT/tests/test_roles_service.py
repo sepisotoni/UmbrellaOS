@@ -21,6 +21,7 @@ alembic/versions/055_fix_admin_role_permissions.py.
 
 This is the first dedicated test file for roles_service.py.
 """
+
 import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -73,10 +74,14 @@ async def test_seed_defaults_applies_the_fix_to_a_fresh_database(db_session):
     at all (seed_defaults never updates an existing role)."""
     async with db_session() as db:
         admin = await db.scalar(
-            select(Role).where(Role.name == "admin").options(selectinload(Role.permissions))
+            select(Role)
+            .where(Role.name == "admin")
+            .options(selectinload(Role.permissions))
         )
         owner = await db.scalar(
-            select(Role).where(Role.name == "owner").options(selectinload(Role.permissions))
+            select(Role)
+            .where(Role.name == "owner")
+            .options(selectinload(Role.permissions))
         )
         admin_keys = {p.permission_key for p in admin.permissions}
         owner_keys = {p.permission_key for p in owner.permissions}

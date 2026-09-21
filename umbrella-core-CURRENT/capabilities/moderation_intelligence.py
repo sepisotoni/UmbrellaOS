@@ -13,6 +13,7 @@ connection Phase 6 adds. What's here is the full analysis pipeline: create
 a report, analyze it (dual-reviewed AI risk assessment, persisted, escalated
 when warranted), and manage the resulting staff escalation queue.
 """
+
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
@@ -31,8 +32,12 @@ from services.moderation_intelligence.service import ModerationIntelligenceServi
 class CreateReportParams(BaseModel):
     reported_user_id: str = Field(description="Discord user ID being reported")
     reason: str = Field(description="What's being reported and why")
-    channel_id: str | None = Field(default=None, description="Channel the reported behavior occurred in, if any")
-    reported_message_id: str | None = Field(default=None, description="Specific message being reported, if any")
+    channel_id: str | None = Field(
+        default=None, description="Channel the reported behavior occurred in, if any"
+    )
+    reported_message_id: str | None = Field(
+        default=None, description="Specific message being reported, if any"
+    )
 
     def audit_target(self) -> str:
         return self.reported_user_id
@@ -120,7 +125,9 @@ class AnalysisResult(BaseModel):
     destructive=False,
     reversible=True,
 )
-async def analyze_report(ctx: CallContext, params: AnalyzeReportParams) -> AnalysisResult:
+async def analyze_report(
+    ctx: CallContext, params: AnalyzeReportParams
+) -> AnalysisResult:
     from api.middleware.errors import ResourceNotFoundException
 
     report = await ctx.db.get(ModerationReport, params.report_id)
@@ -192,8 +199,12 @@ class ListEscalationsResult(BaseModel):
     reversible=True,
     audited=False,
 )
-async def list_escalations(ctx: CallContext, params: ListEscalationsParams) -> ListEscalationsResult:
-    escalations = await ModerationIntelRepository.list_open_escalations(ctx.db, limit=params.limit)
+async def list_escalations(
+    ctx: CallContext, params: ListEscalationsParams
+) -> ListEscalationsResult:
+    escalations = await ModerationIntelRepository.list_open_escalations(
+        ctx.db, limit=params.limit
+    )
     return ListEscalationsResult(
         escalations=[
             EscalationResult(
@@ -231,7 +242,9 @@ class ResolveEscalationParams(BaseModel):
     destructive=False,
     reversible=True,
 )
-async def resolve_escalation(ctx: CallContext, params: ResolveEscalationParams) -> EscalationResult:
+async def resolve_escalation(
+    ctx: CallContext, params: ResolveEscalationParams
+) -> EscalationResult:
     from datetime import datetime, timezone
 
     from api.middleware.errors import ResourceNotFoundException
@@ -252,7 +265,9 @@ async def resolve_escalation(ctx: CallContext, params: ResolveEscalationParams) 
         confidence=escalation.confidence,
         resolved=escalation.resolved,
         related_report_id=escalation.related_report_id,
-        notified_at=escalation.notified_at.isoformat() if escalation.notified_at else None,
+        notified_at=escalation.notified_at.isoformat()
+        if escalation.notified_at
+        else None,
     )
 
 
@@ -289,10 +304,14 @@ class MarkNotifiedParams(BaseModel):
     reversible=True,
     audited=False,
 )
-async def mark_notified(ctx: CallContext, params: MarkNotifiedParams) -> EscalationResult:
+async def mark_notified(
+    ctx: CallContext, params: MarkNotifiedParams
+) -> EscalationResult:
     from api.middleware.errors import ResourceNotFoundException
 
-    escalation = await ModerationIntelRepository.mark_notified(ctx.db, params.escalation_id)
+    escalation = await ModerationIntelRepository.mark_notified(
+        ctx.db, params.escalation_id
+    )
     if escalation is None:
         raise ResourceNotFoundException("Escalation", params.escalation_id)
 
@@ -303,5 +322,7 @@ async def mark_notified(ctx: CallContext, params: MarkNotifiedParams) -> Escalat
         confidence=escalation.confidence,
         resolved=escalation.resolved,
         related_report_id=escalation.related_report_id,
-        notified_at=escalation.notified_at.isoformat() if escalation.notified_at else None,
+        notified_at=escalation.notified_at.isoformat()
+        if escalation.notified_at
+        else None,
     )

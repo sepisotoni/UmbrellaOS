@@ -21,6 +21,7 @@ what's wrong without them needing to parse pip-audit's JSON by hand.
 Usage:
     python scripts/scan_dependencies.py [--requirements requirements.txt] [--fail-on low|medium|high|critical]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -55,10 +56,14 @@ def run_pip_audit(requirements: Path) -> dict:
     # not just a comment — using --no-deps here.
     result = subprocess.run(
         [
-            sys.executable, "-m", "pip_audit",
-            "--requirement", str(requirements),
+            sys.executable,
+            "-m",
+            "pip_audit",
+            "--requirement",
+            str(requirements),
             "--no-deps",
-            "--format", "json",
+            "--format",
+            "json",
         ],
         capture_output=True,
         text=True,
@@ -93,7 +98,11 @@ def _severity_rank(vuln: dict) -> int:
     # case: still reported, just not used to trigger --fail-on by itself
     # unless --fail-on unknown is explicitly requested).
     sev = (vuln.get("severity") or "unknown").lower()
-    return _SEVERITY_ORDER.index(sev) if sev in _SEVERITY_ORDER else _SEVERITY_ORDER.index("unknown")
+    return (
+        _SEVERITY_ORDER.index(sev)
+        if sev in _SEVERITY_ORDER
+        else _SEVERITY_ORDER.index("unknown")
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -111,13 +120,17 @@ def main(argv: list[str] | None = None) -> int:
         report = run_pip_audit(args.requirements)
     except RuntimeError as exc:
         print(f"error: {exc}", file=sys.stderr)
-        return 2  # distinct from 1 ("vulnerabilities found") — this is "scan did not run"
+        return (
+            2  # distinct from 1 ("vulnerabilities found") — this is "scan did not run"
+        )
     dependencies = report.get("dependencies", [])
 
     findings = []
     for dep in dependencies:
         for vuln in dep.get("vulns", []):
-            findings.append({**vuln, "package": dep.get("name"), "version": dep.get("version")})
+            findings.append(
+                {**vuln, "package": dep.get("name"), "version": dep.get("version")}
+            )
 
     if not findings:
         print("No known vulnerabilities found.")
@@ -126,10 +139,14 @@ def main(argv: list[str] | None = None) -> int:
     threshold_rank = _SEVERITY_ORDER.index(args.fail_on)
     blocking = [f for f in findings if _severity_rank(f) >= threshold_rank]
 
-    print(f"Found {len(findings)} known vulnerabilit{'y' if len(findings) == 1 else 'ies'}:")
+    print(
+        f"Found {len(findings)} known vulnerabilit{'y' if len(findings) == 1 else 'ies'}:"
+    )
     for f in findings:
         marker = "BLOCKING" if f in blocking else "informational"
-        print(f"  [{marker}] {f['package']}=={f['version']}: {f.get('id', 'unknown-id')} ({f.get('severity', 'unknown')})")
+        print(
+            f"  [{marker}] {f['package']}=={f['version']}: {f.get('id', 'unknown-id')} ({f.get('severity', 'unknown')})"
+        )
 
     return 1 if blocking else 0
 

@@ -3,6 +3,7 @@ capabilities/archive_search.py — Staff-tier archive search (Phase 5).
 See services/archive_search/service.py's module docstring for the scope
 reduction from Moo's per-member permission-aware version.
 """
+
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
@@ -13,8 +14,13 @@ from services.archive_search.service import search as search_archive
 
 
 class SearchArchiveParams(BaseModel):
-    query: str = Field(default="", description="Keyword to search archived chat for; empty returns most recent")
-    source: str | None = Field(default=None, description='Restrict to "minecraft" or "discord"; omit for both')
+    query: str = Field(
+        default="",
+        description="Keyword to search archived chat for; empty returns most recent",
+    )
+    source: str | None = Field(
+        default=None, description='Restrict to "minecraft" or "discord"; omit for both'
+    )
     limit: int = Field(default=10, ge=1, le=50)
 
 
@@ -42,7 +48,9 @@ class SearchArchiveResult(BaseModel):
     audited=True,  # unlike knowledge/investigation search, this reveals unfiltered chat content - worth an audit trail
 )
 async def search(ctx: CallContext, params: SearchArchiveParams) -> SearchArchiveResult:
-    results = await search_archive(ctx.db, params.query, source=params.source, limit=params.limit)
+    results = await search_archive(
+        ctx.db, params.query, source=params.source, limit=params.limit
+    )
     return SearchArchiveResult(
         messages=[
             ArchiveMessageResult(

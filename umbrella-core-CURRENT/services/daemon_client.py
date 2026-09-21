@@ -10,6 +10,7 @@ contract (paths, auth header, JSON shapes) is defined in exactly one place
 on the core side, mirroring the same "one implementation" principle the
 Capability Registry itself is built on.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -108,13 +109,21 @@ class DaemonClient:
         token = issue_node_token(self._node_id, self._signing_secret)
         return {"Authorization": f"Bearer {token}"}
 
-    async def _request(self, method: str, path: str, json: dict | None = None) -> dict[str, Any]:
+    async def _request(
+        self, method: str, path: str, json: dict | None = None
+    ) -> dict[str, Any]:
         url = f"{self._base_url}{path}"
         try:
-            async with httpx.AsyncClient(timeout=self._timeout, transport=self._transport) as client:
-                response = await client.request(method, url, headers=self._headers(), json=json)
+            async with httpx.AsyncClient(
+                timeout=self._timeout, transport=self._transport
+            ) as client:
+                response = await client.request(
+                    method, url, headers=self._headers(), json=json
+                )
         except httpx.RequestError as exc:
-            raise DaemonError(f"could not reach daemon at {self._base_url}: {exc}") from exc
+            raise DaemonError(
+                f"could not reach daemon at {self._base_url}: {exc}"
+            ) from exc
 
         if response.status_code >= 400:
             raise DaemonError(
@@ -182,8 +191,14 @@ class DaemonClient:
         data = await self._request("POST", f"/v1/servers/{server_id}/start")
         return ContainerState.from_json(data)
 
-    async def stop(self, server_id: str, grace_period_seconds: int | None = None) -> ContainerState:
-        body = {"grace_period_seconds": grace_period_seconds} if grace_period_seconds is not None else None
+    async def stop(
+        self, server_id: str, grace_period_seconds: int | None = None
+    ) -> ContainerState:
+        body = (
+            {"grace_period_seconds": grace_period_seconds}
+            if grace_period_seconds is not None
+            else None
+        )
         data = await self._request("POST", f"/v1/servers/{server_id}/stop", json=body)
         return ContainerState.from_json(data)
 
@@ -205,11 +220,15 @@ class DaemonClient:
 
     async def create_backup(self, server_id: str, backup_id: str) -> int:
         """Returns the archive's size in bytes."""
-        data = await self._request("POST", f"/v1/servers/{server_id}/backups", json={"backup_id": backup_id})
+        data = await self._request(
+            "POST", f"/v1/servers/{server_id}/backups", json={"backup_id": backup_id}
+        )
         return data.get("size_bytes", 0)
 
     async def restore_backup(self, server_id: str, backup_id: str) -> None:
-        await self._request("POST", f"/v1/servers/{server_id}/backups/{backup_id}/restore")
+        await self._request(
+            "POST", f"/v1/servers/{server_id}/backups/{backup_id}/restore"
+        )
 
     async def delete_backup(self, server_id: str, backup_id: str) -> None:
         await self._request("DELETE", f"/v1/servers/{server_id}/backups/{backup_id}")

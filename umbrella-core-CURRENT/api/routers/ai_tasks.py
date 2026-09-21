@@ -15,6 +15,7 @@ P15 Tasks 4 & 5:
   - Response includes full ai_result blob from ai_service for the
     rich decision UI.
 """
+
 import json
 from datetime import datetime, timezone
 
@@ -36,6 +37,7 @@ router = APIRouter(prefix="/api/v1/ai", tags=["ai"])
 # Schemas
 # ---------------------------------------------------------------------------
 
+
 class ApproveTaskRequest(BaseModel):
     action_taken: str
     reviewed_by: str
@@ -49,6 +51,7 @@ class DenyTaskRequest(BaseModel):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _task_to_dict(task: AITask, include_evidence: bool = False) -> dict:
     """Serialize an AITask to a response dict."""
@@ -83,6 +86,7 @@ def _task_to_dict(task: AITask, include_evidence: bool = False) -> dict:
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
 
 @router.post("/review/player/{uuid}", status_code=201)
 async def trigger_player_review(
@@ -128,9 +132,7 @@ async def trigger_appeal_review(
         )
 
     # Also return the appeal's ai_review_result for the dashboard
-    appeal = await db.scalar(
-        select(Appeal).where(Appeal.id == appeal_id)
-    )
+    appeal = await db.scalar(select(Appeal).where(Appeal.id == appeal_id))
     ai_result = None
     if appeal and appeal.ai_review_result:
         try:
@@ -139,7 +141,9 @@ async def trigger_appeal_review(
             ai_result = None
 
     response = _task_to_dict(task, include_evidence=True)
-    response["ai_review_status"] = getattr(appeal, "ai_review_status", None) if appeal else None
+    response["ai_review_status"] = (
+        getattr(appeal, "ai_review_status", None) if appeal else None
+    )
     response["ai_result"] = ai_result
     return response
 
@@ -212,10 +216,12 @@ async def approve_ai_task(
         actor_type="staff",
         action="ai_task.approved",
         target=str(task_id),
-        details_json=json.dumps({
-            "task_id": task_id,
-            "action_taken": body.action_taken,
-        }),
+        details_json=json.dumps(
+            {
+                "task_id": task_id,
+                "action_taken": body.action_taken,
+            }
+        ),
     )
     db.add(audit)
 
@@ -253,10 +259,12 @@ async def deny_ai_task(
         actor_type="staff",
         action="ai_task.denied",
         target=str(task_id),
-        details_json=json.dumps({
-            "task_id": task_id,
-            "reason": body.reason or "",
-        }),
+        details_json=json.dumps(
+            {
+                "task_id": task_id,
+                "reason": body.reason or "",
+            }
+        ),
     )
     db.add(audit)
 

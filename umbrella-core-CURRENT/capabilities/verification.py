@@ -43,6 +43,7 @@ the member's nickname itself, using its own live bot connection, right
 after this capability returns success - not something core can do on its
 own behalf.
 """
+
 from __future__ import annotations
 
 from pydantic import BaseModel, Field, field_validator
@@ -50,12 +51,18 @@ from pydantic import BaseModel, Field, field_validator
 from api.validators import validate_player_uuid
 from registry.context import CallContext
 from registry.decorator import capability
-from services.verification.service import confirm_verification, get_link_by_discord, get_verification_status
+from services.verification.service import (
+    confirm_verification,
+    get_link_by_discord,
+    get_verification_status,
+)
 
 
 class ConfirmVerificationParams(BaseModel):
     discord_id: str = Field(description="The Discord user's snowflake ID")
-    discord_username: str = Field(description="The Discord user's current username, for the audit log and DiscordAccount record")
+    discord_username: str = Field(
+        description="The Discord user's current username, for the audit log and DiscordAccount record"
+    )
     code: str = Field(description="The 6-digit code the player received in-game")
 
     def audit_target(self) -> str:
@@ -76,7 +83,9 @@ class ConfirmVerificationResult(BaseModel):
     required_permission="verification.link.manage",
     destructive=False,
 )
-async def confirm(ctx: CallContext, params: ConfirmVerificationParams) -> ConfirmVerificationResult:
+async def confirm(
+    ctx: CallContext, params: ConfirmVerificationParams
+) -> ConfirmVerificationResult:
     result = await confirm_verification(
         ctx.db,
         discord_id=params.discord_id,
@@ -125,7 +134,9 @@ class LinkByDiscordResult(BaseModel):
     destructive=False,
     audited=False,
 )
-async def link_by_discord(ctx: CallContext, params: LinkByDiscordParams) -> LinkByDiscordResult:
+async def link_by_discord(
+    ctx: CallContext, params: LinkByDiscordParams
+) -> LinkByDiscordResult:
     """Closes the gap flagged in umbrella-discord's player_risk_cog.py:
     the only prior Discord-id -> player_uuid path was investigation's
     LinkedAccountTool, which returns a human sentence, not a structured
@@ -149,7 +160,9 @@ async def link_by_discord(ctx: CallContext, params: LinkByDiscordParams) -> Link
     destructive=False,
     audited=False,
 )
-async def status(ctx: CallContext, params: VerificationStatusParams) -> VerificationStatusResult:
+async def status(
+    ctx: CallContext, params: VerificationStatusParams
+) -> VerificationStatusResult:
     result = await get_verification_status(ctx.db, player_uuid=params.player_uuid)
     return VerificationStatusResult(
         verified=result.verified,

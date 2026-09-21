@@ -5,6 +5,7 @@ implementation (not a hand-rolled fake), the same class of infrastructure
 test double used throughout this project (aiosqlite standing in for
 Postgres, httpx.MockTransport for HTTP).
 """
+
 import fakeredis
 import pytest
 

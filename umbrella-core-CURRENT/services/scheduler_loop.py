@@ -7,6 +7,7 @@ fully tested on its own, tests/test_scheduler_service.py) — this module's
 own job is just "loop, with a way to stop," which is deliberately the only
 thing it's responsible for getting right.
 """
+
 import asyncio
 import logging
 
@@ -19,7 +20,8 @@ DEFAULT_POLL_INTERVAL_SECONDS = 30
 
 
 async def run_scheduler_loop(
-    stop_event: asyncio.Event, poll_interval_seconds: int = DEFAULT_POLL_INTERVAL_SECONDS
+    stop_event: asyncio.Event,
+    poll_interval_seconds: int = DEFAULT_POLL_INTERVAL_SECONDS,
 ) -> None:
     """
     Runs until stop_event is set. Each iteration opens its own DB session
@@ -40,7 +42,9 @@ async def run_scheduler_loop(
             # caught and recorded individually inside run_due_schedules;
             # this is a further outer guard against the polling
             # infrastructure itself failing.
-            logger.exception("scheduler: error running due schedules, will retry next interval")
+            logger.exception(
+                "scheduler: error running due schedules, will retry next interval"
+            )
 
         try:
             await asyncio.wait_for(stop_event.wait(), timeout=poll_interval_seconds)

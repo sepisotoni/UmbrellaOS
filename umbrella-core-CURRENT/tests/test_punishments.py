@@ -5,6 +5,7 @@ GET  /api/v1/punishments           — list all punishments
 POST /api/v1/punishments           — create a new punishment
 POST /api/v1/punishments/{id}/revoke — revoke a punishment
 """
+
 from datetime import datetime, timedelta, timezone
 
 import pytest

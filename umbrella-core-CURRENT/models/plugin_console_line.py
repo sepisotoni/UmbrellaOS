@@ -1,4 +1,5 @@
 """Plugin console line buffer — stores recent console output from connected servers."""
+
 from datetime import datetime
 
 from sqlalchemy import BigInteger, DateTime, Index, String, Text, func

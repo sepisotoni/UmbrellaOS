@@ -7,6 +7,7 @@ Revision ID: 037_bot_guild_channels
 Revises:     036_bot_command_manifest
 Create Date: 2026-08-26
 """
+
 from __future__ import annotations
 
 import sqlalchemy as sa

@@ -1,4 +1,5 @@
 """Dashboard-specific endpoints — server/plugin mesh status."""
+
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query
@@ -28,21 +29,25 @@ async def list_servers(
     servers = []
     for hb in result.scalars().all():
         online = hb.last_seen >= cutoff and not in_maintenance
-        status = "maintenance" if in_maintenance else ("online" if online else "offline")
-        servers.append({
-            "id": hb.server_id,
-            "name": hb.server_name,
-            "status": status,
-            "tps": round(hb.tps, 1),
-            "players": hb.online_count,
-            "maxPlayers": 100,
-            "ramUsedMb": 0,
-            "ramTotalMb": 0,
-            "cpu": 0,
-            "version": hb.version,
-            "pluginsConnected": 1 if hb.grim_connected else 0,
-            "pluginsTotal": 2,
-        })
+        status = (
+            "maintenance" if in_maintenance else ("online" if online else "offline")
+        )
+        servers.append(
+            {
+                "id": hb.server_id,
+                "name": hb.server_name,
+                "status": status,
+                "tps": round(hb.tps, 1),
+                "players": hb.online_count,
+                "maxPlayers": 100,
+                "ramUsedMb": 0,
+                "ramTotalMb": 0,
+                "cpu": 0,
+                "version": hb.version,
+                "pluginsConnected": 1 if hb.grim_connected else 0,
+                "pluginsTotal": 2,
+            }
+        )
     return servers
 
 
@@ -81,12 +86,14 @@ async def list_plugins(
     )
     plugins = []
     for hb in result.scalars().all():
-        plugins.append({
-            "server_id": hb.server_id,
-            "server_name": hb.server_name,
-            "umbrella_status": "ACTIVE",
-            "umbrella_version": hb.plugin_version,
-            "grimac_status": "ACTIVE" if hb.grim_connected else "STANDALONE",
-            "last_heartbeat": hb.last_seen.isoformat(),
-        })
+        plugins.append(
+            {
+                "server_id": hb.server_id,
+                "server_name": hb.server_name,
+                "umbrella_status": "ACTIVE",
+                "umbrella_version": hb.plugin_version,
+                "grimac_status": "ACTIVE" if hb.grim_connected else "STANDALONE",
+                "last_heartbeat": hb.last_seen.isoformat(),
+            }
+        )
     return plugins

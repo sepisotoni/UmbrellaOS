@@ -6,6 +6,7 @@ Revises: 007_phase11_replay
 Create Date: 2024-01-01 00:00:00.000000
 
 """
+
 from alembic import op
 import sqlalchemy as sa
 
@@ -37,7 +38,9 @@ def upgrade():
         sa.Column("dimension", sa.String(64), nullable=True),
         sa.Column("replay_id", sa.String(36), nullable=True),
     )
-    op.create_index("ix_player_snapshots_minecraft_uuid", "player_snapshots", ["minecraft_uuid"])
+    op.create_index(
+        "ix_player_snapshots_minecraft_uuid", "player_snapshots", ["minecraft_uuid"]
+    )
     op.create_index("ix_player_snapshots_timestamp", "player_snapshots", ["timestamp"])
     op.create_foreign_key(
         "fk_player_snapshots_replay_id_replay_sessions",

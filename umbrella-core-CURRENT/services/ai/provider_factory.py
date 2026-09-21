@@ -11,6 +11,7 @@ and the next call should see that immediately, not a stale cached instance.
 Constructing an httpx-backed provider object is cheap (no connection is
 opened until a request is actually made), so this costs nothing meaningful.
 """
+
 from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -58,7 +59,9 @@ class ProviderFactory:
         the actual set the model router may pick from."""
         available = []
         for name in _PROVIDER_REGISTRY:
-            if await ProviderFactory.is_enabled(db, name) and await ProviderFactory.has_key_configured(db, name):
+            if await ProviderFactory.is_enabled(
+                db, name
+            ) and await ProviderFactory.has_key_configured(db, name):
                 available.append(name)
         return available
 
@@ -79,10 +82,14 @@ class ProviderFactory:
         key_setting, enabled_key, provider_cls = entry
 
         if not await ProviderFactory.is_enabled(db, provider_name):
-            raise ProviderError(f"provider {provider_name!r} is disabled (set {enabled_key}=true to enable)")
+            raise ProviderError(
+                f"provider {provider_name!r} is disabled (set {enabled_key}=true to enable)"
+            )
 
         api_key = await SettingsService.get_value(db, key_setting)
         if not api_key:
-            raise ProviderError(f"provider {provider_name!r} has no API key configured ({key_setting})")
+            raise ProviderError(
+                f"provider {provider_name!r} has no API key configured ({key_setting})"
+            )
 
         return provider_cls(api_key=api_key)

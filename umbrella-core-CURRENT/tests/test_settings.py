@@ -5,6 +5,7 @@ GET  /api/v1/settings
 GET  /api/v1/settings/{key}
 PATCH /api/v1/settings/{key}
 """
+
 import pytest
 from datetime import datetime, timedelta, timezone
 
@@ -15,7 +16,9 @@ from models.permissions import Role
 from tests.conftest import ADMIN_HEADERS
 
 
-async def session_headers_for_role(db_session, role_name: str, suffix: str = "") -> dict:
+async def session_headers_for_role(
+    db_session, role_name: str, suffix: str = ""
+) -> dict:
     """Create a User with the given seeded role plus a valid Session
     token, returning the Bearer header a REST test can use. Local copy,
     matching the existing per-test-file convention (see
@@ -24,7 +27,9 @@ async def session_headers_for_role(db_session, role_name: str, suffix: str = "")
     token = f"token-{role_name}{suffix}"
     async with db_session() as db:
         role = await db.scalar(select(Role).where(Role.name == role_name))
-        user = User(discord_id=discord_id, username=f"user_{role_name}{suffix}", role_id=role.id)
+        user = User(
+            discord_id=discord_id, username=f"user_{role_name}{suffix}", role_id=role.id
+        )
         db.add(user)
         await db.flush()
         db.add(
@@ -51,7 +56,15 @@ async def test_list_settings_returns_list(client):
 async def test_list_settings_has_expected_keys(client):
     response = await client.get("/api/v1/settings", headers=ADMIN_HEADERS)
     first = response.json()[0]
-    for field in ("id", "key", "value", "category", "description", "sensitive", "requires_restart"):
+    for field in (
+        "id",
+        "key",
+        "value",
+        "category",
+        "description",
+        "sensitive",
+        "requires_restart",
+    ):
         assert field in first
 
 
@@ -65,7 +78,9 @@ async def test_get_setting_by_key(client):
 
 @pytest.mark.asyncio
 async def test_get_setting_not_found(client):
-    response = await client.get("/api/v1/settings/does.not.exist", headers=ADMIN_HEADERS)
+    response = await client.get(
+        "/api/v1/settings/does.not.exist", headers=ADMIN_HEADERS
+    )
     assert response.status_code == 404
 
 
@@ -177,17 +192,22 @@ async def test_empty_sensitive_setting_not_masked(client, db_session):
     configured. Only a genuinely non-empty sensitive value should mask.
     """
     from models import Setting
+
     async with db_session() as db:
-        db.add(Setting(
-            key="test.empty_sensitive_key",
-            value="",
-            category="test",
-            description="test",
-            sensitive=True,
-        ))
+        db.add(
+            Setting(
+                key="test.empty_sensitive_key",
+                value="",
+                category="test",
+                description="test",
+                sensitive=True,
+            )
+        )
         await db.commit()
 
     headers = await session_headers_for_role(db_session, "owner")
-    response = await client.get("/api/v1/settings/test.empty_sensitive_key", headers=headers)
+    response = await client.get(
+        "/api/v1/settings/test.empty_sensitive_key", headers=headers
+    )
     assert response.status_code == 200
     assert response.json()["value"] == ""

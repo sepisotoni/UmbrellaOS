@@ -34,6 +34,7 @@ which is also exactly what step 3 already rendered before this step
 existed. Step 6 does not change that default; it only adds the ability to
 override it per user.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass

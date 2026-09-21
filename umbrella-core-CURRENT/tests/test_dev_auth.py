@@ -8,6 +8,7 @@ seeded roles/permissions).
 The one test that matters most here is the gating test — everything else
 is normal behavioral coverage.
 """
+
 import pytest
 
 from config import get_settings
@@ -117,7 +118,9 @@ async def test_unknown_extra_permission_is_rejected(client, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_reinvoking_same_label_reuses_the_dev_user_not_duplicates(client, monkeypatch):
+async def test_reinvoking_same_label_reuses_the_dev_user_not_duplicates(
+    client, monkeypatch
+):
     """Re-invoking with the same label should update the existing
     synthetic dev user's role/extra_permissions in place, not accumulate
     a fresh dev user per call — see mint_test_session's docstring."""

@@ -11,6 +11,7 @@ idempotent re-confirm) against the same tables, and that the new
 verification.link.* permissions are gated as intended (helper: view only,
 moderator: both, admin/owner: both via ALL_PERMISSION_KEYS).
 """
+
 import itertools
 from datetime import datetime, timedelta, timezone
 
@@ -24,13 +25,21 @@ from tests.registry.conftest import session_headers_for_role
 _code_counter = itertools.count(100000)
 
 
-async def _create_code(db_session, *, player_uuid="aaaa-bbbb-cccc-dddd", player_username="TestPlayer", used=False, expired=False) -> str:
+async def _create_code(
+    db_session,
+    *,
+    player_uuid="aaaa-bbbb-cccc-dddd",
+    player_username="TestPlayer",
+    used=False,
+    expired=False,
+) -> str:
     async with db_session() as db:
         code = VerificationCode(
             player_uuid=player_uuid,
             player_username=player_username,
             code=f"{next(_code_counter)}",
-            expires_at=datetime.now(timezone.utc) + (timedelta(minutes=-1) if expired else timedelta(minutes=10)),
+            expires_at=datetime.now(timezone.utc)
+            + (timedelta(minutes=-1) if expired else timedelta(minutes=10)),
             used=used,
         )
         db.add(code)
@@ -115,13 +124,17 @@ async def test_confirm_with_unknown_code_returns_404(client):
 
 @pytest.mark.asyncio
 async def test_confirm_conflicting_discord_account_returns_409(client, db_session):
-    first_code = await _create_code(db_session, player_uuid="uuid-5", player_username="Ed")
+    first_code = await _create_code(
+        db_session, player_uuid="uuid-5", player_username="Ed"
+    )
     await client.post(
         "/api/v1/capabilities/verification.confirm/invoke",
         json={"discord_id": "666", "discord_username": "ed", "code": first_code},
         headers=ADMIN_HEADERS,
     )
-    second_code = await _create_code(db_session, player_uuid="uuid-6", player_username="Other")
+    second_code = await _create_code(
+        db_session, player_uuid="uuid-6", player_username="Other"
+    )
     response = await client.post(
         "/api/v1/capabilities/verification.confirm/invoke",
         json={"discord_id": "666", "discord_username": "ed", "code": second_code},
@@ -132,7 +145,11 @@ async def test_confirm_conflicting_discord_account_returns_409(client, db_sessio
 
 @pytest.mark.asyncio
 async def test_status_reflects_confirmed_link(client, db_session):
-    code = await _create_code(db_session, player_uuid="77777777-7777-7777-7777-777777777777", player_username="Fae")
+    code = await _create_code(
+        db_session,
+        player_uuid="77777777-7777-7777-7777-777777777777",
+        player_username="Fae",
+    )
     await client.post(
         "/api/v1/capabilities/verification.confirm/invoke",
         json={"discord_id": "777", "discord_username": "fae", "code": code},
@@ -207,7 +224,9 @@ async def test_confirm_allowed_for_moderator(client, db_session):
 
 
 @pytest.mark.asyncio
-async def test_link_by_discord_returns_uuid_and_username_with_player_row(client, db_session):
+async def test_link_by_discord_returns_uuid_and_username_with_player_row(
+    client, db_session
+):
     from models import Player
 
     code = await _create_code(db_session, player_uuid="uuid-10", player_username="Hana")

@@ -5,6 +5,7 @@ real FastAPI app, registry, and database. Same shape as
 test_capabilities_identity.py's MFA tests, which this domain deliberately
 mirrors (see capabilities/dashboard_layout.py's module docstring).
 """
+
 import pytest
 
 from tests.conftest import ADMIN_HEADERS
@@ -13,7 +14,9 @@ from tests.registry.conftest import session_headers_for_role
 
 @pytest.mark.asyncio
 async def test_get_layout_with_no_saved_row_returns_none_widgets(client, db_session):
-    headers = await session_headers_for_role(db_session, "owner", suffix="-layout-empty")
+    headers = await session_headers_for_role(
+        db_session, "owner", suffix="-layout-empty"
+    )
 
     response = await client.post(
         "/api/v1/capabilities/dashboard.layout.get/invoke",
@@ -28,7 +31,9 @@ async def test_get_layout_with_no_saved_row_returns_none_widgets(client, db_sess
 
 @pytest.mark.asyncio
 async def test_set_then_get_round_trips_the_saved_layout(client, db_session):
-    headers = await session_headers_for_role(db_session, "owner", suffix="-layout-roundtrip")
+    headers = await session_headers_for_role(
+        db_session, "owner", suffix="-layout-roundtrip"
+    )
 
     widgets = [
         {"widget_key": "pluginA:pluginA.stats", "visible": True},
@@ -53,7 +58,9 @@ async def test_set_then_get_round_trips_the_saved_layout(client, db_session):
 
 @pytest.mark.asyncio
 async def test_set_twice_replaces_rather_than_duplicates(client, db_session):
-    headers = await session_headers_for_role(db_session, "owner", suffix="-layout-replace")
+    headers = await session_headers_for_role(
+        db_session, "owner", suffix="-layout-replace"
+    )
 
     first = [{"widget_key": "pluginA:pluginA.stats", "visible": True}]
     second = [{"widget_key": "pluginA:pluginA.stats", "visible": False}]
@@ -78,11 +85,16 @@ async def test_set_twice_replaces_rather_than_duplicates(client, db_session):
 
 @pytest.mark.asyncio
 async def test_reset_deletes_saved_layout(client, db_session):
-    headers = await session_headers_for_role(db_session, "owner", suffix="-layout-reset")
+    headers = await session_headers_for_role(
+        db_session, "owner", suffix="-layout-reset"
+    )
 
     await client.post(
         "/api/v1/capabilities/dashboard.layout.set/invoke",
-        json={"page_id": "dashboard", "widgets": [{"widget_key": "a:b", "visible": True}]},
+        json={
+            "page_id": "dashboard",
+            "widgets": [{"widget_key": "a:b", "visible": True}],
+        },
         headers=headers,
     )
     reset_response = await client.post(
@@ -103,7 +115,9 @@ async def test_reset_deletes_saved_layout(client, db_session):
 
 @pytest.mark.asyncio
 async def test_reset_with_no_saved_layout_is_a_no_op_not_an_error(client, db_session):
-    headers = await session_headers_for_role(db_session, "owner", suffix="-layout-reset-noop")
+    headers = await session_headers_for_role(
+        db_session, "owner", suffix="-layout-reset-noop"
+    )
 
     response = await client.post(
         "/api/v1/capabilities/dashboard.layout.reset/invoke",
@@ -116,12 +130,19 @@ async def test_reset_with_no_saved_layout_is_a_no_op_not_an_error(client, db_ses
 
 @pytest.mark.asyncio
 async def test_layout_is_per_user_not_shared(client, db_session):
-    headers_a = await session_headers_for_role(db_session, "owner", suffix="-layout-user-a")
-    headers_b = await session_headers_for_role(db_session, "admin", suffix="-layout-user-b")
+    headers_a = await session_headers_for_role(
+        db_session, "owner", suffix="-layout-user-a"
+    )
+    headers_b = await session_headers_for_role(
+        db_session, "admin", suffix="-layout-user-b"
+    )
 
     await client.post(
         "/api/v1/capabilities/dashboard.layout.set/invoke",
-        json={"page_id": "dashboard", "widgets": [{"widget_key": "a:b", "visible": True}]},
+        json={
+            "page_id": "dashboard",
+            "widgets": [{"widget_key": "a:b", "visible": True}],
+        },
         headers=headers_a,
     )
     get_b = await client.post(
@@ -134,7 +155,9 @@ async def test_layout_is_per_user_not_shared(client, db_session):
 
 @pytest.mark.asyncio
 async def test_non_customizable_page_id_is_rejected(client, db_session):
-    headers = await session_headers_for_role(db_session, "owner", suffix="-layout-bad-page")
+    headers = await session_headers_for_role(
+        db_session, "owner", suffix="-layout-bad-page"
+    )
 
     response = await client.post(
         "/api/v1/capabilities/dashboard.layout.get/invoke",

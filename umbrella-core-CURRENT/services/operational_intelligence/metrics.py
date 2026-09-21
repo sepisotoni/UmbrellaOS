@@ -5,6 +5,7 @@ that doesn't otherwise exist - see models/server_metrics.py's module
 docstring), and the query helpers predictive crash prevention / NL ops
 queries read from.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -28,7 +29,11 @@ async def sample_all_servers(db: AsyncSession) -> int:
     heartbeats = list(result.scalars().all())
 
     for hb in heartbeats:
-        db.add(ServerMetricSnapshot(server_id=hb.server_id, tps=hb.tps, online_count=hb.online_count))
+        db.add(
+            ServerMetricSnapshot(
+                server_id=hb.server_id, tps=hb.tps, online_count=hb.online_count
+            )
+        )
 
     await db.flush()
     return len(heartbeats)
@@ -39,7 +44,10 @@ async def recent_snapshots(
 ) -> list[ServerMetricSnapshot]:
     stmt = (
         select(ServerMetricSnapshot)
-        .where(ServerMetricSnapshot.server_id == server_id, ServerMetricSnapshot.recorded_at >= since)
+        .where(
+            ServerMetricSnapshot.server_id == server_id,
+            ServerMetricSnapshot.recorded_at >= since,
+        )
         .order_by(ServerMetricSnapshot.recorded_at.asc())
         .limit(limit)
     )
@@ -52,7 +60,9 @@ async def purge_old_snapshots(db: AsyncSession) -> int:
     Safe to call periodically - an unbounded history for every server,
     sampled every server_metric_sample_interval_seconds, would otherwise
     grow forever."""
-    cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=get_settings().server_metric_retention_hours)
+    cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(
+        hours=get_settings().server_metric_retention_hours
+    )
     stmt = delete(ServerMetricSnapshot).where(ServerMetricSnapshot.recorded_at < cutoff)
     result = await db.execute(stmt)
     return result.rowcount

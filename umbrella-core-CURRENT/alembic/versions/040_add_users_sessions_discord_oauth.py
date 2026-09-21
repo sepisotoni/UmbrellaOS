@@ -37,6 +37,7 @@ Revision ID: 040_add_users_sessions_discord_oauth
 Revises:     039_fix_check_constraints
 Create Date: 2026-08-26
 """
+
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy import text
@@ -49,7 +50,8 @@ depends_on = None
 
 def upgrade() -> None:
     # users: created in 013 — IF NOT EXISTS in case any path bypassed 013
-    op.execute(text("""
+    op.execute(
+        text("""
         CREATE TABLE IF NOT EXISTS users (
             id VARCHAR(36) PRIMARY KEY,
             discord_id VARCHAR(32) NOT NULL UNIQUE,
@@ -64,10 +66,13 @@ def upgrade() -> None:
             created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
         )
-    """))
-    op.execute(text(
-        "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_discord_id ON users (discord_id)"
-    ))
+    """)
+    )
+    op.execute(
+        text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_discord_id ON users (discord_id)"
+        )
+    )
 
     op.create_table(
         "sessions",
@@ -106,10 +111,12 @@ def upgrade() -> None:
             server_default=sa.func.now(),
         ),
     )
-    op.execute(text(
-        "CREATE UNIQUE INDEX IF NOT EXISTS ix_discord_oauth_pending_state "
-        "ON discord_oauth_pending (state)"
-    ))
+    op.execute(
+        text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ix_discord_oauth_pending_state "
+            "ON discord_oauth_pending (state)"
+        )
+    )
 
     # No-op — see module docstring for the full history of this block.
     #

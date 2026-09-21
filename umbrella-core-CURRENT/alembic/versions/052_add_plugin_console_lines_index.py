@@ -33,6 +33,7 @@ Revision ID: 052_add_plugin_console_lines_index
 Revises:     051_add_mc_commands_server_id
 Create Date: 2026-08-31
 """
+
 revision = "052_add_plugin_console_lines_index"
 down_revision = "051_add_mc_commands_server_id"
 branch_labels = None

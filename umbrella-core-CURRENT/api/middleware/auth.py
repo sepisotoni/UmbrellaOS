@@ -13,6 +13,7 @@ Three auth tiers, in order of trust:
 
 All secret comparisons use hmac.compare_digest to prevent timing attacks.
 """
+
 import hashlib
 import hmac
 import time
@@ -87,10 +88,12 @@ async def require_admin_key(
         token = authorization.removeprefix("Bearer ").strip()
         if token:
             from api.middleware.session import get_current_user
+
             user = await get_current_user(token, db)
             if user.role_id:
                 from sqlalchemy import select as _select
                 from models.permissions import Role as _Role
+
                 role = await db.scalar(_select(_Role).where(_Role.id == user.role_id))
                 if role is not None and role.name in ("owner", "admin"):
                     return "session"

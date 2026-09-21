@@ -5,6 +5,7 @@ User: Staff account with Discord ID
 Staff: Role assignment and permissions
 Session: Token-based session tracking
 """
+
 import uuid
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import Boolean, DateTime, ForeignKey, JSON, String, func
@@ -15,13 +16,15 @@ from database.engine import Base
 
 class User(Base):
     """Staff user account linked to Discord."""
-    
+
     __tablename__ = "users"
 
     id: Mapped[str] = mapped_column(
         String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
-    discord_id: Mapped[str] = mapped_column(String(32), nullable=False, unique=True, index=True)
+    discord_id: Mapped[str] = mapped_column(
+        String(32), nullable=False, unique=True, index=True
+    )
     username: Mapped[str] = mapped_column(String(64), nullable=False)
     email: Mapped[str | None] = mapped_column(String(128), nullable=True)
     role_id: Mapped[str] = mapped_column(
@@ -44,7 +47,9 @@ class User(Base):
     # same honest, not-yet-encrypted status already documented for
     # Node.signing_secret in models/hosting.py.
     mfa_secret: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    mfa_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    mfa_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
 
     # Master bug report finding #5: no MFA recovery path existed at all — a
     # user who lost their authenticator app (phone reset, app deleted, etc.)
@@ -61,7 +66,10 @@ class User(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
     )
 
     sessions: Mapped[list["Session"]] = relationship(
@@ -74,14 +82,17 @@ class User(Base):
 
 class Session(Base):
     """User session token for web/API authentication."""
-    
+
     __tablename__ = "sessions"
 
     id: Mapped[str] = mapped_column(
         String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
     user_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+        String(36),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     token: Mapped[str] = mapped_column(
         String(256), nullable=False, unique=True, index=True
@@ -104,6 +115,7 @@ class Session(Base):
     def is_valid(self) -> bool:
         """Check if session is valid (not expired and not revoked)."""
         from datetime import timezone
+
         now = datetime.now(timezone.utc)
         expires = self.expires_at
         if expires.tzinfo is None:
@@ -113,7 +125,7 @@ class Session(Base):
 
 class DiscordOAuthPending(Base):
     """Pending Discord OAuth verification (temporary)."""
-    
+
     __tablename__ = "discord_oauth_pending"
 
     id: Mapped[str] = mapped_column(
@@ -122,8 +134,9 @@ class DiscordOAuthPending(Base):
     state: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
     code_verifier: Mapped[str | None] = mapped_column(String(256), nullable=True)
     expires_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False,
-        default=lambda: datetime.now(timezone.utc) + timedelta(minutes=10)
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc) + timedelta(minutes=10),
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

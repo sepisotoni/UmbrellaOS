@@ -4,6 +4,7 @@ Revision ID: 024_marketplace
 Revises: 023_webhook_subscriptions
 Create Date: 2026-08-09
 """
+
 import sqlalchemy as sa
 from alembic import op
 
@@ -61,7 +62,9 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.func.now(),
         ),
-        sa.UniqueConstraint("plugin_id", "version", name="uq_plugin_versions_plugin_id_version"),
+        sa.UniqueConstraint(
+            "plugin_id", "version", name="uq_plugin_versions_plugin_id_version"
+        ),
     )
     op.create_index("ix_plugin_versions_plugin_id", "plugin_versions", ["plugin_id"])
 
@@ -77,7 +80,12 @@ def upgrade() -> None:
         sa.Column("manifest_json", sa.Text(), nullable=False),
         sa.Column("zip_path", sa.String(length=512), nullable=False),
         sa.Column("sha256_hash", sa.String(length=64), nullable=False),
-        sa.Column("registered_capability_names", sa.JSON(), nullable=False, server_default="[]"),
+        sa.Column(
+            "registered_capability_names",
+            sa.JSON(),
+            nullable=False,
+            server_default="[]",
+        ),
         sa.Column(
             "installed_by",
             sa.String(length=36),

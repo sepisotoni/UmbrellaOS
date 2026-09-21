@@ -6,6 +6,7 @@ display real command data instead of hardcoded stubs.
 
 Always id=1; upserted on every bot startup.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone

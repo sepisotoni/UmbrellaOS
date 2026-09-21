@@ -40,6 +40,7 @@ Revision ID: 048_widen_alembic_version
 Revises: 047_add_anticheat_violation_player_fk
 Create Date: 2026-08-30
 """
+
 from alembic import op
 
 revision = "048_widen_alembic_version"

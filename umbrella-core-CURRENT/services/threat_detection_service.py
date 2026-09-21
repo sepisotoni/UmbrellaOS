@@ -50,6 +50,7 @@ actively rejected and the caller's own transaction may be about to roll
 back — recording the security signal must not be contingent on that.
 Same reasoning as log_aggregation_service's flush loop.
 """
+
 from __future__ import annotations
 
 import json
@@ -130,8 +131,12 @@ async def record(
             security_events_total.inc(event_type=event_type)
 
             threshold = _threshold_for(event_type)
-            count_stmt = select(func.count()).select_from(SecurityEvent).where(
-                SecurityEvent.event_type == event_type,
+            count_stmt = (
+                select(func.count())
+                .select_from(SecurityEvent)
+                .where(
+                    SecurityEvent.event_type == event_type,
+                )
             )
             if source_ip is not None:
                 count_stmt = count_stmt.where(SecurityEvent.source_ip == source_ip)
@@ -140,7 +145,9 @@ async def record(
             # since this project also targets Postgres in production.
             from datetime import datetime, timedelta, timezone
 
-            cutoff = datetime.now(timezone.utc) - timedelta(seconds=settings.threat_detection_window_seconds)
+            cutoff = datetime.now(timezone.utc) - timedelta(
+                seconds=settings.threat_detection_window_seconds
+            )
             count_stmt = count_stmt.where(SecurityEvent.created_at >= cutoff)
             recent_count = (await db.execute(count_stmt)).scalar_one()
 
@@ -165,5 +172,8 @@ async def record(
             await db.commit()
             return alerted
     except Exception:
-        logger.exception("threat detection: failed to record/alert for event_type=%s (non-fatal)", event_type)
+        logger.exception(
+            "threat detection: failed to record/alert for event_type=%s (non-fatal)",
+            event_type,
+        )
         return False

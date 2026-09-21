@@ -1,6 +1,7 @@
 """
 tests/test_ai_config.py — Tests for AI configuration endpoints.
 """
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
@@ -26,7 +27,9 @@ async def test_post_ai_config_request_creates_pending_action(
     import services.ai_config_service as ai_config_module
     from services.ai.orchestrator import OrchestrationResult
 
-    async def fake_run(*, db, task_type, task_prompt, requested_by, require_dual_review=False):
+    async def fake_run(
+        *, db, task_type, task_prompt, requested_by, require_dual_review=False
+    ):
         assert task_type == "copilot"
         return OrchestrationResult(
             text='{"test": "value"}',
@@ -46,7 +49,7 @@ async def test_post_ai_config_request_creates_pending_action(
         "/api/v1/ai/config/request",
         json={
             "action_type": "plugin_config",
-            "natural_language": "Set bridge mode to full"
+            "natural_language": "Set bridge mode to full",
         },
         headers={"X-Admin-Key": "test-secret-key"},
     )
@@ -59,9 +62,7 @@ async def test_post_ai_config_request_creates_pending_action(
 
 
 @pytest.mark.asyncio
-async def test_post_ai_config_request_requires_api_key(
-    client: AsyncClient, db_session
-):
+async def test_post_ai_config_request_requires_api_key(client: AsyncClient, db_session):
     """POST /ai/config/request with no provider configured returns 503.
 
     Rewritten 2026-08-30 (AI subsystem audit, Bug 9): the old assertion was
@@ -76,10 +77,7 @@ async def test_post_ai_config_request_requires_api_key(
     """
     response = await client.post(
         "/api/v1/ai/config/request",
-        json={
-            "action_type": "plugin_config",
-            "natural_language": "Test"
-        },
+        json={"action_type": "plugin_config", "natural_language": "Test"},
         headers={"X-Admin-Key": "test-secret-key"},
     )
 
@@ -88,9 +86,7 @@ async def test_post_ai_config_request_requires_api_key(
 
 
 @pytest.mark.asyncio
-async def test_get_ai_config_pending_returns_list(
-    client: AsyncClient, db_session
-):
+async def test_get_ai_config_pending_returns_list(client: AsyncClient, db_session):
     """GET /ai/config/pending returns pending actions."""
     # Create a pending action
     async with db_session() as db:
@@ -104,12 +100,12 @@ async def test_get_ai_config_pending_returns_list(
         )
         db.add(action)
         await db.commit()
-    
+
     response = await client.get(
         "/api/v1/ai/config/pending",
         headers={"X-Admin-Key": "test-secret-key"},
     )
-    
+
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 1
@@ -117,9 +113,7 @@ async def test_get_ai_config_pending_returns_list(
 
 
 @pytest.mark.asyncio
-async def test_post_ai_config_id_approve_calls_apply(
-    client: AsyncClient, db_session
-):
+async def test_post_ai_config_id_approve_calls_apply(client: AsyncClient, db_session):
     """POST /ai/config/{id}/approve calls apply function."""
     # Create a pending action
     async with db_session() as db:
@@ -134,24 +128,22 @@ async def test_post_ai_config_id_approve_calls_apply(
         db.add(action)
         await db.commit()
         await db.refresh(action)
-        
+
         action_id = action.id
-    
+
     # Just test that the endpoint is called and returns a response
     # The actual apply logic may fail without proper settings, but that's ok for this test
     response = await client.post(
         f"/api/v1/ai/config/{action_id}/approve",
         headers={"X-Admin-Key": "test-secret-key"},
     )
-    
+
     # It should return a response (either 200 or 400 depending on apply result)
     assert response.status_code in [200, 400]
 
 
 @pytest.mark.asyncio
-async def test_post_ai_config_id_reject_updates_status(
-    client: AsyncClient, db_session
-):
+async def test_post_ai_config_id_reject_updates_status(client: AsyncClient, db_session):
     """POST /ai/config/{id}/reject updates status to rejected."""
     # Create a pending action
     async with db_session() as db:
@@ -166,14 +158,14 @@ async def test_post_ai_config_id_reject_updates_status(
         db.add(action)
         await db.commit()
         await db.refresh(action)
-        
+
         action_id = action.id
-    
+
     response = await client.post(
         f"/api/v1/ai/config/{action_id}/reject",
         headers={"X-Admin-Key": "test-secret-key"},
     )
-    
+
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "rejected"
@@ -181,15 +173,13 @@ async def test_post_ai_config_id_reject_updates_status(
 
 
 @pytest.mark.asyncio
-async def test_post_ai_config_id_approve_nonexistent_returns_404(
-    client: AsyncClient
-):
+async def test_post_ai_config_id_approve_nonexistent_returns_404(client: AsyncClient):
     """POST /ai/config/{id}/approve returns 404 for nonexistent action."""
     response = await client.post(
         "/api/v1/ai/config/999/approve",
         headers={"X-Admin-Key": "test-secret-key"},
     )
-    
+
     assert response.status_code == 400  # ValueError is raised as 400
 
 
@@ -198,9 +188,9 @@ async def test_ai_config_unauthenticated_returns_401(client: AsyncClient):
     """AI config endpoints require authentication."""
     response = await client.get("/api/v1/ai/config/pending")
     assert response.status_code == 401
-    
+
     response = await client.post(
         "/api/v1/ai/config/request",
-        json={"action_type": "plugin_config", "natural_language": "Test"}
+        json={"action_type": "plugin_config", "natural_language": "Test"},
     )
     assert response.status_code == 401

@@ -1,6 +1,7 @@
 """
 services/discord_service.py — Discord OAuth2 API client.
 """
+
 import httpx
 
 from config import get_settings
@@ -43,7 +44,9 @@ async def exchange_code(
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
         if response.status_code != 200:
-            print(f"[Discord OAuth DEBUG] status={response.status_code} body={response.text}")
+            print(
+                f"[Discord OAuth DEBUG] status={response.status_code} body={response.text}"
+            )
             raise DiscordOAuthError(
                 "Failed to exchange authorization code with Discord",
                 response.status_code,

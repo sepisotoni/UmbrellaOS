@@ -5,6 +5,7 @@ natural-language operational queries (Phase 5's novel capabilities #1 and
 real scope notes (no MSPT, TPS+online-count only, window resolution is the
 caller's job).
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -19,7 +20,9 @@ from services.operational_intelligence.postmortem import draft_postmortem
 
 
 class AssessCrashRiskParams(BaseModel):
-    server_id: str = Field(description="The PluginHeartbeat-reported server identity to assess")
+    server_id: str = Field(
+        description="The PluginHeartbeat-reported server identity to assess"
+    )
 
     def audit_target(self) -> str:
         return self.server_id
@@ -44,7 +47,9 @@ class CrashRiskResult(BaseModel):
     reversible=True,
     audited=False,
 )
-async def crash_risk_assess(ctx: CallContext, params: AssessCrashRiskParams) -> CrashRiskResult:
+async def crash_risk_assess(
+    ctx: CallContext, params: AssessCrashRiskParams
+) -> CrashRiskResult:
     result = await assess_crash_risk(ctx.db, params.server_id)
     return CrashRiskResult(
         server_id=result.server_id,
@@ -79,7 +84,9 @@ class OperationalQueryResult(BaseModel):
     destructive=False,
     reversible=True,
 )
-async def query(ctx: CallContext, params: OperationalQueryParams) -> OperationalQueryResult:
+async def query(
+    ctx: CallContext, params: OperationalQueryParams
+) -> OperationalQueryResult:
     result = await answer_operational_query(
         ctx.db,
         server_id=params.server_id,
@@ -116,6 +123,8 @@ class DraftPostmortemResult(BaseModel):
     destructive=False,
     reversible=True,
 )
-async def postmortem_draft(ctx: CallContext, params: DraftPostmortemParams) -> DraftPostmortemResult:
+async def postmortem_draft(
+    ctx: CallContext, params: DraftPostmortemParams
+) -> DraftPostmortemResult:
     result = await draft_postmortem(ctx.db, params.server_id, requested_by=ctx.actor_id)
     return DraftPostmortemResult(**result)

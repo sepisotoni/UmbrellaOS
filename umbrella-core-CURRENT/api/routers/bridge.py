@@ -19,6 +19,7 @@ parsing on read was exact-string \"true\" only — \"True\" or \"1\" silently
 treated as false. Now uses SettingsService.update() for existing rows (which
 audits and syncs .env) and preserves the \"true\"/\"false\" normalisation on write.
 """
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
@@ -43,7 +44,9 @@ class BridgeMessageRequest(BaseModel):
     discord_id: str | None = None
     message: str
     channel_id: str | None = None
-    scope: str | None = None  # "minecraft", "discord", or None (both) for DASHBOARD broadcasts
+    scope: str | None = (
+        None  # "minecraft", "discord", or None (both) for DASHBOARD broadcasts
+    )
 
 
 class BridgeMessageResponse(BaseModel):
@@ -115,11 +118,15 @@ async def receive_bridge_message(
         )
 
     if body.source == "minecraft" and not body.player_uuid:
-        raise HTTPException(status_code=400, detail="player_uuid required for minecraft messages")
+        raise HTTPException(
+            status_code=400, detail="player_uuid required for minecraft messages"
+        )
     if body.player_uuid == "server":
         body.player_uuid = None
     if body.source == "discord" and not body.discord_id:
-        raise HTTPException(status_code=400, detail="discord_id required for discord messages")
+        raise HTTPException(
+            status_code=400, detail="discord_id required for discord messages"
+        )
 
     mode_setting = await db.scalar(select(Setting).where(Setting.key == "bridge.mode"))
     bridge_mode = mode_setting.value if mode_setting else "off"
@@ -166,7 +173,10 @@ async def receive_bridge_message(
             targets = ["discord"]
             if body.player_uuid:
                 player_lang = await get_player_language(body.player_uuid, db)
-                if player_lang.auto_translate_outgoing and player_lang.language_code != "en":
+                if (
+                    player_lang.auto_translate_outgoing
+                    and player_lang.language_code != "en"
+                ):
                     translated_message, _ = await translate_message(
                         text=body.message,
                         target_language=player_lang.language_code,
@@ -218,7 +228,9 @@ async def receive_bridge_message(
 
 @router.get("/messages", response_model=list[ChatMessageSchema])
 async def list_bridge_messages(
-    source: str | None = Query(None, description="Filter by source: minecraft, discord, or DASHBOARD"),
+    source: str | None = Query(
+        None, description="Filter by source: minecraft, discord, or DASHBOARD"
+    ),
     limit: int = Query(100, ge=1, le=500, description="Number of messages to return"),
     db: AsyncSession = Depends(get_db),
     _auth: str = Depends(require_permission("players.view")),
@@ -281,14 +293,20 @@ async def update_bridge_settings(
     on exact-string comparison that made \"True\" behave as false.
     """
     if body.mode is not None and body.mode not in ("off", "partial", "full"):
-        raise HTTPException(status_code=400, detail="Invalid mode. Must be 'off', 'partial', or 'full'")
+        raise HTTPException(
+            status_code=400, detail="Invalid mode. Must be 'off', 'partial', or 'full'"
+        )
 
     actor = "dashboard"
 
     async def _update_setting(key: str, value: str, description: str) -> None:
         """Route through SettingsService so audit log, sensitivity, and env sync apply."""
         await SettingsService.update(
-            db=db, key=key, new_value=value, actor=actor, create_if_missing=True,
+            db=db,
+            key=key,
+            new_value=value,
+            actor=actor,
+            create_if_missing=True,
         )
 
     if body.mode is not None:
@@ -312,6 +330,8 @@ async def update_bridge_settings(
             "Show avatars in bridge",
         )
     if body.discord_channel_id is not None:
-        await _update_setting("bridge.discord_channel_id", body.discord_channel_id, "Discord channel ID")
+        await _update_setting(
+            "bridge.discord_channel_id", body.discord_channel_id, "Discord channel ID"
+        )
 
     return await get_bridge_settings(db, _auth)

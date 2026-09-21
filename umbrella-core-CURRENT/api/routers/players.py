@@ -7,6 +7,7 @@ GET  /api/v1/players/{uuid}/full-profile — aggregated full profile (Task 1 / P
 
 All responses require admin key or session authentication.
 """
+
 import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,6 +25,7 @@ from api.dependencies.permissions import require_permission
 # router compiles even if Backend A has not been merged yet.
 try:
     from models.anticheat_violation import AnticheatViolation  # noqa: F401
+
     _HAS_ANTICHEAT = True
 except ImportError:
     _HAS_ANTICHEAT = False
@@ -34,6 +36,7 @@ router = APIRouter(prefix="/api/v1/players", tags=["players"])
 # ---------------------------------------------------------------------------
 # Schemas
 # ---------------------------------------------------------------------------
+
 
 class IPAddressSchema(BaseModel):
     id: str
@@ -69,6 +72,7 @@ class PlayerDetailSchema(PlayerSchema):
 
 
 # --- Full-profile sub-schemas ---
+
 
 class VerificationSchema(BaseModel):
     discord_id: str
@@ -138,7 +142,10 @@ class FullProfileResponse(BaseModel):
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _punishment_to_item(p: Punishment, appeal_map: dict[str, str]) -> PunishmentHistoryItem:
+
+def _punishment_to_item(
+    p: Punishment, appeal_map: dict[str, str]
+) -> PunishmentHistoryItem:
     return PunishmentHistoryItem(
         id=p.id,
         type=p.type,
@@ -188,7 +195,9 @@ async def _query_discord(db: AsyncSession, player_uuid: str) -> DiscordAccount |
     )
 
 
-async def _query_alt_group_members(db: AsyncSession, player_uuid: str) -> list[AltGroupMember]:
+async def _query_alt_group_members(
+    db: AsyncSession, player_uuid: str
+) -> list[AltGroupMember]:
     result = await db.execute(
         select(AltGroupMember).where(AltGroupMember.player_uuid == player_uuid)
     )
@@ -257,9 +266,12 @@ async def _query_anticheat(
 # Endpoints
 # ---------------------------------------------------------------------------
 
+
 @router.get("", response_model=list[PlayerSchema])
 async def list_players(
-    username: str | None = Query(None, description="Optional username substring to search"),
+    username: str | None = Query(
+        None, description="Optional username substring to search"
+    ),
     skip: int = Query(0, ge=0, description="Number of players to skip"),
     limit: int = Query(10, ge=1, le=100, description="Number of players to return"),
     db: AsyncSession = Depends(get_db),
@@ -306,7 +318,13 @@ async def get_player_full_profile(
         raise HTTPException(status_code=404, detail=f"Player '{uuid}' not found")
 
     # Parallel queries
-    punishments, appeals, discord_acct, alt_members, anticheat_hist = await asyncio.gather(
+    (
+        punishments,
+        appeals,
+        discord_acct,
+        alt_members,
+        anticheat_hist,
+    ) = await asyncio.gather(
         _query_punishments(db, uuid),
         _query_appeals(db, uuid),
         _query_discord(db, uuid),
@@ -354,7 +372,9 @@ async def get_player_full_profile(
             other_players_result = await db.execute(
                 select(Player).where(Player.uuid.in_(other_uuids))
             )
-            other_players_by_uuid = {p.uuid: p for p in other_players_result.scalars().all()}
+            other_players_by_uuid = {
+                p.uuid: p for p in other_players_result.scalars().all()
+            }
         else:
             other_players_by_uuid = {}
 
@@ -366,7 +386,9 @@ async def get_player_full_profile(
                     uuid=member.player_uuid,
                     username=other_player.username if other_player else None,
                     confidence=group.notes if group else None,
-                    cluster_type="confirmed" if (group and group.confirmed) else "suspected",
+                    cluster_type="confirmed"
+                    if (group and group.confirmed)
+                    else "suspected",
                 )
             )
 
@@ -401,6 +423,7 @@ class PlayerSnapshotRequest(BaseModel):
 
 
 from api.middleware.auth import require_plugin_key
+
 
 @router.post("/{uuid}/snapshot", status_code=200)
 async def player_snapshot(
@@ -459,13 +482,15 @@ async def player_snapshot(
         )
         ip_row = ip_result.scalar_one_or_none()
         if ip_row is None:
-            db.add(IPAddress(
-                id=str(uuid_lib.uuid4()),
-                player_uuid=uuid,
-                ip_address=body.ip,
-                first_seen=now,
-                last_seen=now,
-            ))
+            db.add(
+                IPAddress(
+                    id=str(uuid_lib.uuid4()),
+                    player_uuid=uuid,
+                    ip_address=body.ip,
+                    first_seen=now,
+                    last_seen=now,
+                )
+            )
         else:
             ip_row.last_seen = now
 

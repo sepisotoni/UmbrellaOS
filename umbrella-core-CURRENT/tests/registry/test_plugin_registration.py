@@ -8,6 +8,7 @@ Uses a fake in-memory SandboxExecutor — the real subprocess-based sandbox
 is a separate module/doc; this file only needs to prove the registration
 contract's wiring is correct, per SandboxExecutor's Protocol boundary.
 """
+
 import pytest
 
 from api.middleware.errors import PermissionDeniedException, ValidationException
@@ -33,7 +34,14 @@ class FakeSandbox:
         self.raises: dict[str, Exception] = {}
 
     async def run(self, *, plugin_id, entrypoint, params, actor_id):
-        self.calls.append({"plugin_id": plugin_id, "entrypoint": entrypoint, "params": params, "actor_id": actor_id})
+        self.calls.append(
+            {
+                "plugin_id": plugin_id,
+                "entrypoint": entrypoint,
+                "params": params,
+                "actor_id": actor_id,
+            }
+        )
         if entrypoint in self.raises:
             raise self.raises[entrypoint]
         return self.results.get(entrypoint, {})
@@ -67,8 +75,12 @@ async def _admin_context(db_session) -> CallContext:
         # for tests only exercising the registration/call wiring itself,
         # matching CallContext.from_web_auth's own admin-key branch.
         return CallContext(
-            actor_id="test-actor", actor_type="system", source="system",
-            permissions=set(), is_superuser=True, db=db,
+            actor_id="test-actor",
+            actor_type="system",
+            source="system",
+            permissions=set(),
+            is_superuser=True,
+            db=db,
         )
 
 
@@ -78,7 +90,9 @@ async def test_registers_capability_with_namespaced_name(db_session):
     sandbox = FakeSandbox()
     manifest = parse_manifest(_queue_tools_manifest())
     async with db_session() as db:
-        names = await register_plugin_capabilities(manifest, sandbox, db, registry=registry)
+        names = await register_plugin_capabilities(
+            manifest, sandbox, db, registry=registry
+        )
     assert names == ["plugin.queue-tools.queue_status"]
     assert registry.get("plugin.queue-tools.queue_status") is not None
 
@@ -93,7 +107,9 @@ async def test_call_reaches_sandbox_and_validates_result(db_session):
         await register_plugin_capabilities(manifest, sandbox, db, registry=registry)
         ctx = await _admin_context(db_session)
         ctx.db = db
-        result = await registry.call("plugin.queue-tools.queue_status", ctx, {"target_user_id": "u1"})
+        result = await registry.call(
+            "plugin.queue-tools.queue_status", ctx, {"target_user_id": "u1"}
+        )
 
     assert result.queue_depth == 7
     assert sandbox.calls == [
@@ -131,7 +147,9 @@ async def test_sandbox_never_receives_db_or_permissions(db_session):
 async def test_malformed_sandbox_result_raises(db_session):
     registry = CapabilityRegistry()
     sandbox = FakeSandbox()
-    sandbox.results["handlers:queue_status"] = {"queue_depth": "not-an-int-and-not-coercible"}
+    sandbox.results["handlers:queue_status"] = {
+        "queue_depth": "not-an-int-and-not-coercible"
+    }
     manifest = parse_manifest(_queue_tools_manifest())
     async with db_session() as db:
         await register_plugin_capabilities(manifest, sandbox, db, registry=registry)
@@ -159,14 +177,18 @@ async def test_sandbox_exception_propagates_as_call_failure(db_session):
 async def test_unknown_required_permission_rejects_registration(db_session):
     registry = CapabilityRegistry()
     sandbox = FakeSandbox()
-    manifest = parse_manifest(_queue_tools_manifest(
-        capabilities=[{
-            "local_name": "queue_status",
-            "summary": "x",
-            "entrypoint": "handlers:queue_status",
-            "required_permission": "totally_made_up_permission",
-        }]
-    ))
+    manifest = parse_manifest(
+        _queue_tools_manifest(
+            capabilities=[
+                {
+                    "local_name": "queue_status",
+                    "summary": "x",
+                    "entrypoint": "handlers:queue_status",
+                    "required_permission": "totally_made_up_permission",
+                }
+            ]
+        )
+    )
     async with db_session() as db:
         with pytest.raises(PluginRegistrationError):
             await register_plugin_capabilities(manifest, sandbox, db, registry=registry)
@@ -187,8 +209,12 @@ async def test_registration_enforces_permission_check(db_session):
     async with db_session() as db:
         await register_plugin_capabilities(manifest, sandbox, db, registry=registry)
         ctx = CallContext(
-            actor_id="low-priv", actor_type="staff", source="rest",
-            permissions=set(), is_superuser=False, db=db,
+            actor_id="low-priv",
+            actor_type="staff",
+            source="rest",
+            permissions=set(),
+            is_superuser=False,
+            db=db,
         )
         with pytest.raises(PermissionDeniedException):
             await registry.call("plugin.queue-tools.queue_status", ctx, {})
@@ -206,7 +232,11 @@ async def test_registration_enforces_params_validation(db_session):
         ctx.db = db
         with pytest.raises(ValidationException):
             # target_user_id is declared type "string"; an int should fail validation.
-            await registry.call("plugin.queue-tools.queue_status", ctx, {"target_user_id": {"nested": "dict"}})
+            await registry.call(
+                "plugin.queue-tools.queue_status",
+                ctx,
+                {"target_user_id": {"nested": "dict"}},
+            )
     assert sandbox.calls == []
 
 
@@ -228,8 +258,12 @@ async def test_two_plugins_cannot_collide_even_with_same_local_name(db_session):
     manifest_a = parse_manifest(_queue_tools_manifest(plugin_id="plugin-a"))
     manifest_b = parse_manifest(_queue_tools_manifest(plugin_id="plugin-b"))
     async with db_session() as db:
-        names_a = await register_plugin_capabilities(manifest_a, sandbox, db, registry=registry)
-        names_b = await register_plugin_capabilities(manifest_b, sandbox, db, registry=registry)
+        names_a = await register_plugin_capabilities(
+            manifest_a, sandbox, db, registry=registry
+        )
+        names_b = await register_plugin_capabilities(
+            manifest_b, sandbox, db, registry=registry
+        )
     assert names_a == ["plugin.plugin-a.queue_status"]
     assert names_b == ["plugin.plugin-b.queue_status"]
 
@@ -241,20 +275,28 @@ async def test_no_required_permission_means_any_authenticated_actor(db_session):
     registry = CapabilityRegistry()
     sandbox = FakeSandbox()
     sandbox.results["handlers:queue_status"] = {"queue_depth": 3}
-    manifest = parse_manifest(_queue_tools_manifest(
-        capabilities=[{
-            "local_name": "queue_status",
-            "summary": "x",
-            "entrypoint": "handlers:queue_status",
-            "result": {"queue_depth": {"type": "integer"}},
-            "required_permission": None,
-        }]
-    ))
+    manifest = parse_manifest(
+        _queue_tools_manifest(
+            capabilities=[
+                {
+                    "local_name": "queue_status",
+                    "summary": "x",
+                    "entrypoint": "handlers:queue_status",
+                    "result": {"queue_depth": {"type": "integer"}},
+                    "required_permission": None,
+                }
+            ]
+        )
+    )
     async with db_session() as db:
         await register_plugin_capabilities(manifest, sandbox, db, registry=registry)
         ctx = CallContext(
-            actor_id="any-user", actor_type="staff", source="rest",
-            permissions=set(), is_superuser=False, db=db,
+            actor_id="any-user",
+            actor_type="staff",
+            source="rest",
+            permissions=set(),
+            is_superuser=False,
+            db=db,
         )
         result = await registry.call("plugin.queue-tools.queue_status", ctx, {})
     assert result.queue_depth == 3

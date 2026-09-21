@@ -2,14 +2,19 @@
 config/settings.py — Central configuration loaded from .env
 All settings live here. Never import os.environ directly elsewhere.
 """
+
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 
 
 class Settings(BaseSettings):
     # Database
-    database_url: str = "postgresql+asyncpg://umbrella:changeme@localhost:5432/umbrella_core"
-    database_url_sync: str = "postgresql+psycopg2://umbrella:changeme@localhost:5432/umbrella_core"
+    database_url: str = (
+        "postgresql+asyncpg://umbrella:changeme@localhost:5432/umbrella_core"
+    )
+    database_url_sync: str = (
+        "postgresql+psycopg2://umbrella:changeme@localhost:5432/umbrella_core"
+    )
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"
@@ -43,18 +48,26 @@ class Settings(BaseSettings):
     # what makes providers dashboard-toggleable at runtime without a
     # restart, which a pydantic Settings field (env-var-sourced, fixed at
     # process start) cannot do.
-    ai_model_health_cooldown_seconds: int = 300  # half-open retry window after a model is marked unhealthy
+    ai_model_health_cooldown_seconds: int = (
+        300  # half-open retry window after a model is marked unhealthy
+    )
     ai_model_unhealthy_after_failures: int = 3
     dual_review_enabled: bool = True
-    confidence_escalation_threshold: float = 0.6  # below this, an AI decision is flagged for staff review
+    confidence_escalation_threshold: float = (
+        0.6  # below this, an AI decision is flagged for staff review
+    )
 
     # Moderation intelligence heuristic detectors (services/moderation_intelligence/heuristics.py)
     # - defaults are Moo-assistant's original tuned values, ported as-is rather than re-derived.
     spam_message_threshold: int = 6  # N+ messages within spam_window_seconds -> flagged
     spam_window_seconds: int = 10
-    raid_join_threshold: int = 8  # N+ joins within raid_window_seconds -> flagged as a possible raid
+    raid_join_threshold: int = (
+        8  # N+ joins within raid_window_seconds -> flagged as a possible raid
+    )
     raid_window_seconds: int = 30
-    repeat_offender_warning_count: int = 3  # N+ warnings within the lookback window -> auto-report
+    repeat_offender_warning_count: int = (
+        3  # N+ warnings within the lookback window -> auto-report
+    )
     repeat_offender_lookback_hours: int = 24
     # Consumed once Phase 6 wires up real auto-apply execution (see
     # services/moderation_intelligence/service.py's module docstring) -
@@ -69,7 +82,9 @@ class Settings(BaseSettings):
     # silently indexing channels that happen to share a name with Moo's
     # original server.
     knowledge_channel_names: str = ""
-    short_term_memory_ttl_seconds: int = 1800  # 30 min - ported default from Moo's config
+    short_term_memory_ttl_seconds: int = (
+        1800  # 30 min - ported default from Moo's config
+    )
     server_metric_sample_interval_seconds: int = 60
     server_metric_retention_hours: int = 168  # 7 days
     # AUDIT-2026-08-30: anticheat_violations previously had no retention
@@ -96,13 +111,21 @@ class Settings(BaseSettings):
     # Predictive crash prevention thresholds (services/operational_intelligence/crash_prevention.py)
     crash_prevention_lookback_minutes: int = 15
     crash_prevention_min_samples: int = 3
-    crash_prevention_critical_tps: float = 10.0  # below this, flag critical regardless of trend
-    crash_prevention_watch_tps: float = 18.0  # below this AND trending down -> flag watch
-    crash_prevention_trend_drop_threshold: float = 2.0  # min TPS drop (2nd half avg vs 1st half avg) to count as "trending down"
+    crash_prevention_critical_tps: float = (
+        10.0  # below this, flag critical regardless of trend
+    )
+    crash_prevention_watch_tps: float = (
+        18.0  # below this AND trending down -> flag watch
+    )
+    crash_prevention_trend_drop_threshold: float = (
+        2.0  # min TPS drop (2nd half avg vs 1st half avg) to count as "trending down"
+    )
     # Unified player risk score weights (services/player_risk/risk_score.py) -
     # deliberately simple, explainable point-based weights, not a trained
     # model - same philosophy as crash prevention's heuristic.
-    risk_score_anticheat_points_cap: int = 100  # unreviewed, non-false-positive SuspicionEvent.points, capped here
+    risk_score_anticheat_points_cap: int = (
+        100  # unreviewed, non-false-positive SuspicionEvent.points, capped here
+    )
     risk_score_confirmed_alt_penalty: int = 30
     risk_score_per_moderation_action: int = 5
     risk_score_moderation_action_cap: int = 30

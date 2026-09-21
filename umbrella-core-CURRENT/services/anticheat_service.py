@@ -1,4 +1,5 @@
 """Anticheat flag handling — Grim integration via Umbrella plugin."""
+
 import asyncio
 import os
 from datetime import datetime, timedelta, timezone
@@ -27,7 +28,6 @@ async def _int_setting(db: AsyncSession, key: str, default: int) -> int:
         return default
 
 
-
 async def _ai_confidence_review(
     check_name: str,
     verbose: str,
@@ -39,6 +39,7 @@ async def _ai_confidence_review(
     Returns (confidence 0.0-1.0, short_reason).
     Falls back to VL-math if the API call fails."""
     import httpx, os, json
+
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if not api_key:
         return min(0.95, 0.5 + vl * 0.05), "vl_math_fallback"
@@ -49,15 +50,22 @@ async def _ai_confidence_review(
         f"Check: {check_name}\nVerbose: {verbose}\nVL: {vl}\n"
         f"Prior punishments on record: {prior_punishments}\n\n"
         f"Rate the likelihood this is a REAL cheat (not a false positive) from 0.0 to 1.0.\n"
-        f"Reply ONLY with a JSON object: {{\"confidence\": <float>, \"reason\": \"<one sentence>\"}}"
+        f'Reply ONLY with a JSON object: {{"confidence": <float>, "reason": "<one sentence>"}}'
     )
     try:
         async with httpx.AsyncClient(timeout=8.0) as client:
             resp = await client.post(
                 "https://api.anthropic.com/v1/messages",
-                headers={"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
-                json={"model": "claude-haiku-4-5-20251001", "max_tokens": 80,
-                      "messages": [{"role": "user", "content": prompt}]},
+                headers={
+                    "x-api-key": api_key,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json={
+                    "model": "claude-haiku-4-5-20251001",
+                    "max_tokens": 80,
+                    "messages": [{"role": "user", "content": prompt}],
+                },
             )
             data = resp.json()
             text = data["content"][0]["text"].strip()
@@ -104,7 +112,7 @@ async def handle_cheat_flag(
 
     warn_threshold = await _int_setting(db, "anticheat.warn_vl_threshold", 10)
     kick_threshold = await _int_setting(db, "anticheat.kick_vl_threshold", 30)
-    tempban_hours  = await _int_setting(db, "anticheat.tempban_hours", 24)
+    tempban_hours = await _int_setting(db, "anticheat.tempban_hours", 24)
     reason = f"[Grim] {check_name}: {verbose}"[:500]
 
     # Determine action tier
@@ -175,7 +183,9 @@ async def handle_cheat_flag(
         player_uuid=player_uuid,
         expires_at=datetime.now(timezone.utc) + timedelta(days=7),
         ai_summary=f"Grim flagged {username or player_uuid} for {check_name} (VL {vl}) — action: {action}. AI: {ai_reason}",
-        ai_recommendation="warn" if action == "warn" else ("kick" if action == "kick" else "confirm_tempban"),
+        ai_recommendation="warn"
+        if action == "warn"
+        else ("kick" if action == "kick" else "confirm_tempban"),
         ai_confidence=ai_confidence,
         evidence=verbose[:2000],
     )
@@ -184,7 +194,7 @@ async def handle_cheat_flag(
 
     return {
         "processed": True,
-        "action": action,          # "warn" | "kick" | "tempban"
+        "action": action,  # "warn" | "kick" | "tempban"
         "punishment_id": punishment_id,
         "tempban": action == "tempban",
         "kick": action in ("kick", "tempban"),
@@ -196,7 +206,7 @@ async def handle_cheat_flag(
         "replay_id": replay.id,
         "ai_task_id": task.id,
         "violation_id": violation.id,
-        "notify_staff": True,      # always notify — plugin decides channel/method
+        "notify_staff": True,  # always notify — plugin decides channel/method
     }
 
 

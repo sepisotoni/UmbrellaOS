@@ -14,6 +14,7 @@ of its own — that's the marketplace install flow's job, not the sandbox's").
 Nothing here executes plugin code — that's still entirely sandbox.py's
 job; this module only ever reads/writes bytes and parses JSON.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -178,7 +179,9 @@ def read_manifest_dict(zip_bytes: bytes) -> dict:
     try:
         return json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise PluginPackageError(f"{MANIFEST_FILENAME} is not valid JSON: {exc}") from exc
+        raise PluginPackageError(
+            f"{MANIFEST_FILENAME} is not valid JSON: {exc}"
+        ) from exc
 
 
 def extract_sources(zip_bytes: bytes) -> dict[str, str]:
@@ -237,7 +240,9 @@ def load_verified_zip_bytes(relative_path: str, expected_sha256: str) -> bytes:
     try:
         data = zip_file.read_bytes()
     except FileNotFoundError as exc:
-        raise PluginPackageError(f"stored plugin zip not found at {relative_path!r}") from exc
+        raise PluginPackageError(
+            f"stored plugin zip not found at {relative_path!r}"
+        ) from exc
 
     actual = compute_sha256(data)
     if actual != expected_sha256:

@@ -3,13 +3,18 @@ list/versions/install/update/uninstall/discovery, exercised directly
 against the service layer (capabilities/marketplace.py's own tests cover
 the capability-invocation/permission wiring on top of this).
 """
+
 import io
 import json
 import zipfile
 
 import pytest
 
-from api.middleware.errors import ConflictException, ResourceNotFoundException, ValidationException
+from api.middleware.errors import (
+    ConflictException,
+    ResourceNotFoundException,
+    ValidationException,
+)
 from config import get_settings
 from registry.registry import CapabilityNotFoundError, CapabilityRegistry
 from services.plugins.marketplace_service import MarketplaceService
@@ -18,7 +23,9 @@ from services.plugins.sandbox import ProcessSandbox
 
 @pytest.fixture(autouse=True)
 def _plugin_storage_root(tmp_path, monkeypatch):
-    monkeypatch.setattr(get_settings(), "plugin_storage_root", str(tmp_path / "plugins"))
+    monkeypatch.setattr(
+        get_settings(), "plugin_storage_root", str(tmp_path / "plugins")
+    )
     yield
 
 
@@ -41,17 +48,28 @@ def _manifest(**overrides) -> dict:
             }
         ],
         "discord_commands": [
-            {"name": "queue", "description": "Show queue status", "capability": "queue_status"}
+            {
+                "name": "queue",
+                "description": "Show queue status",
+                "capability": "queue_status",
+            }
         ],
         "dashboard_ui_slots": [
-            {"slot": "sidebar.tools", "label": "Queue Status", "capability": "queue_status"}
+            {
+                "slot": "sidebar.tools",
+                "label": "Queue Status",
+                "capability": "queue_status",
+            }
         ],
     }
     raw.update(overrides)
     return raw
 
 
-def _zip_for(manifest: dict, module_body: str = "def queue_status(params):\n    return {'queue_depth': 3}\n") -> bytes:
+def _zip_for(
+    manifest: dict,
+    module_body: str = "def queue_status(params):\n    return {'queue_depth': 3}\n",
+) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
         zf.writestr("plugin.json", json.dumps(manifest))
@@ -79,7 +97,9 @@ async def test_publish_version_creates_listing_and_version(db_session):
 @pytest.mark.asyncio
 async def test_publish_second_version_updates_listing_latest_version(db_session):
     async with db_session() as db:
-        await MarketplaceService.publish_version(db, zip_bytes=_zip_for(_manifest()), published_by=None)
+        await MarketplaceService.publish_version(
+            db, zip_bytes=_zip_for(_manifest()), published_by=None
+        )
         await db.commit()
     async with db_session() as db:
         await MarketplaceService.publish_version(
@@ -98,11 +118,15 @@ async def test_publish_second_version_updates_listing_latest_version(db_session)
 @pytest.mark.asyncio
 async def test_publish_duplicate_version_raises_conflict(db_session):
     async with db_session() as db:
-        await MarketplaceService.publish_version(db, zip_bytes=_zip_for(_manifest()), published_by=None)
+        await MarketplaceService.publish_version(
+            db, zip_bytes=_zip_for(_manifest()), published_by=None
+        )
         await db.commit()
     async with db_session() as db:
         with pytest.raises(ConflictException):
-            await MarketplaceService.publish_version(db, zip_bytes=_zip_for(_manifest()), published_by=None)
+            await MarketplaceService.publish_version(
+                db, zip_bytes=_zip_for(_manifest()), published_by=None
+            )
 
 
 @pytest.mark.asyncio
@@ -110,7 +134,9 @@ async def test_publish_invalid_manifest_raises_validation_error(db_session):
     bad_zip = _zip_for(_manifest(schema_version=99))
     async with db_session() as db:
         with pytest.raises(ValidationException):
-            await MarketplaceService.publish_version(db, zip_bytes=bad_zip, published_by=None)
+            await MarketplaceService.publish_version(
+                db, zip_bytes=bad_zip, published_by=None
+            )
 
 
 @pytest.mark.asyncio
@@ -125,18 +151,26 @@ async def test_install_registers_capability_and_creates_install_row(db_session):
     registry = CapabilityRegistry()
     sandbox = ProcessSandbox(sources={})
     async with db_session() as db:
-        await MarketplaceService.publish_version(db, zip_bytes=_zip_for(_manifest()), published_by=None)
+        await MarketplaceService.publish_version(
+            db, zip_bytes=_zip_for(_manifest()), published_by=None
+        )
         await db.commit()
 
     async with db_session() as db:
         install_row = await MarketplaceService.install(
-            db, plugin_id="queue-tools", version="1.0.0", installed_by=None,
-            sandbox=sandbox, registry=registry,
+            db,
+            plugin_id="queue-tools",
+            version="1.0.0",
+            installed_by=None,
+            sandbox=sandbox,
+            registry=registry,
         )
         await db.commit()
 
     assert install_row.installed_version == "1.0.0"
-    assert install_row.registered_capability_names == ["plugin.queue-tools.queue_status"]
+    assert install_row.registered_capability_names == [
+        "plugin.queue-tools.queue_status"
+    ]
     assert registry.get("plugin.queue-tools.queue_status") is not None
     assert "handlers" in sandbox._sources["queue-tools"]
 
@@ -146,14 +180,20 @@ async def test_install_unknown_version_raises_not_found(db_session):
     registry = CapabilityRegistry()
     sandbox = ProcessSandbox(sources={})
     async with db_session() as db:
-        await MarketplaceService.publish_version(db, zip_bytes=_zip_for(_manifest()), published_by=None)
+        await MarketplaceService.publish_version(
+            db, zip_bytes=_zip_for(_manifest()), published_by=None
+        )
         await db.commit()
 
     async with db_session() as db:
         with pytest.raises(ResourceNotFoundException):
             await MarketplaceService.install(
-                db, plugin_id="queue-tools", version="9.9.9", installed_by=None,
-                sandbox=sandbox, registry=registry,
+                db,
+                plugin_id="queue-tools",
+                version="9.9.9",
+                installed_by=None,
+                sandbox=sandbox,
+                registry=registry,
             )
 
 
@@ -162,34 +202,52 @@ async def test_install_same_version_twice_raises_conflict(db_session):
     registry = CapabilityRegistry()
     sandbox = ProcessSandbox(sources={})
     async with db_session() as db:
-        await MarketplaceService.publish_version(db, zip_bytes=_zip_for(_manifest()), published_by=None)
+        await MarketplaceService.publish_version(
+            db, zip_bytes=_zip_for(_manifest()), published_by=None
+        )
         await db.commit()
     async with db_session() as db:
         await MarketplaceService.install(
-            db, plugin_id="queue-tools", version="1.0.0", installed_by=None,
-            sandbox=sandbox, registry=registry,
+            db,
+            plugin_id="queue-tools",
+            version="1.0.0",
+            installed_by=None,
+            sandbox=sandbox,
+            registry=registry,
         )
         await db.commit()
 
     async with db_session() as db:
         with pytest.raises(ConflictException):
             await MarketplaceService.install(
-                db, plugin_id="queue-tools", version="1.0.0", installed_by=None,
-                sandbox=sandbox, registry=registry,
+                db,
+                plugin_id="queue-tools",
+                version="1.0.0",
+                installed_by=None,
+                sandbox=sandbox,
+                registry=registry,
             )
 
 
 @pytest.mark.asyncio
-async def test_install_new_version_updates_in_place_and_unregisters_old_capability(db_session):
+async def test_install_new_version_updates_in_place_and_unregisters_old_capability(
+    db_session,
+):
     registry = CapabilityRegistry()
     sandbox = ProcessSandbox(sources={})
     async with db_session() as db:
-        await MarketplaceService.publish_version(db, zip_bytes=_zip_for(_manifest()), published_by=None)
+        await MarketplaceService.publish_version(
+            db, zip_bytes=_zip_for(_manifest()), published_by=None
+        )
         await db.commit()
     async with db_session() as db:
         await MarketplaceService.install(
-            db, plugin_id="queue-tools", version="1.0.0", installed_by=None,
-            sandbox=sandbox, registry=registry,
+            db,
+            plugin_id="queue-tools",
+            version="1.0.0",
+            installed_by=None,
+            sandbox=sandbox,
+            registry=registry,
         )
         await db.commit()
 
@@ -198,18 +256,26 @@ async def test_install_new_version_updates_in_place_and_unregisters_old_capabili
     v2_manifest["discord_commands"][0]["capability"] = "queue_status_v2"
     v2_manifest["dashboard_ui_slots"][0]["capability"] = "queue_status_v2"
     async with db_session() as db:
-        await MarketplaceService.publish_version(db, zip_bytes=_zip_for(v2_manifest), published_by=None)
+        await MarketplaceService.publish_version(
+            db, zip_bytes=_zip_for(v2_manifest), published_by=None
+        )
         await db.commit()
 
     async with db_session() as db:
         install_row = await MarketplaceService.install(
-            db, plugin_id="queue-tools", version="1.1.0", installed_by=None,
-            sandbox=sandbox, registry=registry,
+            db,
+            plugin_id="queue-tools",
+            version="1.1.0",
+            installed_by=None,
+            sandbox=sandbox,
+            registry=registry,
         )
         await db.commit()
 
     assert install_row.installed_version == "1.1.0"
-    assert install_row.registered_capability_names == ["plugin.queue-tools.queue_status_v2"]
+    assert install_row.registered_capability_names == [
+        "plugin.queue-tools.queue_status_v2"
+    ]
     with pytest.raises(CapabilityNotFoundError):
         registry.get("plugin.queue-tools.queue_status")
     assert registry.get("plugin.queue-tools.queue_status_v2") is not None
@@ -220,21 +286,29 @@ async def test_install_new_version_updates_in_place_and_unregisters_old_capabili
 
 
 @pytest.mark.asyncio
-async def test_install_bad_permission_ref_raises_validation_and_leaves_nothing_registered(db_session):
+async def test_install_bad_permission_ref_raises_validation_and_leaves_nothing_registered(
+    db_session,
+):
     bad_manifest = _manifest()
     bad_manifest["capabilities"][0]["required_permission"] = "not.a.real.permission"
     registry = CapabilityRegistry()
     sandbox = ProcessSandbox(sources={})
 
     async with db_session() as db:
-        await MarketplaceService.publish_version(db, zip_bytes=_zip_for(bad_manifest), published_by=None)
+        await MarketplaceService.publish_version(
+            db, zip_bytes=_zip_for(bad_manifest), published_by=None
+        )
         await db.commit()
 
     async with db_session() as db:
         with pytest.raises(ValidationException):
             await MarketplaceService.install(
-                db, plugin_id="queue-tools", version="1.0.0", installed_by=None,
-                sandbox=sandbox, registry=registry,
+                db,
+                plugin_id="queue-tools",
+                version="1.0.0",
+                installed_by=None,
+                sandbox=sandbox,
+                registry=registry,
             )
 
     with pytest.raises(CapabilityNotFoundError):
@@ -246,17 +320,25 @@ async def test_uninstall_removes_capability_and_install_row(db_session):
     registry = CapabilityRegistry()
     sandbox = ProcessSandbox(sources={})
     async with db_session() as db:
-        await MarketplaceService.publish_version(db, zip_bytes=_zip_for(_manifest()), published_by=None)
+        await MarketplaceService.publish_version(
+            db, zip_bytes=_zip_for(_manifest()), published_by=None
+        )
         await db.commit()
     async with db_session() as db:
         await MarketplaceService.install(
-            db, plugin_id="queue-tools", version="1.0.0", installed_by=None,
-            sandbox=sandbox, registry=registry,
+            db,
+            plugin_id="queue-tools",
+            version="1.0.0",
+            installed_by=None,
+            sandbox=sandbox,
+            registry=registry,
         )
         await db.commit()
 
     async with db_session() as db:
-        await MarketplaceService.uninstall(db, plugin_id="queue-tools", sandbox=sandbox, registry=registry)
+        await MarketplaceService.uninstall(
+            db, plugin_id="queue-tools", sandbox=sandbox, registry=registry
+        )
         await db.commit()
 
     with pytest.raises(CapabilityNotFoundError):
@@ -274,20 +356,30 @@ async def test_uninstall_not_installed_raises_not_found(db_session):
     sandbox = ProcessSandbox(sources={})
     async with db_session() as db:
         with pytest.raises(ResourceNotFoundException):
-            await MarketplaceService.uninstall(db, plugin_id="never-installed", sandbox=sandbox, registry=registry)
+            await MarketplaceService.uninstall(
+                db, plugin_id="never-installed", sandbox=sandbox, registry=registry
+            )
 
 
 @pytest.mark.asyncio
-async def test_discord_commands_lists_declared_commands_for_installed_plugins(db_session):
+async def test_discord_commands_lists_declared_commands_for_installed_plugins(
+    db_session,
+):
     registry = CapabilityRegistry()
     sandbox = ProcessSandbox(sources={})
     async with db_session() as db:
-        await MarketplaceService.publish_version(db, zip_bytes=_zip_for(_manifest()), published_by=None)
+        await MarketplaceService.publish_version(
+            db, zip_bytes=_zip_for(_manifest()), published_by=None
+        )
         await db.commit()
     async with db_session() as db:
         await MarketplaceService.install(
-            db, plugin_id="queue-tools", version="1.0.0", installed_by=None,
-            sandbox=sandbox, registry=registry,
+            db,
+            plugin_id="queue-tools",
+            version="1.0.0",
+            installed_by=None,
+            sandbox=sandbox,
+            registry=registry,
         )
         await db.commit()
 
@@ -312,12 +404,18 @@ async def test_dashboard_slots_lists_and_filters_by_slot(db_session):
     registry = CapabilityRegistry()
     sandbox = ProcessSandbox(sources={})
     async with db_session() as db:
-        await MarketplaceService.publish_version(db, zip_bytes=_zip_for(_manifest()), published_by=None)
+        await MarketplaceService.publish_version(
+            db, zip_bytes=_zip_for(_manifest()), published_by=None
+        )
         await db.commit()
     async with db_session() as db:
         await MarketplaceService.install(
-            db, plugin_id="queue-tools", version="1.0.0", installed_by=None,
-            sandbox=sandbox, registry=registry,
+            db,
+            plugin_id="queue-tools",
+            version="1.0.0",
+            installed_by=None,
+            sandbox=sandbox,
+            registry=registry,
         )
         await db.commit()
 
@@ -349,12 +447,18 @@ async def test_dashboard_slots_carries_render_as_when_declared(db_session):
     manifest["dashboard_ui_slots"][0]["render_as"] = "stat_pair"
 
     async with db_session() as db:
-        await MarketplaceService.publish_version(db, zip_bytes=_zip_for(manifest), published_by=None)
+        await MarketplaceService.publish_version(
+            db, zip_bytes=_zip_for(manifest), published_by=None
+        )
         await db.commit()
     async with db_session() as db:
         await MarketplaceService.install(
-            db, plugin_id="queue-tools", version="1.0.0", installed_by=None,
-            sandbox=sandbox, registry=registry,
+            db,
+            plugin_id="queue-tools",
+            version="1.0.0",
+            installed_by=None,
+            sandbox=sandbox,
+            registry=registry,
         )
         await db.commit()
 
@@ -376,7 +480,11 @@ def _manifest_with_page(**page_overrides) -> dict:
         "nav_label": "Queue Tools",
         "nav_icon": "list",
         "widgets": [
-            {"label": "Queue depth", "capability": "queue_status", "render_as": "stat_pair"}
+            {
+                "label": "Queue depth",
+                "capability": "queue_status",
+                "render_as": "stat_pair",
+            }
         ],
     }
     raw["page"].update(page_overrides)
@@ -387,12 +495,18 @@ async def _install_manifest(db_session, manifest: dict):
     registry = CapabilityRegistry()
     sandbox = ProcessSandbox(sources={})
     async with db_session() as db:
-        await MarketplaceService.publish_version(db, zip_bytes=_zip_for(manifest), published_by=None)
+        await MarketplaceService.publish_version(
+            db, zip_bytes=_zip_for(manifest), published_by=None
+        )
         await db.commit()
     async with db_session() as db:
         await MarketplaceService.install(
-            db, plugin_id=manifest["plugin_id"], version=manifest["version"], installed_by=None,
-            sandbox=sandbox, registry=registry,
+            db,
+            plugin_id=manifest["plugin_id"],
+            version=manifest["version"],
+            installed_by=None,
+            sandbox=sandbox,
+            registry=registry,
         )
         await db.commit()
 
@@ -419,7 +533,9 @@ async def test_pages_lists_nav_metadata_for_declaring_plugin(db_session):
 
 
 @pytest.mark.asyncio
-async def test_page_layout_resolves_widgets_with_fully_qualified_capability_names(db_session):
+async def test_page_layout_resolves_widgets_with_fully_qualified_capability_names(
+    db_session,
+):
     await _install_manifest(db_session, _manifest_with_page())
     async with db_session() as db:
         layout = await MarketplaceService.page_layout(db, "queue-tools")
@@ -470,13 +586,19 @@ async def test_install_with_config_fields_registers_both_capabilities(db_session
     sandbox = ProcessSandbox(sources={})
     manifest = _manifest_with_config()
     async with db_session() as db:
-        await MarketplaceService.publish_version(db, zip_bytes=_zip_for(manifest), published_by=None)
+        await MarketplaceService.publish_version(
+            db, zip_bytes=_zip_for(manifest), published_by=None
+        )
         await db.commit()
 
     async with db_session() as db:
         install_row = await MarketplaceService.install(
-            db, plugin_id="queue-tools", version="1.0.0", installed_by=None,
-            sandbox=sandbox, registry=registry,
+            db,
+            plugin_id="queue-tools",
+            version="1.0.0",
+            installed_by=None,
+            sandbox=sandbox,
+            registry=registry,
         )
         await db.commit()
 
@@ -501,40 +623,58 @@ async def test_install_with_config_fields_creates_permission_row(db_session):
     sandbox = ProcessSandbox(sources={})
     manifest = _manifest_with_config()
     async with db_session() as db:
-        await MarketplaceService.publish_version(db, zip_bytes=_zip_for(manifest), published_by=None)
+        await MarketplaceService.publish_version(
+            db, zip_bytes=_zip_for(manifest), published_by=None
+        )
         await db.commit()
     async with db_session() as db:
         await MarketplaceService.install(
-            db, plugin_id="queue-tools", version="1.0.0", installed_by=None,
-            sandbox=sandbox, registry=registry,
+            db,
+            plugin_id="queue-tools",
+            version="1.0.0",
+            installed_by=None,
+            sandbox=sandbox,
+            registry=registry,
         )
         await db.commit()
 
     async with db_session() as db:
         perm = await db.scalar(
-            select(Permission).where(Permission.permission_key == "plugin.queue-tools.config.write")
+            select(Permission).where(
+                Permission.permission_key == "plugin.queue-tools.config.write"
+            )
         )
         assert perm is not None
 
 
 @pytest.mark.asyncio
-async def test_install_with_no_config_fields_registers_no_config_capabilities(db_session):
+async def test_install_with_no_config_fields_registers_no_config_capabilities(
+    db_session,
+):
     """The common case — most plugins don't declare config_fields — must
     stay a true no-op, not register empty/placeholder capabilities."""
     registry = CapabilityRegistry()
     sandbox = ProcessSandbox(sources={})
     async with db_session() as db:
-        await MarketplaceService.publish_version(db, zip_bytes=_zip_for(_manifest()), published_by=None)
+        await MarketplaceService.publish_version(
+            db, zip_bytes=_zip_for(_manifest()), published_by=None
+        )
         await db.commit()
     async with db_session() as db:
         install_row = await MarketplaceService.install(
-            db, plugin_id="queue-tools", version="1.0.0", installed_by=None,
-            sandbox=sandbox, registry=registry,
+            db,
+            plugin_id="queue-tools",
+            version="1.0.0",
+            installed_by=None,
+            sandbox=sandbox,
+            registry=registry,
         )
         await db.commit()
 
-    assert not any(n.endswith(".config.set") or n.endswith(".config.get")
-                    for n in install_row.registered_capability_names)
+    assert not any(
+        n.endswith(".config.set") or n.endswith(".config.get")
+        for n in install_row.registered_capability_names
+    )
 
 
 @pytest.mark.asyncio
@@ -548,19 +688,29 @@ async def test_config_set_writes_kv_and_get_reads_it_back(db_session):
     sandbox = ProcessSandbox(sources={})
     manifest = _manifest_with_config()
     async with db_session() as db:
-        await MarketplaceService.publish_version(db, zip_bytes=_zip_for(manifest), published_by=None)
+        await MarketplaceService.publish_version(
+            db, zip_bytes=_zip_for(manifest), published_by=None
+        )
         await db.commit()
     async with db_session() as db:
         await MarketplaceService.install(
-            db, plugin_id="queue-tools", version="1.0.0", installed_by=None,
-            sandbox=sandbox, registry=registry,
+            db,
+            plugin_id="queue-tools",
+            version="1.0.0",
+            installed_by=None,
+            sandbox=sandbox,
+            registry=registry,
         )
         await db.commit()
 
     async with db_session() as db:
         ctx = CallContext(
-            actor_id="admin-key", actor_type="system", source="system",
-            permissions=set(), is_superuser=True, db=db,
+            actor_id="admin-key",
+            actor_type="system",
+            source="system",
+            permissions=set(),
+            is_superuser=True,
+            db=db,
         )
         set_spec = registry.get("plugin.queue-tools.config.set")
         await set_spec.handler(ctx, set_spec.params_model(key="auto_purge", value=True))
@@ -568,8 +718,12 @@ async def test_config_set_writes_kv_and_get_reads_it_back(db_session):
 
     async with db_session() as db:
         ctx = CallContext(
-            actor_id="admin-key", actor_type="system", source="system",
-            permissions=set(), is_superuser=True, db=db,
+            actor_id="admin-key",
+            actor_type="system",
+            source="system",
+            permissions=set(),
+            is_superuser=True,
+            db=db,
         )
         get_spec = registry.get("plugin.queue-tools.config.get")
         result = await get_spec.handler(ctx, get_spec.params_model())
@@ -588,19 +742,29 @@ async def test_config_get_falls_back_to_default_when_never_set(db_session):
     sandbox = ProcessSandbox(sources={})
     manifest = _manifest_with_config(default_value=True)
     async with db_session() as db:
-        await MarketplaceService.publish_version(db, zip_bytes=_zip_for(manifest), published_by=None)
+        await MarketplaceService.publish_version(
+            db, zip_bytes=_zip_for(manifest), published_by=None
+        )
         await db.commit()
     async with db_session() as db:
         await MarketplaceService.install(
-            db, plugin_id="queue-tools", version="1.0.0", installed_by=None,
-            sandbox=sandbox, registry=registry,
+            db,
+            plugin_id="queue-tools",
+            version="1.0.0",
+            installed_by=None,
+            sandbox=sandbox,
+            registry=registry,
         )
         await db.commit()
 
     async with db_session() as db:
         ctx = CallContext(
-            actor_id="admin-key", actor_type="system", source="system",
-            permissions=set(), is_superuser=True, db=db,
+            actor_id="admin-key",
+            actor_type="system",
+            source="system",
+            permissions=set(),
+            is_superuser=True,
+            db=db,
         )
         get_spec = registry.get("plugin.queue-tools.config.get")
         result = await get_spec.handler(ctx, get_spec.params_model())
@@ -616,23 +780,35 @@ async def test_config_set_rejects_undeclared_key(db_session):
     sandbox = ProcessSandbox(sources={})
     manifest = _manifest_with_config()
     async with db_session() as db:
-        await MarketplaceService.publish_version(db, zip_bytes=_zip_for(manifest), published_by=None)
+        await MarketplaceService.publish_version(
+            db, zip_bytes=_zip_for(manifest), published_by=None
+        )
         await db.commit()
     async with db_session() as db:
         await MarketplaceService.install(
-            db, plugin_id="queue-tools", version="1.0.0", installed_by=None,
-            sandbox=sandbox, registry=registry,
+            db,
+            plugin_id="queue-tools",
+            version="1.0.0",
+            installed_by=None,
+            sandbox=sandbox,
+            registry=registry,
         )
         await db.commit()
 
     async with db_session() as db:
         ctx = CallContext(
-            actor_id="admin-key", actor_type="system", source="system",
-            permissions=set(), is_superuser=True, db=db,
+            actor_id="admin-key",
+            actor_type="system",
+            source="system",
+            permissions=set(),
+            is_superuser=True,
+            db=db,
         )
         set_spec = registry.get("plugin.queue-tools.config.set")
         with pytest.raises(ValueError):
-            await set_spec.handler(ctx, set_spec.params_model(key="not_a_real_key", value=True))
+            await set_spec.handler(
+                ctx, set_spec.params_model(key="not_a_real_key", value=True)
+            )
 
 
 @pytest.mark.asyncio
@@ -650,25 +826,39 @@ async def test_reinstall_same_plugin_does_not_duplicate_permission_row(db_sessio
     manifest_v2["version"] = "1.1.0"
 
     async with db_session() as db:
-        await MarketplaceService.publish_version(db, zip_bytes=_zip_for(manifest_v1), published_by=None)
-        await MarketplaceService.publish_version(db, zip_bytes=_zip_for(manifest_v2), published_by=None)
-        await db.commit()
-    async with db_session() as db:
-        await MarketplaceService.install(
-            db, plugin_id="queue-tools", version="1.0.0", installed_by=None,
-            sandbox=sandbox, registry=registry,
+        await MarketplaceService.publish_version(
+            db, zip_bytes=_zip_for(manifest_v1), published_by=None
+        )
+        await MarketplaceService.publish_version(
+            db, zip_bytes=_zip_for(manifest_v2), published_by=None
         )
         await db.commit()
     async with db_session() as db:
         await MarketplaceService.install(
-            db, plugin_id="queue-tools", version="1.1.0", installed_by=None,
-            sandbox=sandbox, registry=registry,
+            db,
+            plugin_id="queue-tools",
+            version="1.0.0",
+            installed_by=None,
+            sandbox=sandbox,
+            registry=registry,
+        )
+        await db.commit()
+    async with db_session() as db:
+        await MarketplaceService.install(
+            db,
+            plugin_id="queue-tools",
+            version="1.1.0",
+            installed_by=None,
+            sandbox=sandbox,
+            registry=registry,
         )
         await db.commit()
 
     async with db_session() as db:
         result = await db.execute(
-            select(Permission).where(Permission.permission_key == "plugin.queue-tools.config.write")
+            select(Permission).where(
+                Permission.permission_key == "plugin.queue-tools.config.write"
+            )
         )
         rows = result.scalars().all()
         assert len(rows) == 1
@@ -680,17 +870,25 @@ async def test_uninstall_removes_config_capabilities(db_session):
     sandbox = ProcessSandbox(sources={})
     manifest = _manifest_with_config()
     async with db_session() as db:
-        await MarketplaceService.publish_version(db, zip_bytes=_zip_for(manifest), published_by=None)
+        await MarketplaceService.publish_version(
+            db, zip_bytes=_zip_for(manifest), published_by=None
+        )
         await db.commit()
     async with db_session() as db:
         await MarketplaceService.install(
-            db, plugin_id="queue-tools", version="1.0.0", installed_by=None,
-            sandbox=sandbox, registry=registry,
+            db,
+            plugin_id="queue-tools",
+            version="1.0.0",
+            installed_by=None,
+            sandbox=sandbox,
+            registry=registry,
         )
         await db.commit()
 
     async with db_session() as db:
-        await MarketplaceService.uninstall(db, plugin_id="queue-tools", sandbox=sandbox, registry=registry)
+        await MarketplaceService.uninstall(
+            db, plugin_id="queue-tools", sandbox=sandbox, registry=registry
+        )
         await db.commit()
 
     with pytest.raises(CapabilityNotFoundError):
@@ -700,7 +898,9 @@ async def test_uninstall_removes_config_capabilities(db_session):
 
 
 @pytest.mark.asyncio
-async def test_configurable_plugins_empty_when_no_installed_plugin_declares_config(db_session):
+async def test_configurable_plugins_empty_when_no_installed_plugin_declares_config(
+    db_session,
+):
     """Mirrors test_pages_empty_when_no_installed_plugin_declares_one —
     the common case (no config_fields) must contribute nothing."""
     await _install_manifest(db_session, _manifest())

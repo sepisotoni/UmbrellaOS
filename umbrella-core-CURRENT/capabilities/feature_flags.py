@@ -11,6 +11,7 @@ All real work is delegated to services/feature_flag_service.py. This module
 only translates between the capability-registry calling convention
 (CallContext + Pydantic params) and the service layer.
 """
+
 from __future__ import annotations
 
 from pydantic import BaseModel
@@ -115,7 +116,9 @@ class ListFlagsParams(BaseModel):
     destructive=False,
     audited=False,
 )
-async def list_flags(ctx: CallContext, params: ListFlagsParams) -> list[FeatureFlagResult]:
+async def list_flags(
+    ctx: CallContext, params: ListFlagsParams
+) -> list[FeatureFlagResult]:
     flags = await svc.list_flags(ctx.db)
     return [FeatureFlagResult.from_model(f) for f in flags]
 

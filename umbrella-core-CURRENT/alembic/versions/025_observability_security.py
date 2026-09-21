@@ -4,6 +4,7 @@ Revision ID: 025_observability_security
 Revises: 024_marketplace
 Create Date: 2026-08-09
 """
+
 import sqlalchemy as sa
 from alembic import op
 
@@ -27,7 +28,12 @@ def upgrade() -> None:
         sa.Column("level", sa.String(length=16), nullable=False),
         sa.Column("logger_name", sa.String(length=256), nullable=False),
         sa.Column("message", sa.Text(), nullable=False),
-        sa.Column("source", sa.String(length=32), nullable=False, server_default="umbrella-core"),
+        sa.Column(
+            "source",
+            sa.String(length=32),
+            nullable=False,
+            server_default="umbrella-core",
+        ),
         sa.Column("trace_id", sa.String(length=32), nullable=True),
     )
     op.create_index("ix_log_entries_created_at", "log_entries", ["created_at"])

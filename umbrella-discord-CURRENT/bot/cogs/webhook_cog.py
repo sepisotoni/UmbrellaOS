@@ -17,6 +17,7 @@ The cog does NOT crash the bot if the server fails to start or if
 registration with core fails — it logs and continues. The fallback poll
 loop in NotificationsCog ensures escalations eventually surface.
 """
+
 from __future__ import annotations
 
 import logging
@@ -43,7 +44,9 @@ class WebhookCog(commands.Cog):
 
         # Register handlers before starting so no event races during startup.
         self._server.register_handler("staff.escalation.new", self._on_escalation)
-        self._server.register_handler("bridge.dashboard_message", self._on_bridge_message)
+        self._server.register_handler(
+            "bridge.dashboard_message", self._on_bridge_message
+        )
 
         try:
             await self._server.start()

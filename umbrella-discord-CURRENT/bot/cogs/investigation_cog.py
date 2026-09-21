@@ -6,6 +6,7 @@ capability call and formats the result back into a Discord response.
 All the actual logic lives in umbrella-core's investigation.run
 capability (services/investigation/service.py on that side).
 """
+
 from __future__ import annotations
 
 import logging
@@ -24,11 +25,19 @@ class InvestigationCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    @app_commands.command(name="investigate", description="Run every investigation tool against a question and optional user.")
+    @app_commands.command(
+        name="investigate",
+        description="Run every investigation tool against a question and optional user.",
+    )
     @require_owner_role()
-    @app_commands.describe(question="What you want to investigate", user="The user this concerns, if any")
+    @app_commands.describe(
+        question="What you want to investigate", user="The user this concerns, if any"
+    )
     async def investigate(
-        self, interaction: discord.Interaction, question: str, user: discord.Member | None = None
+        self,
+        interaction: discord.Interaction,
+        question: str,
+        user: discord.Member | None = None,
     ) -> None:
         await interaction.response.defer(thinking=True)
 
@@ -62,9 +71,13 @@ class InvestigationCog(commands.Cog):
         """Separated from the command body for the same reason as
         _format_error - pure function, testable without discord.py's
         interaction/gateway machinery."""
-        embed = discord.Embed(title="Investigation", description=question, color=discord.Color.blurple())
+        embed = discord.Embed(
+            title="Investigation", description=question, color=discord.Color.blurple()
+        )
         for finding in result.get("findings", []):
-            embed.add_field(name=finding["tool_key"], value=finding["finding_text"], inline=False)
+            embed.add_field(
+                name=finding["tool_key"], value=finding["finding_text"], inline=False
+            )
         embed.set_footer(text=f"Confidence: {result.get('confidence', 0):.0%}")
         return embed
 

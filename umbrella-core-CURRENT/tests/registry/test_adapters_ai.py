@@ -5,6 +5,7 @@ directly (not through the REST client fixture) since this adapter has no
 HTTP surface of its own - it's called in-process by the AI layer, the same
 way the CLI adapter is invoked in-process by a terminal command.
 """
+
 import pytest
 from sqlalchemy import select
 
@@ -21,7 +22,11 @@ async def _make_user(db_session, role_name: str, suffix: str = "") -> User:
     admin-key bootstrap tier."""
     async with db_session() as db:
         role = await db.scalar(select(Role).where(Role.name == role_name))
-        user = User(discord_id=f"discord-ai-{role_name}{suffix}", username=f"user_{role_name}{suffix}", role_id=role.id)
+        user = User(
+            discord_id=f"discord-ai-{role_name}{suffix}",
+            username=f"user_{role_name}{suffix}",
+            role_id=role.id,
+        )
         db.add(user)
         await db.flush()
         await db.commit()
@@ -30,14 +35,20 @@ async def _make_user(db_session, role_name: str, suffix: str = "") -> User:
 
 
 @pytest.mark.asyncio
-async def test_call_tool_uses_the_acting_users_own_identity_not_an_elevated_one(db_session):
+async def test_call_tool_uses_the_acting_users_own_identity_not_an_elevated_one(
+    db_session,
+):
     """The exact invariant registry/context.py and capabilities/system.py's
     whoami handler both document: an AI-initiated call must reflect the
     identity of whoever it's acting for, never a separate elevated one."""
     user = await _make_user(db_session, "member")
     async with db_session() as db:
         result = await call_tool(
-            "platform.system.whoami", {}, acting_on_behalf_of=user, db=db, autonomous_mode=True
+            "platform.system.whoami",
+            {},
+            acting_on_behalf_of=user,
+            db=db,
+            autonomous_mode=True,
         )
     assert result["actor_id"] == user.discord_id
     assert result["source"] == "ai"
@@ -50,14 +61,20 @@ async def test_call_tool_with_admin_key_string_gets_superuser_tier(db_session):
     adapter's bootstrap tier does - no separate AI-only auth path."""
     async with db_session() as db:
         result = await call_tool(
-            "platform.system.whoami", {}, acting_on_behalf_of=TEST_SECRET_KEY, db=db, autonomous_mode=True
+            "platform.system.whoami",
+            {},
+            acting_on_behalf_of=TEST_SECRET_KEY,
+            db=db,
+            autonomous_mode=True,
         )
     assert result["is_superuser"] is True
     assert result["source"] == "ai"
 
 
 @pytest.mark.asyncio
-async def test_call_tool_blocks_destructive_irreversible_capability_even_with_autonomous_mode_on(db_session):
+async def test_call_tool_blocks_destructive_irreversible_capability_even_with_autonomous_mode_on(
+    db_session,
+):
     """hosting.server.restart is destructive=True, reversible=False - the
     hard ceiling action_guard enforces. autonomous_mode=True must not be
     able to override it; this is the whole point of the guard."""
@@ -81,7 +98,11 @@ async def test_call_tool_denies_when_autonomous_mode_is_off_for_a_capability_tha
     async with db_session() as db:
         with pytest.raises(ToolCallDenied, match="autonomous mode is not enabled"):
             await call_tool(
-                "platform.system.whoami", {}, acting_on_behalf_of=TEST_SECRET_KEY, db=db, autonomous_mode=False
+                "platform.system.whoami",
+                {},
+                acting_on_behalf_of=TEST_SECRET_KEY,
+                db=db,
+                autonomous_mode=False,
             )
     # whoami has required_permission=None and destructive=False/reversible=True,
     # so the only reason this is denied is the explicit autonomous_mode gate -
@@ -90,7 +111,9 @@ async def test_call_tool_denies_when_autonomous_mode_is_off_for_a_capability_tha
 
 
 @pytest.mark.asyncio
-async def test_call_tool_raises_permission_denied_for_a_capability_beyond_the_acting_users_role(db_session):
+async def test_call_tool_raises_permission_denied_for_a_capability_beyond_the_acting_users_role(
+    db_session,
+):
     """A low-permission user's own permissions still govern what the AI can
     do on their behalf - registry.call()'s existing RBAC check, unchanged,
     just reached via this adapter instead of REST. Uses hosting.node.list

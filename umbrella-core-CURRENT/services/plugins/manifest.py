@@ -9,6 +9,7 @@ against the real `Permission` table happens in
 `services/plugins/registration.py`, which has a `db` session) and does not
 execute any plugin code (that's `services/plugins/sandbox.py`).
 """
+
 from __future__ import annotations
 
 import re
@@ -52,8 +53,15 @@ _ALLOWED_PAGE_RENDER_AS = _ALLOWED_RENDER_AS | {"table"}
 # "shield" for something with no security meaning) — small, curated set,
 # same tiny-vocabulary discipline as _ALLOWED_FIELD_TYPES.
 _ALLOWED_NAV_ICONS = {
-    "box", "layout-grid", "activity", "database", "list",
-    "bar-chart", "puzzle", "settings", "server",
+    "box",
+    "layout-grid",
+    "activity",
+    "database",
+    "list",
+    "bar-chart",
+    "puzzle",
+    "settings",
+    "server",
 }
 
 # Phase 10, Tier 2 (Decision 2, DASHBOARD-PLUGIN-UI-SCOPING.md): "starting
@@ -299,28 +307,36 @@ class PluginManifest(BaseModel):
     @classmethod
     def _known_schema_version(cls, v: int) -> int:
         if v != 1:
-            raise ManifestValidationError(f"Unsupported schema_version {v!r}; only 1 is currently supported.")
+            raise ManifestValidationError(
+                f"Unsupported schema_version {v!r}; only 1 is currently supported."
+            )
         return v
 
     @field_validator("plugin_id")
     @classmethod
     def _plugin_id_shape(cls, v: str) -> str:
         if not _PLUGIN_ID_RE.match(v):
-            raise ManifestValidationError(f"plugin_id {v!r} must match {_PLUGIN_ID_RE.pattern!r}.")
+            raise ManifestValidationError(
+                f"plugin_id {v!r} must match {_PLUGIN_ID_RE.pattern!r}."
+            )
         return v
 
     @field_validator("version")
     @classmethod
     def _version_shape(cls, v: str) -> str:
         if not _SEMVER_RE.match(v):
-            raise ManifestValidationError(f"version {v!r} must be a valid semver string.")
+            raise ManifestValidationError(
+                f"version {v!r} must be a valid semver string."
+            )
         return v
 
     @field_validator("storage")
     @classmethod
     def _storage_mode(cls, v: str) -> str:
         if v not in ("kv", "sqlite"):
-            raise ManifestValidationError(f"storage {v!r} must be one of 'kv', 'sqlite'.")
+            raise ManifestValidationError(
+                f"storage {v!r} must be one of 'kv', 'sqlite'."
+            )
         return v
 
     @model_validator(mode="after")

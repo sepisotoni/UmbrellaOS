@@ -18,6 +18,7 @@ sandbox.py, plus the OS-level resource limits — this module exists to
 fail fast on the common, non-adversarial-obfuscation case, and as one more
 layer for the adversarial case rather than the only layer.
 """
+
 from __future__ import annotations
 
 import ast
@@ -32,9 +33,22 @@ import ast
 # `sys.modules` introspection). Revisit only if a real plugin author hits
 # this limit in practice, same posture as the manifest's param vocabulary.
 _FORBIDDEN_NAMES = {
-    "eval", "exec", "compile", "open", "__import__", "input",
-    "vars", "globals", "locals", "getattr", "setattr", "delattr",
-    "exit", "quit", "help", "breakpoint",
+    "eval",
+    "exec",
+    "compile",
+    "open",
+    "__import__",
+    "input",
+    "vars",
+    "globals",
+    "locals",
+    "getattr",
+    "setattr",
+    "delattr",
+    "exit",
+    "quit",
+    "help",
+    "breakpoint",
 }
 
 # Dunder attribute names commonly used in known Python sandbox-escape
@@ -44,10 +58,23 @@ _FORBIDDEN_NAMES = {
 # closes the most common, well-known escape chains
 # (`().__class__.__bases__[0].__subclasses__()...`).
 _FORBIDDEN_ATTRS = {
-    "__class__", "__bases__", "__subclasses__", "__mro__", "__globals__",
-    "__builtins__", "__code__", "__closure__", "__func__", "__self__",
-    "__dict__", "__getattribute__", "__reduce__", "__reduce_ex__",
-    "__import__", "__loader__", "__spec__",
+    "__class__",
+    "__bases__",
+    "__subclasses__",
+    "__mro__",
+    "__globals__",
+    "__builtins__",
+    "__code__",
+    "__closure__",
+    "__func__",
+    "__self__",
+    "__dict__",
+    "__getattribute__",
+    "__reduce__",
+    "__reduce_ex__",
+    "__import__",
+    "__loader__",
+    "__spec__",
     # Phase 9 additions, based on real Phase 8 adversarial hand-testing
     # (see PHASE7-COMPLETE-AND-PHASE8-HANDOFF.md: a raw dunder-chain
     # attempt and a format-string two-stage gadget were both caught, but
@@ -56,7 +83,10 @@ _FORBIDDEN_ATTRS = {
     # class-hierarchy-walking gadget family as __bases__/__mro__ above;
     # __getattr__/__setattr__ override lets crafted code intercept
     # attribute access itself rather than just reading a forbidden one.
-    "__init_subclass__", "__subclasshook__", "__getattr__", "__setattr__",
+    "__init_subclass__",
+    "__subclasshook__",
+    "__getattr__",
+    "__setattr__",
     # [PLUGIN] audit addition, 2026-09-01: format/format_map. Empirically
     # confirmed (not theoretical) that `"{0.__class__.__base__.__subclasses__}"
     # .format(params)` reads straight through this entire allowlist against
@@ -82,7 +112,8 @@ _FORBIDDEN_ATTRS = {
     # documented guarantee to close "the most common, well-known escape
     # chains", and blocking it costs no legitimate plugin functionality
     # (f-strings and %-style formatting remain fully available).
-    "format", "format_map",
+    "format",
+    "format_map",
 }
 
 # Phase 9 addition, based on real Phase 8 usage: no legitimate plugin

@@ -1,6 +1,7 @@
 """
 tests/test_risk_score.py — Tests for services/player_risk/risk_score.py.
 """
+
 import datetime as dt
 
 import pytest
@@ -26,7 +27,14 @@ async def test_no_signals_gives_zero_score(db_session):
 async def test_anticheat_points_contribute_to_score(db_session, monkeypatch):
     monkeypatch.setattr(get_settings(), "risk_score_anticheat_points_cap", 100)
     async with db_session() as db:
-        db.add(SuspicionEvent(player_uuid="uuid-1", trigger="fly_hack", points=40, false_positive=False))
+        db.add(
+            SuspicionEvent(
+                player_uuid="uuid-1",
+                trigger="fly_hack",
+                points=40,
+                false_positive=False,
+            )
+        )
         await db.flush()
 
         result = await compute_risk_score(db, "uuid-1")
@@ -37,7 +45,11 @@ async def test_anticheat_points_contribute_to_score(db_session, monkeypatch):
 @pytest.mark.asyncio
 async def test_false_positive_suspicion_events_are_excluded(db_session):
     async with db_session() as db:
-        db.add(SuspicionEvent(player_uuid="uuid-2", trigger="fly_hack", points=40, false_positive=True))
+        db.add(
+            SuspicionEvent(
+                player_uuid="uuid-2", trigger="fly_hack", points=40, false_positive=True
+            )
+        )
         await db.flush()
 
         result = await compute_risk_score(db, "uuid-2")
@@ -48,7 +60,14 @@ async def test_false_positive_suspicion_events_are_excluded(db_session):
 async def test_anticheat_points_are_capped(db_session, monkeypatch):
     monkeypatch.setattr(get_settings(), "risk_score_anticheat_points_cap", 50)
     async with db_session() as db:
-        db.add(SuspicionEvent(player_uuid="uuid-3", trigger="fly_hack", points=200, false_positive=False))
+        db.add(
+            SuspicionEvent(
+                player_uuid="uuid-3",
+                trigger="fly_hack",
+                points=200,
+                false_positive=False,
+            )
+        )
         await db.flush()
 
         result = await compute_risk_score(db, "uuid-3")
@@ -86,7 +105,9 @@ async def test_unconfirmed_alt_group_does_not_add_penalty(db_session):
 
 
 @pytest.mark.asyncio
-async def test_moderation_and_investigation_signals_bridge_via_discord_account(db_session, monkeypatch):
+async def test_moderation_and_investigation_signals_bridge_via_discord_account(
+    db_session, monkeypatch
+):
     monkeypatch.setattr(get_settings(), "risk_score_per_moderation_action", 5)
     monkeypatch.setattr(get_settings(), "risk_score_moderation_action_cap", 30)
     monkeypatch.setattr(get_settings(), "risk_score_per_investigation", 2)
@@ -94,9 +115,25 @@ async def test_moderation_and_investigation_signals_bridge_via_discord_account(d
 
     async with db_session() as db:
         db.add(Player(uuid="uuid-6", username="Bridged"))
-        db.add(DiscordAccount(discord_id="discord-6", player_uuid="uuid-6", verified=True))
-        db.add(ModerationAction(user_id="discord-6", moderator_id="staff-1", action_type=ModerationActionType.WARN))
-        db.add(Investigation(requested_by="staff-1", target_user_id="discord-6", question="q", summary="s", confidence=0.5))
+        db.add(
+            DiscordAccount(discord_id="discord-6", player_uuid="uuid-6", verified=True)
+        )
+        db.add(
+            ModerationAction(
+                user_id="discord-6",
+                moderator_id="staff-1",
+                action_type=ModerationActionType.WARN,
+            )
+        )
+        db.add(
+            Investigation(
+                requested_by="staff-1",
+                target_user_id="discord-6",
+                question="q",
+                summary="s",
+                confidence=0.5,
+            )
+        )
         await db.flush()
 
         result = await compute_risk_score(db, "uuid-6")
@@ -113,8 +150,16 @@ async def test_unverified_discord_link_is_not_bridged(db_session):
     rule."""
     async with db_session() as db:
         db.add(Player(uuid="uuid-7", username="Unverified"))
-        db.add(DiscordAccount(discord_id="discord-7", player_uuid="uuid-7", verified=False))
-        db.add(ModerationAction(user_id="discord-7", moderator_id="staff-1", action_type=ModerationActionType.WARN))
+        db.add(
+            DiscordAccount(discord_id="discord-7", player_uuid="uuid-7", verified=False)
+        )
+        db.add(
+            ModerationAction(
+                user_id="discord-7",
+                moderator_id="staff-1",
+                action_type=ModerationActionType.WARN,
+            )
+        )
         await db.flush()
 
         result = await compute_risk_score(db, "uuid-7")
@@ -134,7 +179,11 @@ async def test_total_score_is_capped_at_100(db_session, monkeypatch):
     monkeypatch.setattr(get_settings(), "risk_score_anticheat_points_cap", 100)
     monkeypatch.setattr(get_settings(), "risk_score_confirmed_alt_penalty", 30)
     async with db_session() as db:
-        db.add(SuspicionEvent(player_uuid="uuid-9", trigger="x", points=100, false_positive=False))
+        db.add(
+            SuspicionEvent(
+                player_uuid="uuid-9", trigger="x", points=100, false_positive=False
+            )
+        )
         group = AltGroup(confirmed=True)
         db.add(group)
         await db.flush()

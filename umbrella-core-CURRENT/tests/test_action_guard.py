@@ -3,6 +3,7 @@ tests/test_action_guard.py - Tests for services/ai/action_guard.py, using
 real registered capabilities (not fakes) to prove the guard actually reads
 their destructive/reversible flags and enforces against them.
 """
+
 import pytest
 
 import capabilities  # noqa: F401 - registers real capabilities this file tests against
@@ -15,7 +16,9 @@ from services.ai.action_guard import (
 
 def test_destructive_irreversible_capability_is_never_autonomous():
     # hosting.server.delete: destructive=True, reversible=False (see capabilities/hosting.py)
-    decision = evaluate("hosting.server.delete", {"server_id": "x"}, autonomous_mode=True)
+    decision = evaluate(
+        "hosting.server.delete", {"server_id": "x"}, autonomous_mode=True
+    )
     assert decision.allowed_autonomously is False
     assert "irreversible" in decision.reason
 
@@ -23,7 +26,9 @@ def test_destructive_irreversible_capability_is_never_autonomous():
 def test_destructive_irreversible_capability_blocked_even_with_autonomous_mode_true():
     # The mode flag alone must never override the destructive+irreversible check.
     with pytest.raises(ActionGuardViolation, match="irreversible"):
-        require_autonomous_allowed("identity.apikey.revoke", {"api_key_id": "x"}, autonomous_mode=True)
+        require_autonomous_allowed(
+            "identity.apikey.revoke", {"api_key_id": "x"}, autonomous_mode=True
+        )
 
 
 def test_safe_readonly_capability_is_allowed_autonomously_when_mode_enabled():
@@ -80,4 +85,6 @@ def test_expires_in_days_is_normalized_to_seconds_before_comparison():
 
 
 def test_require_autonomous_allowed_does_not_raise_for_a_valid_action():
-    require_autonomous_allowed("platform.system.whoami", {}, autonomous_mode=True)  # must not raise
+    require_autonomous_allowed(
+        "platform.system.whoami", {}, autonomous_mode=True
+    )  # must not raise

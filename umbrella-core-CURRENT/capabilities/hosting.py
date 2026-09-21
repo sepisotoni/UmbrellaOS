@@ -7,6 +7,7 @@ services/allocation_service.py, services/server_service.py) — no business
 logic lives in this file, matching capabilities/system.py's pattern from
 Phase 0.
 """
+
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
@@ -36,13 +37,19 @@ class NodeResult(BaseModel):
     daemon_url: str
     status: str
     labels: dict
-    signing_secret: str | None = None  # only populated on registration, and only with plaintext — see register_node
+    signing_secret: str | None = (
+        None  # only populated on registration, and only with plaintext — see register_node
+    )
 
     @classmethod
     def from_model(cls, node) -> "NodeResult":
         return cls(
-            id=node.id, name=node.name, daemon_url=node.daemon_url,
-            status=node.status, labels=node.labels, signing_secret=None,
+            id=node.id,
+            name=node.name,
+            daemon_url=node.daemon_url,
+            status=node.status,
+            labels=node.labels,
+            signing_secret=None,
         )
 
 
@@ -64,7 +71,9 @@ async def register_node(ctx: CallContext, params: RegisterNodeParams) -> NodeRes
     only the *encrypted* form is ever persisted (services/secrets_service.py)
     — this plaintext exists only transiently, in this response.
     """
-    node, plaintext_secret = await NodeService.register_node(ctx.db, params.name, params.daemon_url, params.labels)
+    node, plaintext_secret = await NodeService.register_node(
+        ctx.db, params.name, params.daemon_url, params.labels
+    )
     result = NodeResult.from_model(node)
     result.signing_secret = plaintext_secret
     return result
@@ -135,9 +144,14 @@ class TemplateResult(BaseModel):
     @classmethod
     def from_model(cls, template) -> "TemplateResult":
         return cls(
-            id=template.id, name=template.name, image=template.image, version=template.version,
-            description=template.description, startup_command=template.startup_command,
-            default_env=template.default_env, default_memory_bytes=template.default_memory_bytes,
+            id=template.id,
+            name=template.name,
+            image=template.image,
+            version=template.version,
+            description=template.description,
+            startup_command=template.startup_command,
+            default_env=template.default_env,
+            default_memory_bytes=template.default_memory_bytes,
             default_cpu_cores=template.default_cpu_cores,
         )
 
@@ -151,11 +165,17 @@ class TemplateResult(BaseModel):
     destructive=False,
     audit_category="hosting",
 )
-async def create_template(ctx: CallContext, params: CreateTemplateParams) -> TemplateResult:
+async def create_template(
+    ctx: CallContext, params: CreateTemplateParams
+) -> TemplateResult:
     template = await ServerTemplateService.create_template(
-        ctx.db, params.name, params.image,
-        description=params.description, startup_command=params.startup_command,
-        default_env=params.default_env, default_memory_bytes=params.default_memory_bytes,
+        ctx.db,
+        params.name,
+        params.image,
+        description=params.description,
+        startup_command=params.startup_command,
+        default_env=params.default_env,
+        default_memory_bytes=params.default_memory_bytes,
         default_cpu_cores=params.default_cpu_cores,
     )
     return TemplateResult.from_model(template)
@@ -174,7 +194,9 @@ class ListTemplatesParams(BaseModel):
     destructive=False,
     audited=False,
 )
-async def list_templates(ctx: CallContext, params: ListTemplatesParams) -> list[TemplateResult]:
+async def list_templates(
+    ctx: CallContext, params: ListTemplatesParams
+) -> list[TemplateResult]:
     templates = await ServerTemplateService.list_templates(ctx.db)
     return [TemplateResult.from_model(t) for t in templates]
 
@@ -203,8 +225,11 @@ class AllocationResult(BaseModel):
     @classmethod
     def from_model(cls, allocation) -> "AllocationResult":
         return cls(
-            id=allocation.id, node_id=allocation.node_id, port=allocation.port,
-            protocol=allocation.protocol, server_id=allocation.server_id,
+            id=allocation.id,
+            node_id=allocation.node_id,
+            port=allocation.port,
+            protocol=allocation.protocol,
+            server_id=allocation.server_id,
         )
 
 
@@ -217,8 +242,12 @@ class AllocationResult(BaseModel):
     destructive=False,
     audit_category="hosting",
 )
-async def create_allocation(ctx: CallContext, params: CreateAllocationParams) -> AllocationResult:
-    allocation = await AllocationService.create_allocation(ctx.db, params.node_id, params.port, params.protocol)
+async def create_allocation(
+    ctx: CallContext, params: CreateAllocationParams
+) -> AllocationResult:
+    allocation = await AllocationService.create_allocation(
+        ctx.db, params.node_id, params.port, params.protocol
+    )
     return AllocationResult.from_model(allocation)
 
 
@@ -235,7 +264,9 @@ class ListFreeAllocationsParams(BaseModel):
     destructive=False,
     audited=False,
 )
-async def list_free_allocations(ctx: CallContext, params: ListFreeAllocationsParams) -> list[AllocationResult]:
+async def list_free_allocations(
+    ctx: CallContext, params: ListFreeAllocationsParams
+) -> list[AllocationResult]:
     allocations = await AllocationService.list_free_allocations(ctx.db, params.node_id)
     return [AllocationResult.from_model(a) for a in allocations]
 
@@ -271,9 +302,14 @@ class ServerResult(BaseModel):
     @classmethod
     def from_model(cls, server) -> "ServerResult":
         return cls(
-            id=server.id, name=server.name, node_id=server.node_id, template_id=server.template_id,
-            template_version=server.template_version, status=server.status,
-            memory_bytes=server.memory_bytes, cpu_cores=server.cpu_cores,
+            id=server.id,
+            name=server.name,
+            node_id=server.node_id,
+            template_id=server.template_id,
+            template_version=server.template_version,
+            status=server.status,
+            memory_bytes=server.memory_bytes,
+            cpu_cores=server.cpu_cores,
         )
 
 
@@ -289,8 +325,14 @@ class ServerResult(BaseModel):
 )
 async def create_server(ctx: CallContext, params: CreateServerParams) -> ServerResult:
     server = await ServerService.create_server(
-        ctx.db, params.name, params.node_id, params.template_id, params.allocation_ids,
-        env_overrides=params.env_overrides, memory_bytes=params.memory_bytes, cpu_cores=params.cpu_cores,
+        ctx.db,
+        params.name,
+        params.node_id,
+        params.template_id,
+        params.allocation_ids,
+        env_overrides=params.env_overrides,
+        memory_bytes=params.memory_bytes,
+        cpu_cores=params.cpu_cores,
     )
     return ServerResult.from_model(server)
 
@@ -329,7 +371,9 @@ class ListServersParams(BaseModel):
     destructive=False,
     audited=False,
 )
-async def list_servers(ctx: CallContext, params: ListServersParams) -> list[ServerResult]:
+async def list_servers(
+    ctx: CallContext, params: ListServersParams
+) -> list[ServerResult]:
     servers = await ServerService.list_servers(ctx.db, params.node_id)
     return [ServerResult.from_model(s) for s in servers]
 
@@ -368,7 +412,9 @@ class StopServerParams(BaseModel):
     audit_category="hosting",
 )
 async def stop_server(ctx: CallContext, params: StopServerParams) -> ServerResult:
-    server = await ServerService.stop_server(ctx.db, params.server_id, params.grace_period_seconds)
+    server = await ServerService.stop_server(
+        ctx.db, params.server_id, params.grace_period_seconds
+    )
     return ServerResult.from_model(server)
 
 
@@ -423,9 +469,12 @@ class StatsResult(BaseModel):
 async def get_server_stats(ctx: CallContext, params: ServerIDParams) -> StatsResult:
     stats = await ServerService.get_stats(ctx.db, params.server_id)
     return StatsResult(
-        timestamp=stats.timestamp, cpu_percent=stats.cpu_percent,
-        memory_used_bytes=stats.memory_used_bytes, memory_limit_bytes=stats.memory_limit_bytes,
-        network_rx_bytes=stats.network_rx_bytes, network_tx_bytes=stats.network_tx_bytes,
+        timestamp=stats.timestamp,
+        cpu_percent=stats.cpu_percent,
+        memory_used_bytes=stats.memory_used_bytes,
+        memory_limit_bytes=stats.memory_limit_bytes,
+        network_rx_bytes=stats.network_rx_bytes,
+        network_tx_bytes=stats.network_tx_bytes,
     )
 
 
@@ -472,10 +521,15 @@ class BackupResult(BaseModel):
     @classmethod
     def from_model(cls, backup) -> "BackupResult":
         return cls(
-            id=backup.id, server_id=backup.server_id, status=backup.status,
-            size_bytes=backup.size_bytes, error_message=backup.error_message,
+            id=backup.id,
+            server_id=backup.server_id,
+            status=backup.status,
+            size_bytes=backup.size_bytes,
+            error_message=backup.error_message,
             created_at=backup.created_at.isoformat() if backup.created_at else None,
-            completed_at=backup.completed_at.isoformat() if backup.completed_at else None,
+            completed_at=backup.completed_at.isoformat()
+            if backup.completed_at
+            else None,
         )
 
 
@@ -507,7 +561,9 @@ class ListBackupsParams(BaseModel):
     destructive=False,
     audited=False,
 )
-async def list_backups(ctx: CallContext, params: ListBackupsParams) -> list[BackupResult]:
+async def list_backups(
+    ctx: CallContext, params: ListBackupsParams
+) -> list[BackupResult]:
     backups = await BackupService.list_backups(ctx.db, params.server_id)
     return [BackupResult.from_model(b) for b in backups]
 
@@ -533,7 +589,9 @@ class RestoreBackupResult(BaseModel):
     reversible=False,
     audit_category="hosting",
 )
-async def restore_backup(ctx: CallContext, params: BackupIDParams) -> RestoreBackupResult:
+async def restore_backup(
+    ctx: CallContext, params: BackupIDParams
+) -> RestoreBackupResult:
     await BackupService.restore_backup(ctx.db, params.backup_id)
     return RestoreBackupResult(restored=True)
 
@@ -577,9 +635,15 @@ class ReconcileServerResult(BaseModel):
     reversible=True,
     audit_category="hosting",
 )
-async def reconcile_server(ctx: CallContext, params: ServerIDParams) -> ReconcileServerResult:
-    server, crash_detected = await ServerService.reconcile_server(ctx.db, params.server_id)
-    return ReconcileServerResult(server=ServerResult.from_model(server), crash_detected=crash_detected)
+async def reconcile_server(
+    ctx: CallContext, params: ServerIDParams
+) -> ReconcileServerResult:
+    server, crash_detected = await ServerService.reconcile_server(
+        ctx.db, params.server_id
+    )
+    return ReconcileServerResult(
+        server=ServerResult.from_model(server), crash_detected=crash_detected
+    )
 
 
 class ReconcileFleetParams(BaseModel):
@@ -604,6 +668,8 @@ class ReconcileFleetResult(BaseModel):
     reversible=True,
     audit_category="hosting",
 )
-async def reconcile_fleet(ctx: CallContext, params: ReconcileFleetParams) -> ReconcileFleetResult:
+async def reconcile_fleet(
+    ctx: CallContext, params: ReconcileFleetParams
+) -> ReconcileFleetResult:
     crashed_ids = await ServerService.reconcile_fleet(ctx.db)
     return ReconcileFleetResult(crashed_server_ids=crashed_ids)

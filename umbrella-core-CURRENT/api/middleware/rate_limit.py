@@ -58,6 +58,7 @@ limiting doesn't need the key to be valid — an invalid/garbage key still
 gets its own stable bucket, which incidentally also rate-limits credential
 probing against X-Api-Key, a reasonable side benefit rather than a goal.
 """
+
 import hashlib
 import logging
 
@@ -101,7 +102,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self._limiter = rate_limiter
         self._limit = requests_per_window
         self._window = window_seconds
-        self._exempt_paths = exempt_paths if exempt_paths is not None else set(DEFAULT_EXEMPT_PATHS)
+        self._exempt_paths = (
+            exempt_paths if exempt_paths is not None else set(DEFAULT_EXEMPT_PATHS)
+        )
         self._api_key_limit = api_key_requests_per_window
         self._api_key_window = api_key_window_seconds
 
@@ -150,7 +153,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         forwarded_for = request.headers.get("x-forwarded-for", "").strip()
         if forwarded_for:
             # Last entry is injected by the trusted proxy, not the client
-            client_ip = forwarded_for.split(",")[-1].strip() or (request.client.host if request.client else "unknown")
+            client_ip = forwarded_for.split(",")[-1].strip() or (
+                request.client.host if request.client else "unknown"
+            )
         else:
             client_ip = request.client.host if request.client else "unknown"
 
@@ -164,7 +169,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         if not result.allowed:
-            await threat_detection_service.record(event_type="rate_limit_violation", source_ip=client_ip)
+            await threat_detection_service.record(
+                event_type="rate_limit_violation", source_ip=client_ip
+            )
             return JSONResponse(
                 status_code=429,
                 content={
@@ -178,7 +185,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if api_key:
             try:
                 key_result = await self._limiter.check(
-                    _api_key_identifier(api_key), self._api_key_limit, self._api_key_window
+                    _api_key_identifier(api_key),
+                    self._api_key_limit,
+                    self._api_key_window,
                 )
             except _LIMITER_BACKEND_ERRORS:
                 logger.warning(
@@ -187,7 +196,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 key_result = None
 
             if key_result is not None and not key_result.allowed:
-                await threat_detection_service.record(event_type="rate_limit_violation", source_ip=client_ip)
+                await threat_detection_service.record(
+                    event_type="rate_limit_violation", source_ip=client_ip
+                )
                 return JSONResponse(
                     status_code=429,
                     content={

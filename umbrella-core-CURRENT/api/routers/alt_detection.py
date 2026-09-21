@@ -8,6 +8,7 @@ POST /api/v1/alts/false-positive
 POST /api/v1/alts/group
 GET  /api/v1/alts/groups
 """
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
@@ -151,14 +152,14 @@ async def check_alt(
         body.username,
         db,
     )
-    
+
     flag_result = await flag_player(
         body.player_uuid,
         result["score"],
         result["triggers"],
         db,
     )
-    
+
     return AltCheckResponse(
         score=result["score"],
         risk_level=flag_result["risk_level"],
@@ -176,13 +177,10 @@ async def list_flagged_players(
 ) -> list[FlaggedPlayerSchema]:
     """List players with suspicion_score >= 80."""
     result = await db.execute(
-        select(Player)
-        .where(Player.suspicion_score >= 80)
-        .offset(skip)
-        .limit(limit)
+        select(Player).where(Player.suspicion_score >= 80).offset(skip).limit(limit)
     )
     players = result.scalars().all()
-    
+
     return [FlaggedPlayerSchema.from_orm(p) for p in players]
 
 
@@ -194,26 +192,24 @@ async def get_player_suspicion(
 ):
     """Get suspicion history for a specific player."""
     # Get player
-    result = await db.execute(
-        select(Player).where(Player.uuid == uuid)
-    )
+    result = await db.execute(select(Player).where(Player.uuid == uuid))
     player = result.scalar_one_or_none()
-    
+
     if not player:
         raise HTTPException(status_code=404, detail="Player not found")
-    
+
     # Get suspicion events
     result = await db.execute(
         select(SuspicionEvent).where(SuspicionEvent.player_uuid == uuid)
     )
     events = result.scalars().all()
-    
+
     # Get alt groups
     result = await db.execute(
         select(AltGroupMember).where(AltGroupMember.player_uuid == uuid)
     )
     group_members = result.scalars().all()
-    
+
     alt_groups = []
     # FIX: N+1 replaced with a single IN query.
     group_ids = [m.group_id for m in group_members]
@@ -223,7 +219,7 @@ async def get_player_suspicion(
         )
         for g in groups_result.scalars().all():
             alt_groups.append(AltGroupSchema.from_orm(g))
-    
+
     return {
         "score": player.suspicion_score,
         "events": [SuspicionEventSchema.from_orm(e) for e in events],
@@ -251,28 +247,28 @@ async def mark_false_positive(
             .limit(1)
         )
     else:
-        raise HTTPException(status_code=422, detail="event_id or player_uuid is required")
+        raise HTTPException(
+            status_code=422, detail="event_id or player_uuid is required"
+        )
 
     result = await db.execute(event_query)
     event = result.scalar_one_or_none()
-    
+
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
-    
+
     event.false_positive = True
     event.reviewed = True
     event.reviewed_by = body.reviewed_by
-    
+
     # Reduce player suspicion_score by event points
-    result = await db.execute(
-        select(Player).where(Player.uuid == event.player_uuid)
-    )
+    result = await db.execute(select(Player).where(Player.uuid == event.player_uuid))
     player = result.scalar_one_or_none()
     if player:
         player.suspicion_score = max(0, player.suspicion_score - event.points)
-    
+
     await db.flush()
-    
+
     return {"success": True}
 
 
@@ -290,7 +286,7 @@ async def create_alt_group(
     )
     db.add(alt_group)
     await db.flush()
-    
+
     # Add members
     for player_uuid in body.player_uuids:
         member = AltGroupMember(
@@ -298,9 +294,9 @@ async def create_alt_group(
             player_uuid=player_uuid,
         )
         db.add(member)
-    
+
     await db.flush()
-    
+
     return AltGroupSchema.from_orm(alt_group)
 
 
@@ -310,11 +306,9 @@ async def list_alt_groups(
     _auth: str = Depends(require_permission("players.view")),
 ) -> list[AltGroupSchema]:
     """List all confirmed alt groups."""
-    result = await db.execute(
-        select(AltGroup).where(AltGroup.confirmed == True)
-    )
+    result = await db.execute(select(AltGroup).where(AltGroup.confirmed == True))
     groups = result.scalars().all()
-    
+
     return [AltGroupSchema.from_orm(g) for g in groups]
 
 

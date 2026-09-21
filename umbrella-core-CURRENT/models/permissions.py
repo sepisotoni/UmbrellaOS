@@ -15,6 +15,7 @@ Default roles seeded by services/roles_service.py:
     helper    — players.view, punishments.view, appeals.view, investigation, knowledge.search
     member    — appeals.view only
 """
+
 import uuid
 from datetime import datetime
 from sqlalchemy import String, Text, DateTime, ForeignKey, Table, Column, func
@@ -26,8 +27,18 @@ from database.engine import Base
 role_permissions = Table(
     "role_permissions",
     Base.metadata,
-    Column("role_id", String(36), ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True),
-    Column("permission_id", String(36), ForeignKey("permissions.id", ondelete="CASCADE"), primary_key=True),
+    Column(
+        "role_id",
+        String(36),
+        ForeignKey("roles.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "permission_id",
+        String(36),
+        ForeignKey("permissions.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
 )
 
 
@@ -43,7 +54,10 @@ class Role(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
     )
 
     permissions: Mapped[list["Permission"]] = relationship(
@@ -60,7 +74,9 @@ class Permission(Base):
     id: Mapped[str] = mapped_column(
         String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
-    permission_key: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
+    permission_key: Mapped[str] = mapped_column(
+        String(128), unique=True, nullable=False, index=True
+    )
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

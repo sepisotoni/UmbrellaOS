@@ -45,6 +45,7 @@ Two separate mechanisms, deliberately not conflated:
    per-topic handler signatures and every existing dispatcher test are
    completely unaffected by this addition.
 """
+
 from __future__ import annotations
 
 import json

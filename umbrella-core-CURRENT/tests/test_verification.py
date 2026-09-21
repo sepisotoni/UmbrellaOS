@@ -7,6 +7,7 @@ POST /api/v1/verification/status
 GET  /api/v1/verification/pending
 POST /api/v1/verification/revoke
 """
+
 import pytest
 from tests.conftest import ADMIN_HEADERS, WRONG_HEADERS
 
@@ -19,7 +20,9 @@ async def test_post_verification_request_creates_code(client):
         "player_username": "TestPlayer",
         "ip_address": "192.168.1.1",
     }
-    response = await client.post("/api/v1/verification/request", json=payload, headers=ADMIN_HEADERS)
+    response = await client.post(
+        "/api/v1/verification/request", json=payload, headers=ADMIN_HEADERS
+    )
     assert response.status_code == 200
     data = response.json()
     assert "code" in data
@@ -30,7 +33,9 @@ async def test_post_verification_request_creates_code(client):
 
 
 @pytest.mark.asyncio
-async def test_post_verification_request_already_verified_returns_already_verified(client):
+async def test_post_verification_request_already_verified_returns_already_verified(
+    client,
+):
     """POST /verification/request for already verified player should return already_verified=true."""
     # First, create a verification code
     await client.post(
@@ -41,14 +46,14 @@ async def test_post_verification_request_already_verified_returns_already_verifi
         },
         headers=ADMIN_HEADERS,
     )
-    
+
     # Get the code from pending verifications
     response = await client.get("/api/v1/verification/pending", headers=ADMIN_HEADERS)
     codes = response.json()
     if len(codes) == 0:
         pytest.skip("No pending verification codes")
     code = codes[-1]["code"]
-    
+
     # Confirm the code to verify the player
     await client.post(
         "/api/v1/verification/confirm",
@@ -59,13 +64,15 @@ async def test_post_verification_request_already_verified_returns_already_verifi
         },
         headers=ADMIN_HEADERS,
     )
-    
+
     # Now try to request verification for the same player
     payload = {
         "player_uuid": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
         "player_username": "TestPlayer",
     }
-    response = await client.post("/api/v1/verification/request", json=payload, headers=ADMIN_HEADERS)
+    response = await client.post(
+        "/api/v1/verification/request", json=payload, headers=ADMIN_HEADERS
+    )
     assert response.status_code == 200
     data = response.json()
     assert data["already_verified"] is True
@@ -83,21 +90,23 @@ async def test_post_verification_confirm_with_valid_code_succeeds(client):
         },
         headers=ADMIN_HEADERS,
     )
-    
+
     # Get the code from pending verifications
     response = await client.get("/api/v1/verification/pending", headers=ADMIN_HEADERS)
     codes = response.json()
     if len(codes) == 0:
         pytest.skip("No pending verification codes")
     code = codes[-1]["code"]
-    
+
     # Confirm the code
     payload = {
         "discord_id": "987654321",
         "discord_username": "DiscordUser",
         "code": code,
     }
-    response = await client.post("/api/v1/verification/confirm", json=payload, headers=ADMIN_HEADERS)
+    response = await client.post(
+        "/api/v1/verification/confirm", json=payload, headers=ADMIN_HEADERS
+    )
     assert response.status_code == 200
     data = response.json()
     assert data["success"] is True
@@ -113,7 +122,9 @@ async def test_post_verification_confirm_with_invalid_code_returns_404(client):
         "discord_username": "TestUser",
         "code": "000000",
     }
-    response = await client.post("/api/v1/verification/confirm", json=payload, headers=ADMIN_HEADERS)
+    response = await client.post(
+        "/api/v1/verification/confirm", json=payload, headers=ADMIN_HEADERS
+    )
     assert response.status_code == 404
 
 
@@ -129,7 +140,7 @@ async def test_post_verification_confirm_with_expired_code_returns_400(client):
         },
         headers=ADMIN_HEADERS,
     )
-    
+
     # Get the code and manually expire it (this would require direct DB access)
     # For now, we'll test with a non-existent code which returns 404
     # In a real test, we'd need to update the expires_at field directly
@@ -138,7 +149,9 @@ async def test_post_verification_confirm_with_expired_code_returns_400(client):
         "discord_username": "TestUser",
         "code": "999999",
     }
-    response = await client.post("/api/v1/verification/confirm", json=payload, headers=ADMIN_HEADERS)
+    response = await client.post(
+        "/api/v1/verification/confirm", json=payload, headers=ADMIN_HEADERS
+    )
     assert response.status_code == 404
 
 
@@ -154,14 +167,14 @@ async def test_post_verification_confirm_with_used_code_returns_400(client):
         },
         headers=ADMIN_HEADERS,
     )
-    
+
     # Get the code
     response = await client.get("/api/v1/verification/pending", headers=ADMIN_HEADERS)
     codes = response.json()
     if len(codes) == 0:
         pytest.skip("No pending verification codes")
     code = codes[-1]["code"]
-    
+
     # Confirm the code first time
     await client.post(
         "/api/v1/verification/confirm",
@@ -172,7 +185,7 @@ async def test_post_verification_confirm_with_used_code_returns_400(client):
         },
         headers=ADMIN_HEADERS,
     )
-    
+
     # Try to confirm the same code again
     response = await client.post(
         "/api/v1/verification/confirm",
@@ -198,13 +211,13 @@ async def test_post_verification_status_returns_correct_verified_state(client):
         },
         headers=ADMIN_HEADERS,
     )
-    
+
     response = await client.get("/api/v1/verification/pending", headers=ADMIN_HEADERS)
     codes = response.json()
     if len(codes) == 0:
         pytest.skip("No pending verification codes")
     code = codes[-1]["code"]
-    
+
     await client.post(
         "/api/v1/verification/confirm",
         json={
@@ -214,10 +227,12 @@ async def test_post_verification_status_returns_correct_verified_state(client):
         },
         headers=ADMIN_HEADERS,
     )
-    
+
     # Check status
     payload = {"player_uuid": "eeeeeeee-ffff-aaaa-bbbb-cccccccccccc"}
-    response = await client.post("/api/v1/verification/status", json=payload, headers=ADMIN_HEADERS)
+    response = await client.post(
+        "/api/v1/verification/status", json=payload, headers=ADMIN_HEADERS
+    )
     assert response.status_code == 200
     data = response.json()
     assert data["verified"] is True
@@ -237,7 +252,7 @@ async def test_get_verification_pending_returns_list(client):
         },
         headers=ADMIN_HEADERS,
     )
-    
+
     response = await client.get("/api/v1/verification/pending", headers=ADMIN_HEADERS)
     assert response.status_code == 200
     data = response.json()
@@ -256,13 +271,13 @@ async def test_post_verification_revoke_unlinks_account(client):
         },
         headers=ADMIN_HEADERS,
     )
-    
+
     response = await client.get("/api/v1/verification/pending", headers=ADMIN_HEADERS)
     codes = response.json()
     if len(codes) == 0:
         pytest.skip("No pending verification codes")
     code = codes[-1]["code"]
-    
+
     await client.post(
         "/api/v1/verification/confirm",
         json={
@@ -272,10 +287,12 @@ async def test_post_verification_revoke_unlinks_account(client):
         },
         headers=ADMIN_HEADERS,
     )
-    
+
     # Revoke verification
     payload = {"player_uuid": "aaaaaaaa-bbbb-cccc-dddd-000000000000"}
-    response = await client.post("/api/v1/verification/revoke", json=payload, headers=ADMIN_HEADERS)
+    response = await client.post(
+        "/api/v1/verification/revoke", json=payload, headers=ADMIN_HEADERS
+    )
     assert response.status_code == 200
     assert response.json()["success"] is True
 
@@ -287,7 +304,9 @@ async def test_post_verification_request_without_admin_key_returns_401(client):
         "player_uuid": "bbbbbbbb-cccc-dddd-eeee-111111111111",
         "player_username": "Player8",
     }
-    response = await client.post("/api/v1/verification/request", json=payload, headers=WRONG_HEADERS)
+    response = await client.post(
+        "/api/v1/verification/request", json=payload, headers=WRONG_HEADERS
+    )
     assert response.status_code == 401
 
 
@@ -299,7 +318,9 @@ async def test_post_verification_confirm_without_admin_key_returns_401(client):
         "discord_username": "TestUser",
         "code": "123456",
     }
-    response = await client.post("/api/v1/verification/confirm", json=payload, headers=WRONG_HEADERS)
+    response = await client.post(
+        "/api/v1/verification/confirm", json=payload, headers=WRONG_HEADERS
+    )
     assert response.status_code == 401
 
 

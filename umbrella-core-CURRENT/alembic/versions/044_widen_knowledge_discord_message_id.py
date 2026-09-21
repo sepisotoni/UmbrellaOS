@@ -9,6 +9,7 @@ Revision ID: 044_widen_knowledge_discord_message_id
 Revises: 043_ai_model_configs_unique
 Create Date: 2026-08-29
 """
+
 from alembic import op
 import sqlalchemy as sa
 

@@ -4,6 +4,7 @@ tests/test_players.py — Tests for player endpoints.
 GET  /api/v1/players           — list all players
 GET  /api/v1/players/{uuid}    — get a single player by UUID
 """
+
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -46,7 +47,9 @@ async def test_player(db_session):
 
 
 @pytest.mark.asyncio
-async def test_list_players_returns_200_with_bearer_token(client, db_session, test_player):
+async def test_list_players_returns_200_with_bearer_token(
+    client, db_session, test_player
+):
     headers = await _session_headers_for_role(db_session, "owner")
     response = await client.get("/api/v1/players", headers=headers)
     assert response.status_code == 200

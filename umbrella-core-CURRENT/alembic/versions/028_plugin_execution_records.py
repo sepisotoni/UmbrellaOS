@@ -21,6 +21,7 @@ Revision ID: 028_plugin_execution_records
 Revises: 027_plugin_kv_entries
 Create Date: 2026-08-16
 """
+
 import sqlalchemy as sa
 from alembic import op
 
@@ -51,18 +52,28 @@ def upgrade() -> None:
         ),
     )
     op.create_index(
-        "ix_plugin_execution_records_plugin_id", "plugin_execution_records", ["plugin_id"]
+        "ix_plugin_execution_records_plugin_id",
+        "plugin_execution_records",
+        ["plugin_id"],
     )
     op.create_index(
         "ix_plugin_execution_records_outcome", "plugin_execution_records", ["outcome"]
     )
     op.create_index(
-        "ix_plugin_execution_records_created_at", "plugin_execution_records", ["created_at"]
+        "ix_plugin_execution_records_created_at",
+        "plugin_execution_records",
+        ["created_at"],
     )
 
 
 def downgrade() -> None:
-    op.drop_index("ix_plugin_execution_records_created_at", table_name="plugin_execution_records")
-    op.drop_index("ix_plugin_execution_records_outcome", table_name="plugin_execution_records")
-    op.drop_index("ix_plugin_execution_records_plugin_id", table_name="plugin_execution_records")
+    op.drop_index(
+        "ix_plugin_execution_records_created_at", table_name="plugin_execution_records"
+    )
+    op.drop_index(
+        "ix_plugin_execution_records_outcome", table_name="plugin_execution_records"
+    )
+    op.drop_index(
+        "ix_plugin_execution_records_plugin_id", table_name="plugin_execution_records"
+    )
     op.drop_table("plugin_execution_records")

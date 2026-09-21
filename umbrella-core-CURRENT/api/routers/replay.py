@@ -8,6 +8,7 @@ POST /api/v1/replay/sessions/{replay_id}/events
 POST /api/v1/replay/sessions/{replay_id}/finalize
 GET  /api/v1/replay/sessions/{replay_id}/events
 """
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel

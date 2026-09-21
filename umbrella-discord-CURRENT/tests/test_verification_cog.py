@@ -7,6 +7,7 @@ connection). _sync_nickname is also not tested here for the same reason -
 it's inherently a live-guild operation (guild.get_member, member.edit),
 not a pure function.
 """
+
 import pytest
 from unittest.mock import MagicMock
 
@@ -51,19 +52,27 @@ def test_looks_like_code_rejects_code_with_surrounding_text():
 
 
 def test_format_error_permission_denied():
-    exc = UmbrellaCoreError("Missing permission: verification.link.manage", status_code=403, code="PERMISSION_DENIED")
+    exc = UmbrellaCoreError(
+        "Missing permission: verification.link.manage",
+        status_code=403,
+        code="PERMISSION_DENIED",
+    )
     message = _make_cog()._format_error(exc)
     assert "contact staff" in message
 
 
 def test_format_error_not_found():
-    exc = UmbrellaCoreError("Verification code not found: 000000", status_code=404, code="NOT_FOUND")
+    exc = UmbrellaCoreError(
+        "Verification code not found: 000000", status_code=404, code="NOT_FOUND"
+    )
     message = _make_cog()._format_error(exc)
     assert "Verification failed" in message
 
 
 def test_format_error_validation():
-    exc = UmbrellaCoreError("Verification code has expired.", status_code=422, code="VALIDATION_ERROR")
+    exc = UmbrellaCoreError(
+        "Verification code has expired.", status_code=422, code="VALIDATION_ERROR"
+    )
     message = _make_cog()._format_error(exc)
     assert "Verification failed" in message
 
@@ -71,7 +80,8 @@ def test_format_error_validation():
 def test_format_error_conflict():
     exc = UmbrellaCoreError(
         "This Discord account is already linked to a different Minecraft account and cannot be relinked.",
-        status_code=409, code="CONFLICT",
+        status_code=409,
+        code="CONFLICT",
     )
     message = _make_cog()._format_error(exc)
     assert "Verification failed" in message
@@ -85,13 +95,21 @@ def test_format_error_generic():
 
 
 def test_format_success_new_link():
-    result = {"player_uuid": "uuid-1", "player_username": "Steve", "already_linked": False}
+    result = {
+        "player_uuid": "uuid-1",
+        "player_username": "Steve",
+        "already_linked": False,
+    }
     message = _make_cog()._format_success(result, "Steve")
     assert "Steve" in message
 
 
 def test_format_success_already_linked():
-    result = {"player_uuid": "uuid-1", "player_username": "Steve", "already_linked": True}
+    result = {
+        "player_uuid": "uuid-1",
+        "player_username": "Steve",
+        "already_linked": True,
+    }
     message = _make_cog()._format_success(result, "Steve")
     assert "already" in message
     assert "Steve" in message

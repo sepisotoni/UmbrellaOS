@@ -2,6 +2,7 @@
 tests/registry/test_capabilities_knowledge.py — REST integration tests for
 knowledge capabilities: listing, RBAC, and index/search round-trip.
 """
+
 import pytest
 
 from tests.conftest import ADMIN_HEADERS
@@ -27,8 +28,12 @@ async def test_index_and_search_round_trip(client, monkeypatch):
     index_resp = await client.post(
         "/api/v1/capabilities/knowledge.entry.index/invoke",
         json={
-            "channel_id": "chan-1", "channel_name": "ai-faq", "discord_message_id": "msg-100",
-            "author_id": "user-1", "author_name": "Alice", "content": "the wiki is at wiki.example.com",
+            "channel_id": "chan-1",
+            "channel_name": "ai-faq",
+            "discord_message_id": "msg-100",
+            "author_id": "user-1",
+            "author_name": "Alice",
+            "content": "the wiki is at wiki.example.com",
         },
         headers=ADMIN_HEADERS,
     )
@@ -57,8 +62,12 @@ async def test_search_allowed_for_helper_but_index_denied(client, db_session):
     index_resp = await client.post(
         "/api/v1/capabilities/knowledge.entry.index/invoke",
         json={
-            "channel_id": "c", "channel_name": "ai-faq", "discord_message_id": "m",
-            "author_id": "u", "author_name": "n", "content": "x",
+            "channel_id": "c",
+            "channel_name": "ai-faq",
+            "discord_message_id": "m",
+            "author_id": "u",
+            "author_name": "n",
+            "content": "x",
         },
         headers=headers,
     )
@@ -70,7 +79,9 @@ async def test_correction_review_denied_for_helper(client, db_session):
     """helper has no knowledge.correction.review - approve/reject are moderator+."""
     headers = await session_headers_for_role(db_session, "helper")
     response = await client.post(
-        "/api/v1/capabilities/knowledge.correction.list_pending/invoke", json={}, headers=headers
+        "/api/v1/capabilities/knowledge.correction.list_pending/invoke",
+        json={},
+        headers=headers,
     )
     assert response.status_code == 403
 

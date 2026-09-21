@@ -14,6 +14,7 @@ resolution (and the page_id allow-list check) belongs at the capability
 layer, not here, same reasoning as `page_id` validation living outside
 models/dashboard_layout.py.
 """
+
 from __future__ import annotations
 
 import json
@@ -26,7 +27,9 @@ from models.dashboard_layout import DashboardLayout
 
 class DashboardLayoutService:
     @staticmethod
-    async def get(db: AsyncSession, *, user_id: str, page_id: str) -> DashboardLayout | None:
+    async def get(
+        db: AsyncSession, *, user_id: str, page_id: str
+    ) -> DashboardLayout | None:
         result = await db.execute(
             select(DashboardLayout).where(
                 DashboardLayout.user_id == user_id, DashboardLayout.page_id == page_id
@@ -44,13 +47,17 @@ class DashboardLayoutService:
         preference, not an audit trail (the capability call itself is
         still audited, per the usual audit_category mechanism)."""
         layout_json = json.dumps(widgets)
-        existing = await DashboardLayoutService.get(db, user_id=user_id, page_id=page_id)
+        existing = await DashboardLayoutService.get(
+            db, user_id=user_id, page_id=page_id
+        )
         if existing is not None:
             existing.layout_json = layout_json
             await db.flush()
             return existing
 
-        layout = DashboardLayout(user_id=user_id, page_id=page_id, layout_json=layout_json)
+        layout = DashboardLayout(
+            user_id=user_id, page_id=page_id, layout_json=layout_json
+        )
         db.add(layout)
         await db.flush()
         return layout
@@ -61,7 +68,9 @@ class DashboardLayoutService:
         arrangement (see services/dashboard_layout/pages.py). Returns
         whether a row actually existed to delete — resetting an
         already-default page is not an error, just a no-op."""
-        existing = await DashboardLayoutService.get(db, user_id=user_id, page_id=page_id)
+        existing = await DashboardLayoutService.get(
+            db, user_id=user_id, page_id=page_id
+        )
         if existing is None:
             return False
         await db.delete(existing)

@@ -21,13 +21,14 @@ Revision ID: 013_identity_phase3
 Revises: 012_hosting_domain
 Create Date: 2026-07-07
 """
+
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy import text
 
 
-revision = '013_identity_phase3'
-down_revision = '012_hosting_domain'
+revision = "013_identity_phase3"
+down_revision = "012_hosting_domain"
 branch_labels = None
 depends_on = None
 
@@ -36,7 +37,8 @@ def upgrade() -> None:
     # Create users table if it doesn't exist yet. This is the earliest migration
     # that references users, so we own its creation. IF NOT EXISTS makes this
     # safe on databases already bootstrapped via create_all().
-    op.execute(text("""
+    op.execute(
+        text("""
         CREATE TABLE IF NOT EXISTS users (
             id VARCHAR(36) PRIMARY KEY,
             discord_id VARCHAR(32) NOT NULL UNIQUE,
@@ -51,44 +53,65 @@ def upgrade() -> None:
             created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
         )
-    """))
-    op.execute(text(
-        "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_discord_id ON users (discord_id)"
-    ))
+    """)
+    )
+    op.execute(
+        text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_discord_id ON users (discord_id)"
+        )
+    )
 
     # Add MFA columns if they don't exist (idempotent for create_all-bootstrapped DBs).
     # Use op.get_context().connection — op.get_bind() is deprecated in Alembic 2.x.
     conn = op.get_context().connection
     existing_cols = {
-        row[0] for row in conn.execute(
-            text("SELECT column_name FROM information_schema.columns WHERE table_name='users'")
+        row[0]
+        for row in conn.execute(
+            text(
+                "SELECT column_name FROM information_schema.columns WHERE table_name='users'"
+            )
         )
     }
-    if 'mfa_secret' not in existing_cols:
-        op.add_column('users', sa.Column('mfa_secret', sa.String(64), nullable=True))
-    if 'mfa_enabled' not in existing_cols:
-        op.add_column('users', sa.Column('mfa_enabled', sa.Boolean(), nullable=False, server_default='false'))
+    if "mfa_secret" not in existing_cols:
+        op.add_column("users", sa.Column("mfa_secret", sa.String(64), nullable=True))
+    if "mfa_enabled" not in existing_cols:
+        op.add_column(
+            "users",
+            sa.Column(
+                "mfa_enabled", sa.Boolean(), nullable=False, server_default="false"
+            ),
+        )
 
     op.create_table(
-        'api_keys',
-        sa.Column('id', sa.String(36), primary_key=True),
-        sa.Column('name', sa.String(128), nullable=False),
-        sa.Column('key_hash', sa.String(64), nullable=False, unique=True),
-        sa.Column('key_prefix', sa.String(16), nullable=False),
-        sa.Column('permissions', sa.JSON(), nullable=False, server_default='[]'),
-        sa.Column('created_by', sa.String(36), sa.ForeignKey('users.id', ondelete='SET NULL'), nullable=True),
-        sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-        sa.Column('last_used_at', sa.DateTime(timezone=True), nullable=True),
-        sa.Column('expires_at', sa.DateTime(timezone=True), nullable=True),
-        sa.Column('revoked', sa.Boolean(), nullable=False, server_default='false'),
+        "api_keys",
+        sa.Column("id", sa.String(36), primary_key=True),
+        sa.Column("name", sa.String(128), nullable=False),
+        sa.Column("key_hash", sa.String(64), nullable=False, unique=True),
+        sa.Column("key_prefix", sa.String(16), nullable=False),
+        sa.Column("permissions", sa.JSON(), nullable=False, server_default="[]"),
+        sa.Column(
+            "created_by",
+            sa.String(36),
+            sa.ForeignKey("users.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.func.now(),
+        ),
+        sa.Column("last_used_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("revoked", sa.Boolean(), nullable=False, server_default="false"),
     )
-    op.create_index('ix_api_keys_key_hash', 'api_keys', ['key_hash'], unique=True)
+    op.create_index("ix_api_keys_key_hash", "api_keys", ["key_hash"], unique=True)
 
 
 def downgrade() -> None:
-    op.drop_index('ix_api_keys_key_hash', table_name='api_keys')
-    op.drop_table('api_keys')
-    op.drop_column('users', 'mfa_enabled')
-    op.drop_column('users', 'mfa_secret')
+    op.drop_index("ix_api_keys_key_hash", table_name="api_keys")
+    op.drop_table("api_keys")
+    op.drop_column("users", "mfa_enabled")
+    op.drop_column("users", "mfa_secret")
     # Do not drop users in downgrade — it predates this migration and is
     # owned by migration 040. Dropping here would break 040's downgrade.

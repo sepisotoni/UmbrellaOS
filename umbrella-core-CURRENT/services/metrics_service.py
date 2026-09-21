@@ -26,6 +26,7 @@ multiprocessing worker pool sharing this object) — safe for read-modify-write
 performed via the helper methods below because there's no `await` between
 the read and the write, so no other coroutine can interleave.
 """
+
 from __future__ import annotations
 
 import time
@@ -89,7 +90,19 @@ class Gauge:
 # (sub-millisecond to multi-second), not a generic default. Matches the
 # smallest set that still gives useful p50/p95/p99 resolution for an
 # admin-tool-scale API rather than a high-throughput service.
-DEFAULT_LATENCY_BUCKETS = (0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0)
+DEFAULT_LATENCY_BUCKETS = (
+    0.005,
+    0.01,
+    0.025,
+    0.05,
+    0.1,
+    0.25,
+    0.5,
+    1.0,
+    2.5,
+    5.0,
+    10.0,
+)
 
 
 class Histogram:
@@ -106,7 +119,9 @@ class Histogram:
         self.help_text = help_text
         self.label_names = label_names
         self.buckets = buckets
-        self._bucket_counts: dict[tuple[str, ...], list[int]] = defaultdict(lambda: [0] * (len(buckets) + 1))
+        self._bucket_counts: dict[tuple[str, ...], list[int]] = defaultdict(
+            lambda: [0] * (len(buckets) + 1)
+        )
         self._sums: dict[tuple[str, ...], float] = defaultdict(float)
         self._counts: dict[tuple[str, ...], int] = defaultdict(int)
         self._lock = Lock()
@@ -123,20 +138,31 @@ class Histogram:
             counts[-1] += 1  # +Inf bucket
 
     def render(self) -> list[str]:
-        lines = [f"# HELP {self.name} {self.help_text}", f"# TYPE {self.name} histogram"]
+        lines = [
+            f"# HELP {self.name} {self.help_text}",
+            f"# TYPE {self.name} histogram",
+        ]
         for key, counts in self._bucket_counts.items():
             cumulative = 0
             for i, bound in enumerate(self.buckets):
                 cumulative += counts[i]
                 bucket_labels = dict(zip(self.label_names, key))
                 bucket_labels["le"] = str(bound)
-                lines.append(f"{self.name}_bucket{_label_str(tuple(bucket_labels), tuple(bucket_labels.values()))} {cumulative}")
+                lines.append(
+                    f"{self.name}_bucket{_label_str(tuple(bucket_labels), tuple(bucket_labels.values()))} {cumulative}"
+                )
             cumulative += counts[-1]
             bucket_labels = dict(zip(self.label_names, key))
             bucket_labels["le"] = "+Inf"
-            lines.append(f"{self.name}_bucket{_label_str(tuple(bucket_labels), tuple(bucket_labels.values()))} {cumulative}")
-            lines.append(f"{self.name}_sum{_label_str(self.label_names, key)} {self._sums[key]}")
-            lines.append(f"{self.name}_count{_label_str(self.label_names, key)} {self._counts[key]}")
+            lines.append(
+                f"{self.name}_bucket{_label_str(tuple(bucket_labels), tuple(bucket_labels.values()))} {cumulative}"
+            )
+            lines.append(
+                f"{self.name}_sum{_label_str(self.label_names, key)} {self._sums[key]}"
+            )
+            lines.append(
+                f"{self.name}_count{_label_str(self.label_names, key)} {self._counts[key]}"
+            )
         return lines
 
 
@@ -158,18 +184,26 @@ class MetricsRegistry:
         self._metrics: dict[str, Counter | Gauge | Histogram] = {}
         self.start_time = time.time()
 
-    def counter(self, name: str, help_text: str, label_names: tuple[str, ...] = ()) -> Counter:
+    def counter(
+        self, name: str, help_text: str, label_names: tuple[str, ...] = ()
+    ) -> Counter:
         if name not in self._metrics:
             self._metrics[name] = Counter(name, help_text, label_names)
         return self._metrics[name]  # type: ignore[return-value]
 
-    def gauge(self, name: str, help_text: str, label_names: tuple[str, ...] = ()) -> Gauge:
+    def gauge(
+        self, name: str, help_text: str, label_names: tuple[str, ...] = ()
+    ) -> Gauge:
         if name not in self._metrics:
             self._metrics[name] = Gauge(name, help_text, label_names)
         return self._metrics[name]  # type: ignore[return-value]
 
     def histogram(
-        self, name: str, help_text: str, label_names: tuple[str, ...] = (), buckets: tuple[float, ...] = DEFAULT_LATENCY_BUCKETS
+        self,
+        name: str,
+        help_text: str,
+        label_names: tuple[str, ...] = (),
+        buckets: tuple[float, ...] = DEFAULT_LATENCY_BUCKETS,
     ) -> Histogram:
         if name not in self._metrics:
             self._metrics[name] = Histogram(name, help_text, label_names, buckets)
@@ -239,7 +273,9 @@ def uptime_seconds() -> float:
 
 # Registered lazily so it always reflects "now" rather than being computed
 # once at import time.
-_uptime_gauge = registry.gauge("umbrella_process_uptime_seconds", "Seconds since this process started.")
+_uptime_gauge = registry.gauge(
+    "umbrella_process_uptime_seconds", "Seconds since this process started."
+)
 
 
 def render_exposition() -> str:

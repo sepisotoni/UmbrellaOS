@@ -10,6 +10,7 @@ confirmation isn't re-run automatically by this suite since it would require
 a Go toolchain in CI, which is out of scope for umbrella-core's own test
 environment.
 """
+
 import time
 
 import jwt

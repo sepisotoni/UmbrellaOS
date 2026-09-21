@@ -7,6 +7,7 @@ POST /api/v1/verification/status     — Check verification status
 GET  /api/v1/verification/pending    — List pending verifications
 POST /api/v1/verification/revoke     — Revoke verification
 """
+
 import random
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -40,7 +41,6 @@ def _aware(dt: datetime) -> datetime:
     return dt
 
 
-
 class VerificationRequestRequest(BaseModel):
     player_uuid: str
     player_username: str
@@ -54,7 +54,9 @@ class VerificationRequestResponse(BaseModel):
     expires_in: int
     player_uuid: str
     already_verified: bool = False
-    disabled: bool = False  # True when verification.enabled=false — plugin/bot should skip flow
+    disabled: bool = (
+        False  # True when verification.enabled=false — plugin/bot should skip flow
+    )
 
 
 class VerificationConfirmRequest(BaseModel):
@@ -115,8 +117,14 @@ async def request_verification(
     """
     # Master toggle check — fast path before any DB work
     from services.settings_service import SettingsService
+
     enabled_value = await SettingsService.get_value(db, "verification.enabled")
-    if enabled_value is not None and enabled_value.lower() in ("false", "0", "no", "off"):
+    if enabled_value is not None and enabled_value.lower() in (
+        "false",
+        "0",
+        "no",
+        "off",
+    ):
         return VerificationRequestResponse(
             code="",
             expires_in=0,
@@ -129,16 +137,13 @@ async def request_verification(
         select(DiscordAccount).where(
             and_(
                 DiscordAccount.player_uuid == body.player_uuid,
-                DiscordAccount.verified == True
+                DiscordAccount.verified == True,
             )
         )
     )
     if existing_account.scalar_one_or_none():
         return VerificationRequestResponse(
-            code="",
-            expires_in=0,
-            player_uuid=body.player_uuid,
-            already_verified=True
+            code="", expires_in=0, player_uuid=body.player_uuid, already_verified=True
         )
 
     # Bug #8 fix: ensure a Player row exists before creating the VerificationCode.
@@ -147,9 +152,8 @@ async def request_verification(
     # yet (the plugin snapshot may not have arrived before the verification request).
     # We upsert here so the FK is always satisfiable.
     from models import Player
-    player = await db.scalar(
-        select(Player).where(Player.uuid == body.player_uuid)
-    )
+
+    player = await db.scalar(select(Player).where(Player.uuid == body.player_uuid))
     if player is None:
         player = Player(
             uuid=body.player_uuid,
@@ -167,6 +171,7 @@ async def request_verification(
     # alone (they are history), but unused unexpired ones would cause
     # confusion if both could be submitted.
     from sqlalchemy import update as sa_update
+
     await db.execute(
         sa_update(VerificationCode)
         .where(
@@ -193,7 +198,11 @@ async def request_verification(
     else:
         # All 10 collided — extremely unlikely with 900k codes but fail cleanly.
         from fastapi import HTTPException as _HTTPException
-        raise _HTTPException(status_code=503, detail="Could not generate a unique verification code. Please try again.")
+
+        raise _HTTPException(
+            status_code=503,
+            detail="Could not generate a unique verification code. Please try again.",
+        )
 
     verification_code = VerificationCode(
         player_uuid=body.player_uuid,
@@ -227,18 +236,18 @@ async def confirm_verification(
         select(VerificationCode).where(VerificationCode.code == body.code)
     )
     verification_code = result.scalar_one_or_none()
-    
+
     if not verification_code:
         raise HTTPException(status_code=404, detail="Code not found")
-    
+
     # Check if expired
     if datetime.now(timezone.utc) > _aware(verification_code.expires_at):
         raise HTTPException(status_code=400, detail="Code expired")
-    
+
     # Check if already used
     if verification_code.used:
         raise HTTPException(status_code=400, detail="Code already used")
-    
+
     # Mark code as used
     verification_code.used = True
 
@@ -248,10 +257,15 @@ async def confirm_verification(
     )
     account = existing_account.scalar_one_or_none()
 
-    if account and account.verified and account.player_uuid and account.player_uuid != verification_code.player_uuid:
+    if (
+        account
+        and account.verified
+        and account.player_uuid
+        and account.player_uuid != verification_code.player_uuid
+    ):
         raise HTTPException(
             status_code=409,
-            detail="This Discord account is already linked to a different Minecraft account and cannot be relinked."
+            detail="This Discord account is already linked to a different Minecraft account and cannot be relinked.",
         )
 
     # Is this Minecraft account already verified and linked to a DIFFERENT Discord account?
@@ -267,7 +281,7 @@ async def confirm_verification(
     if existing_for_player.scalar_one_or_none():
         raise HTTPException(
             status_code=409,
-            detail="This Minecraft account is already linked to a different Discord account."
+            detail="This Minecraft account is already linked to a different Discord account.",
         )
 
     if account:
@@ -303,19 +317,18 @@ async def confirm_verification(
     # .edit(nick=player_username), wrapped in its own try/except so a
     # nickname-permission failure never blocks verification itself.
 
-    
     # Create audit log entry
     audit_log = AuditLog(
         actor=body.discord_username,
         actor_type="bot",
         action="verification.completed",
         target=verification_code.player_username,
-        details_json='{}',
+        details_json="{}",
     )
     db.add(audit_log)
-    
+
     await db.flush()
-    
+
     return VerificationConfirmResponse(
         success=True,
         player_uuid=verification_code.player_uuid,
@@ -339,19 +352,19 @@ async def verification_status(
         select(DiscordAccount).where(
             and_(
                 DiscordAccount.player_uuid == body.player_uuid,
-                DiscordAccount.verified == True
+                DiscordAccount.verified == True,
             )
         )
     )
     account = result.scalar_one_or_none()
-    
+
     if account:
         return VerificationStatusResponse(
             verified=True,
             discord_id=account.discord_id,
             discord_username=account.discord_username,
         )
-    
+
     return VerificationStatusResponse(verified=False)
 
 
@@ -365,12 +378,12 @@ async def list_pending_verifications(
         select(VerificationCode).where(
             and_(
                 VerificationCode.used == False,
-                VerificationCode.expires_at > datetime.now(timezone.utc)
+                VerificationCode.expires_at > datetime.now(timezone.utc),
             )
         )
     )
     codes = result.scalars().all()
-    
+
     return [VerificationCodeSchema.model_validate(c) for c in codes]
 
 
@@ -385,13 +398,15 @@ async def revoke_verification(
         select(DiscordAccount).where(DiscordAccount.player_uuid == body.player_uuid)
     )
     account = result.scalar_one_or_none()
-    
+
     # FIX (FINDING-018): previously returned {"success": True} even when no
     # DiscordAccount row existed, making a staff revoke on a typo UUID look
     # successful. Now returns 404 so the caller can distinguish "revoked"
     # from "never existed".
     if not account:
-        raise HTTPException(status_code=404, detail="No verified account found for that player UUID.")
+        raise HTTPException(
+            status_code=404, detail="No verified account found for that player UUID."
+        )
 
     account.verified = False
 
@@ -497,7 +512,9 @@ async def unlink_account(
         select(DiscordAccount).where(DiscordAccount.discord_id == discord_id)
     )
     if not account:
-        raise HTTPException(status_code=404, detail="No linked account found for that Discord ID")
+        raise HTTPException(
+            status_code=404, detail="No linked account found for that Discord ID"
+        )
 
     account.verified = False
     account.player_uuid = None
@@ -541,6 +558,7 @@ async def resolve_pending(
         return {"resolved": False}
 
     from models import Player
+
     real_player = await db.scalar(select(Player).where(Player.uuid == body.uuid))
     if real_player is None:
         db.add(Player(uuid=body.uuid, username=body.username))
@@ -627,23 +645,28 @@ async def list_verification_links(
         # first place (an always-false ternary short-circuits `body.discord_id`
         # so it never actually ran), so removing it changes no behaviour.
         if acct.discord_id and (
-            acct.discord_id.startswith("pending_mc:") or acct.discord_id.startswith("pmc:")
+            acct.discord_id.startswith("pending_mc:")
+            or acct.discord_id.startswith("pmc:")
         ):
             verified_by = "PLUGIN"
         else:
             # Default: assume bot-code flow (the normal path)
             verified_by = "BOT_CODE"
 
-        links.append(VerificationLinkSchema(
-            id=acct.id,
-            discord_id=acct.discord_id,
-            discord_username=acct.discord_username,
-            minecraft_uuid=acct.player_uuid,
-            minecraft_username=player_map.get(acct.player_uuid) if acct.player_uuid else None,
-            linked_at=acct.linked_at,
-            verified_by=verified_by,
-            status="VERIFIED",  # filter above guarantees verified=True
-        ))
+        links.append(
+            VerificationLinkSchema(
+                id=acct.id,
+                discord_id=acct.discord_id,
+                discord_username=acct.discord_username,
+                minecraft_uuid=acct.player_uuid,
+                minecraft_username=player_map.get(acct.player_uuid)
+                if acct.player_uuid
+                else None,
+                linked_at=acct.linked_at,
+                verified_by=verified_by,
+                status="VERIFIED",  # filter above guarantees verified=True
+            )
+        )
 
     return links
 
@@ -651,6 +674,7 @@ async def list_verification_links(
 # ---------------------------------------------------------------------------
 # Plugin-facing verify-code endpoint (BUG-2 fix)
 # ---------------------------------------------------------------------------
+
 
 class PluginVerifyCodeRequest(BaseModel):
     code: str
@@ -675,8 +699,11 @@ async def get_verification_count(
 ) -> dict:
     """Return total verified account count — lightweight alternative to fetching all links."""
     from sqlalchemy import func as sql_func
+
     total = await db.scalar(
-        select(sql_func.count(DiscordAccount.discord_id)).where(DiscordAccount.verified == True)
+        select(sql_func.count(DiscordAccount.discord_id)).where(
+            DiscordAccount.verified == True
+        )
     )
     return {"count": total or 0}
 
@@ -777,9 +804,7 @@ async def plugin_verify_code(
     # at request time; we need to look up the DiscordAccount that was waiting
     # for this player (if the bot pre-created one) or create a placeholder.
     discord_acct = await db.scalar(
-        select(DiscordAccount).where(
-            DiscordAccount.player_uuid == vc.player_uuid
-        )
+        select(DiscordAccount).where(DiscordAccount.player_uuid == vc.player_uuid)
     )
 
     if discord_acct:

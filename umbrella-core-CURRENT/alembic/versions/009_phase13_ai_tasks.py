@@ -6,6 +6,7 @@ Revises: 008_phase12_snapshots
 Create Date: 2024-01-01 00:00:00.000000
 
 """
+
 from alembic import op
 import sqlalchemy as sa
 
@@ -22,7 +23,12 @@ def upgrade():
         sa.Column("task_type", sa.String(32), nullable=False),
         sa.Column("status", sa.String(16), nullable=False, server_default="pending"),
         sa.Column("player_uuid", sa.String(36), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.func.now(),
+        ),
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("ai_summary", sa.Text(), nullable=False),
         sa.Column("ai_recommendation", sa.String(256), nullable=False),

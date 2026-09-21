@@ -17,6 +17,7 @@ since discord_message_id is unique, reprocessing the same message (a
 backfill, a duplicate event) would raise an IntegrityError instead of
 gracefully upserting.
 """
+
 from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -64,10 +65,14 @@ class KnowledgeService:
         if not is_knowledge_channel(channel_name) or not content:
             return None
 
-        existing = await KnowledgeRepository.get_by_discord_message_id(db, discord_message_id)
+        existing = await KnowledgeRepository.get_by_discord_message_id(
+            db, discord_message_id
+        )
         if existing is not None:
             if existing.content != content:
-                await KnowledgeRepository.snapshot_version(db, existing, edited_by=author_id)
+                await KnowledgeRepository.snapshot_version(
+                    db, existing, edited_by=author_id
+                )
                 existing.content = content
                 await db.flush()
             return existing
@@ -85,7 +90,9 @@ class KnowledgeService:
         return entry
 
     @staticmethod
-    async def search(db: AsyncSession, query: str, limit: int = 5) -> list[KnowledgeEntry]:
+    async def search(
+        db: AsyncSession, query: str, limit: int = 5
+    ) -> list[KnowledgeEntry]:
         return await KnowledgeRepository.search(db, query, limit=limit)
 
     @staticmethod
@@ -116,11 +123,15 @@ class KnowledgeService:
         return await KnowledgeRepository.list_pending(db)
 
     @staticmethod
-    async def approve(db: AsyncSession, entry_id: str, *, reviewed_by: str) -> KnowledgeEntry | None:
+    async def approve(
+        db: AsyncSession, entry_id: str, *, reviewed_by: str
+    ) -> KnowledgeEntry | None:
         return await KnowledgeRepository.approve(db, entry_id, reviewed_by=reviewed_by)
 
     @staticmethod
-    async def reject(db: AsyncSession, entry_id: str, *, reviewed_by: str) -> KnowledgeEntry | None:
+    async def reject(
+        db: AsyncSession, entry_id: str, *, reviewed_by: str
+    ) -> KnowledgeEntry | None:
         return await KnowledgeRepository.reject(db, entry_id, reviewed_by=reviewed_by)
 
     @staticmethod

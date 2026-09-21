@@ -6,6 +6,7 @@ Templates are versioned (see models/hosting.py's ServerTemplate.version) so
 editing a template later never silently changes what an already-created
 Server does — each Server pins the template_version it was created with.
 """
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -57,8 +58,13 @@ class ServerTemplateService:
         """
         template = await ServerTemplateService.get_template(db, template_id)
         allowed = {
-            "name", "image", "description", "startup_command",
-            "default_env", "default_memory_bytes", "default_cpu_cores",
+            "name",
+            "image",
+            "description",
+            "startup_command",
+            "default_env",
+            "default_memory_bytes",
+            "default_cpu_cores",
         }
         for key, value in changes.items():
             if key not in allowed:

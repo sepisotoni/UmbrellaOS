@@ -21,6 +21,7 @@ every installed plugin's sources side by side, and `set_plugin_sources`/
 install flow update it live without swapping the instance other code may
 already hold a reference to.
 """
+
 from __future__ import annotations
 
 import json
@@ -33,9 +34,16 @@ from models.marketplace import PluginInstall
 from registry.registry import CapabilityRegistry
 from registry.registry import registry as default_registry
 from services.plugins.manifest import ManifestValidationError, parse_manifest
-from services.plugins.registration import PluginRegistrationError, register_plugin_capabilities
+from services.plugins.registration import (
+    PluginRegistrationError,
+    register_plugin_capabilities,
+)
 from services.plugins.sandbox import ProcessSandbox
-from services.plugins.source_store import PluginPackageError, extract_sources, load_verified_zip_bytes
+from services.plugins.source_store import (
+    PluginPackageError,
+    extract_sources,
+    load_verified_zip_bytes,
+)
 from services.metrics_service import installed_plugins
 
 logger = logging.getLogger(__name__)
@@ -82,9 +90,15 @@ async def reload_installed_plugins(
             zip_bytes = load_verified_zip_bytes(install.zip_path, install.sha256_hash)
             sources = extract_sources(zip_bytes)
             sandbox.set_plugin_sources(install.plugin_id, sources)
-            names = await register_plugin_capabilities(manifest, sandbox, db, registry=registry)
+            names = await register_plugin_capabilities(
+                manifest, sandbox, db, registry=registry
+            )
             registered.extend(names)
-        except (ManifestValidationError, PluginPackageError, PluginRegistrationError) as exc:
+        except (
+            ManifestValidationError,
+            PluginPackageError,
+            PluginRegistrationError,
+        ) as exc:
             # FIX ([PLUGIN] subsystem audit): PluginRegistrationError was
             # not caught here, contradicting this function's own stated
             # design goal ("must not be able to take the entire app down
@@ -104,7 +118,9 @@ async def reload_installed_plugins(
             # not part of register_plugin_capabilities's own registration-
             # time exception surface, so they don't need to be caught here.)
             logger.error(
-                "Skipping plugin %r at startup re-registration: %s", install.plugin_id, exc
+                "Skipping plugin %r at startup re-registration: %s",
+                install.plugin_id,
+                exc,
             )
             continue
 

@@ -13,6 +13,7 @@ non-secret values opaque for no benefit. A per-key "mark this env var as
 secret" design is real follow-up work, not something to rush into this
 phase's scope just to claim full coverage.
 """
+
 from cryptography.fernet import Fernet, InvalidToken
 
 from api.middleware.errors import AppException
@@ -30,13 +31,15 @@ def _fernet() -> Fernet:
     if not key:
         raise SecretsError(
             "SECRETS_ENCRYPTION_KEY is not configured — generate one with "
-            "`python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\"` "
+            '`python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` '
             "and set it before registering nodes or storing any other encrypted secret."
         )
     try:
         return Fernet(key.encode() if isinstance(key, str) else key)
     except (ValueError, TypeError) as exc:
-        raise SecretsError(f"SECRETS_ENCRYPTION_KEY is not a valid Fernet key: {exc}") from exc
+        raise SecretsError(
+            f"SECRETS_ENCRYPTION_KEY is not a valid Fernet key: {exc}"
+        ) from exc
 
 
 def encrypt_secret(plaintext: str) -> str:
@@ -52,5 +55,6 @@ def decrypt_secret(ciphertext: str) -> str:
     except InvalidToken as exc:
         raise SecretsError(
             "stored value could not be decrypted — wrong SECRETS_ENCRYPTION_KEY, "
-            "or the value was never encrypted with this scheme", 500
+            "or the value was never encrypted with this scheme",
+            500,
         ) from exc

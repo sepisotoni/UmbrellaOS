@@ -13,6 +13,7 @@ identity. This is what makes "the AI cannot exceed the permissions of the
 human it's acting for" true by construction — there is no code path that
 grants a CallContext more access than the underlying actor actually has.
 """
+
 from __future__ import annotations
 
 import uuid

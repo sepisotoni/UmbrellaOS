@@ -10,6 +10,7 @@ Revision ID: 051_add_mc_commands_server_id
 Revises:     050_add_mfa_recovery_codes
 Create Date: 2026-08-31
 """
+
 import sqlalchemy as sa
 from alembic import op
 
@@ -22,22 +23,26 @@ depends_on = None
 def upgrade() -> None:
     bind = op.get_bind()
     if bind.dialect.name == "postgresql":
-        op.execute(sa.text("""
+        op.execute(
+            sa.text("""
             DO $$
             BEGIN
                 ALTER TABLE mc_commands ADD COLUMN server_id VARCHAR(64) NOT NULL DEFAULT 'default';
             EXCEPTION
                 WHEN duplicate_column THEN NULL;
             END $$;
-        """))
-        op.execute(sa.text("""
+        """)
+        )
+        op.execute(
+            sa.text("""
             DO $$
             BEGIN
                 CREATE INDEX ix_mc_commands_server_id ON mc_commands (server_id);
             EXCEPTION
                 WHEN duplicate_table THEN NULL;
             END $$;
-        """))
+        """)
+        )
     else:
         # SQLite (tests): create_all()-bootstrapped databases already have
         # this from the model directly; only runs for a genuine
@@ -45,7 +50,9 @@ def upgrade() -> None:
         try:
             op.add_column(
                 "mc_commands",
-                sa.Column("server_id", sa.String(64), nullable=False, server_default="default"),
+                sa.Column(
+                    "server_id", sa.String(64), nullable=False, server_default="default"
+                ),
             )
             op.create_index("ix_mc_commands_server_id", "mc_commands", ["server_id"])
         except Exception:

@@ -2,6 +2,7 @@
 services/memory/service.py — Ported from Moo-assistant's
 bot/services/memory_service.py.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -36,11 +37,18 @@ class MemoryService:
             seconds=get_settings().short_term_memory_ttl_seconds
         )
         await MemoryRepository.upsert(
-            db, scope=MemoryScope.SHORT_TERM, key=key, value=summary, expires_at=expires_at, increment_hit=False
+            db,
+            scope=MemoryScope.SHORT_TERM,
+            key=key,
+            value=summary,
+            expires_at=expires_at,
+            increment_hit=False,
         )
 
     @staticmethod
-    async def recall_conversation_turn(db: AsyncSession, *, channel_id: str, user_id: str) -> str | None:
+    async def recall_conversation_turn(
+        db: AsyncSession, *, channel_id: str, user_id: str
+    ) -> str | None:
         key = f"conversation:{channel_id}:{user_id}"
         entry = await MemoryRepository.get(db, MemoryScope.SHORT_TERM, key)
         return entry.value if entry else None
@@ -49,7 +57,12 @@ class MemoryService:
     @staticmethod
     async def set_server_fact(db: AsyncSession, *, fact_key: str, value: str) -> None:
         await MemoryRepository.upsert(
-            db, scope=MemoryScope.SERVER, key=f"fact:{fact_key}", value=value, expires_at=None, increment_hit=False
+            db,
+            scope=MemoryScope.SERVER,
+            key=f"fact:{fact_key}",
+            value=value,
+            expires_at=None,
+            increment_hit=False,
         )
 
     @staticmethod
@@ -63,7 +76,9 @@ class MemoryService:
 
     # --- operational memory (recurring issues/questions + resolutions) ---
     @staticmethod
-    async def record_recurring(db: AsyncSession, *, topic_key: str, resolution: str) -> None:
+    async def record_recurring(
+        db: AsyncSession, *, topic_key: str, resolution: str
+    ) -> None:
         """Call whenever a support/investigation flow resolves something,
         to build up a record of common issues and how they were solved.
         hit_count increments automatically on repeat calls for the same
@@ -79,12 +94,16 @@ class MemoryService:
 
     @staticmethod
     async def get_recurring(db: AsyncSession, *, topic_key: str) -> str | None:
-        entry = await MemoryRepository.get(db, MemoryScope.OPERATIONAL, f"recurring:{topic_key}")
+        entry = await MemoryRepository.get(
+            db, MemoryScope.OPERATIONAL, f"recurring:{topic_key}"
+        )
         return entry.value if entry else None
 
     @staticmethod
     async def top_recurring(db: AsyncSession, limit: int = 10) -> list[MemoryEntry]:
-        return await MemoryRepository.list_scope(db, MemoryScope.OPERATIONAL, limit=limit)
+        return await MemoryRepository.list_scope(
+            db, MemoryScope.OPERATIONAL, limit=limit
+        )
 
     # --- maintenance ---
     @staticmethod

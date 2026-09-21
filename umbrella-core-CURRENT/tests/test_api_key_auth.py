@@ -9,6 +9,7 @@ which evaluates eagerly and would have rejected exactly this request before
 the API-key check ever ran. Caught before shipping by reasoning through
 FastAPI's dependency resolution order, then confirmed here.
 """
+
 import pytest
 from fastapi import Depends, FastAPI
 from httpx import ASGITransport, AsyncClient
@@ -46,13 +47,19 @@ def _build_app(db_session) -> FastAPI:
 
 
 @pytest.mark.asyncio
-async def test_valid_api_key_authenticates_without_any_other_header(db_session, monkeypatch):
+async def test_valid_api_key_authenticates_without_any_other_header(
+    db_session, monkeypatch
+):
     async with db_session() as db:
-        _, plaintext = await ApiKeyService.create_api_key(db, "bot-key", ["hosting.server.view"])
+        _, plaintext = await ApiKeyService.create_api_key(
+            db, "bot-key", ["hosting.server.view"]
+        )
         await db.commit()
 
     app = _build_app(db_session)
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
         # Deliberately no Authorization header and no X-Admin-Key — this is
         # exactly the request shape the eager-Depends() bug would have
         # rejected.
@@ -67,8 +74,12 @@ async def test_valid_api_key_authenticates_without_any_other_header(db_session, 
 @pytest.mark.asyncio
 async def test_invalid_api_key_is_rejected_even_with_no_fallback_header(db_session):
     app = _build_app(db_session)
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.get("/whoami", headers={"X-Api-Key": "umbr_totally-not-real"})
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get(
+            "/whoami", headers={"X-Api-Key": "umbr_totally-not-real"}
+        )
     assert response.status_code == 401
 
 
@@ -79,8 +90,12 @@ async def test_missing_api_key_falls_back_to_admin_key(db_session):
     settings = get_settings()
 
     app = _build_app(db_session)
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.get("/whoami", headers={"X-Admin-Key": settings.admin_key})
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get(
+            "/whoami", headers={"X-Admin-Key": settings.admin_key}
+        )
 
     assert response.status_code == 200
     assert response.json()["kind"] == "admin_key"
@@ -89,7 +104,9 @@ async def test_missing_api_key_falls_back_to_admin_key(db_session):
 @pytest.mark.asyncio
 async def test_no_auth_at_all_is_rejected(db_session):
     app = _build_app(db_session)
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
         response = await client.get("/whoami")
     assert response.status_code == 401
 
@@ -104,7 +121,9 @@ async def test_api_key_header_takes_precedence_over_admin_key(db_session):
 
     settings = get_settings()
     app = _build_app(db_session)
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
         response = await client.get(
             "/whoami",
             headers={"X-Api-Key": "umbr_invalid", "X-Admin-Key": settings.admin_key},

@@ -16,6 +16,7 @@ ApiKey, the secret itself IS stored (not just a hash) — it has to be, since
 it must be usable to compute a fresh HMAC on every delivery, not just
 verified against a one-time presented value the way a login credential is.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -31,7 +32,9 @@ from models.user import User  # noqa: F401 - resolves the "User" forward referen
 class WebhookSubscription(Base):
     __tablename__ = "webhook_subscriptions"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
 
     # Exact topic string this subscription delivers for — e.g.
     # "staff_escalation.created". Indexed since the delivery handler looks
@@ -44,7 +47,9 @@ class WebhookSubscription(Base):
     # this is stored in recoverable form, unlike ApiKey.key_hash.
     secret: Mapped[str] = mapped_column(String(128), nullable=False)
 
-    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
 
     created_by: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True

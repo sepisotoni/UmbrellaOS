@@ -1,6 +1,7 @@
 """
 tests/test_mc_commands.py — MC command execution API tests.
 """
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
@@ -92,7 +93,7 @@ async def test_get_mc_commands_pending_returns_list(client: AsyncClient, db_sess
         db.add(cmd2)
         db.add(cmd3)
         await db.commit()
-    
+
     response = await client.get(
         "/api/v1/mc/commands/pending",
         headers=PLUGIN_HEADERS,
@@ -112,7 +113,9 @@ async def test_get_mc_commands_pending_unauthenticated_returns_401(client: Async
 
 
 @pytest.mark.asyncio
-async def test_post_mc_commands_id_complete_marks_completed(client: AsyncClient, db_session):
+async def test_post_mc_commands_id_complete_marks_completed(
+    client: AsyncClient, db_session
+):
     """POST /mc/commands/{id}/complete marks command as completed."""
     # Create a pending command
     async with db_session() as db:
@@ -126,7 +129,7 @@ async def test_post_mc_commands_id_complete_marks_completed(client: AsyncClient,
         db.add(cmd)
         await db.commit()
         await db.refresh(cmd)
-    
+
     response = await client.post(
         f"/api/v1/mc/commands/{cmd.id}/complete",
         json={
@@ -138,7 +141,7 @@ async def test_post_mc_commands_id_complete_marks_completed(client: AsyncClient,
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "ok"
-    
+
     # Verify command was updated
     async with db_session() as db:
         updated_cmd = await db.scalar(select(MCCommand).where(MCCommand.id == cmd.id))
@@ -149,7 +152,9 @@ async def test_post_mc_commands_id_complete_marks_completed(client: AsyncClient,
 
 
 @pytest.mark.asyncio
-async def test_post_mc_commands_id_complete_marks_failed(client: AsyncClient, db_session):
+async def test_post_mc_commands_id_complete_marks_failed(
+    client: AsyncClient, db_session
+):
     """POST /mc/commands/{id}/complete can mark command as failed."""
     # Create a pending command
     async with db_session() as db:
@@ -163,7 +168,7 @@ async def test_post_mc_commands_id_complete_marks_failed(client: AsyncClient, db
         db.add(cmd)
         await db.commit()
         await db.refresh(cmd)
-    
+
     response = await client.post(
         f"/api/v1/mc/commands/{cmd.id}/complete",
         json={
@@ -173,7 +178,7 @@ async def test_post_mc_commands_id_complete_marks_failed(client: AsyncClient, db
         headers=PLUGIN_HEADERS,
     )
     assert response.status_code == 200
-    
+
     # Verify command was marked as failed
     async with db_session() as db:
         updated_cmd = await db.scalar(select(MCCommand).where(MCCommand.id == cmd.id))
@@ -197,7 +202,9 @@ async def test_post_mc_commands_id_complete_not_found_returns_404(client: AsyncC
 
 
 @pytest.mark.asyncio
-async def test_post_mc_commands_id_complete_already_completed_returns_400(client: AsyncClient, db_session):
+async def test_post_mc_commands_id_complete_already_completed_returns_400(
+    client: AsyncClient, db_session
+):
     """POST /mc/commands/{id}/complete on already completed command returns 400."""
     # Create a completed command
     async with db_session() as db:
@@ -212,7 +219,7 @@ async def test_post_mc_commands_id_complete_already_completed_returns_400(client
         db.add(cmd)
         await db.commit()
         await db.refresh(cmd)
-    
+
     response = await client.post(
         f"/api/v1/mc/commands/{cmd.id}/complete",
         json={
@@ -226,7 +233,9 @@ async def test_post_mc_commands_id_complete_already_completed_returns_400(client
 
 
 @pytest.mark.asyncio
-async def test_post_mc_commands_id_complete_unauthenticated_returns_401(client: AsyncClient):
+async def test_post_mc_commands_id_complete_unauthenticated_returns_401(
+    client: AsyncClient,
+):
     """POST /mc/commands/{id}/complete without auth returns 401."""
     response = await client.post(
         "/api/v1/mc/commands/1/complete",
@@ -251,7 +260,7 @@ async def test_post_mc_command_creates_audit_log(client: AsyncClient, db_session
         headers={"X-Admin-Key": "test-secret-key"},
     )
     assert response.status_code == 201
-    
+
     # Verify audit log was created
     async with db_session() as db:
         audit_log = await db.execute(
@@ -265,7 +274,9 @@ async def test_post_mc_command_creates_audit_log(client: AsyncClient, db_session
 
 
 @pytest.mark.asyncio
-async def test_post_mc_commands_id_complete_creates_audit_log(client: AsyncClient, db_session):
+async def test_post_mc_commands_id_complete_creates_audit_log(
+    client: AsyncClient, db_session
+):
     """POST /mc/commands/{id}/complete creates audit log entry."""
     # Create a pending command
     async with db_session() as db:
@@ -279,7 +290,7 @@ async def test_post_mc_commands_id_complete_creates_audit_log(client: AsyncClien
         db.add(cmd)
         await db.commit()
         await db.refresh(cmd)
-    
+
     response = await client.post(
         f"/api/v1/mc/commands/{cmd.id}/complete",
         json={
@@ -289,7 +300,7 @@ async def test_post_mc_commands_id_complete_creates_audit_log(client: AsyncClien
         headers=PLUGIN_HEADERS,
     )
     assert response.status_code == 200
-    
+
     # Verify audit log was created
     async with db_session() as db:
         audit_log = await db.execute(
@@ -307,6 +318,7 @@ async def test_post_mc_commands_id_complete_creates_audit_log(client: AsyncClien
 # must only see/execute commands meant for their own server, not every
 # pending command globally.
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_post_mc_command_respects_server_id(client: AsyncClient, db_session):
@@ -343,23 +355,33 @@ async def test_post_mc_command_defaults_server_id(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_get_mc_commands_pending_scoped_to_server_id(client: AsyncClient, db_session):
+async def test_get_mc_commands_pending_scoped_to_server_id(
+    client: AsyncClient, db_session
+):
     """GET /mc/commands/pending?server_id=X only returns commands for that
     server — the core bug this fix addresses. Without this, a fleet's
     plugin instances would each execute every server's pending commands."""
     async with db_session() as db:
-        db.add(MCCommand(
-            command="ban griefer",
-            server_id="survival-1",
-            requested_by_discord_id="1", requested_by_username="A",
-            status="pending", created_at=datetime.now(timezone.utc),
-        ))
-        db.add(MCCommand(
-            command="whitelist add dev",
-            server_id="creative-dev",
-            requested_by_discord_id="2", requested_by_username="B",
-            status="pending", created_at=datetime.now(timezone.utc),
-        ))
+        db.add(
+            MCCommand(
+                command="ban griefer",
+                server_id="survival-1",
+                requested_by_discord_id="1",
+                requested_by_username="A",
+                status="pending",
+                created_at=datetime.now(timezone.utc),
+            )
+        )
+        db.add(
+            MCCommand(
+                command="whitelist add dev",
+                server_id="creative-dev",
+                requested_by_discord_id="2",
+                requested_by_username="B",
+                status="pending",
+                created_at=datetime.now(timezone.utc),
+            )
+        )
         await db.commit()
 
     survival_response = await client.get(
@@ -382,23 +404,33 @@ async def test_get_mc_commands_pending_scoped_to_server_id(client: AsyncClient, 
 
 
 @pytest.mark.asyncio
-async def test_get_mc_commands_pending_defaults_to_default_server(client: AsyncClient, db_session):
+async def test_get_mc_commands_pending_defaults_to_default_server(
+    client: AsyncClient, db_session
+):
     """A plugin instance not yet passing ?server_id= keeps working exactly
     as before — scoped to the implicit 'default' queue every existing row
     already uses via the column default."""
     async with db_session() as db:
-        db.add(MCCommand(
-            command="say legacy behavior",
-            requested_by_discord_id="1", requested_by_username="A",
-            status="pending", created_at=datetime.now(timezone.utc),
-            # server_id intentionally omitted — exercises the column default
-        ))
-        db.add(MCCommand(
-            command="say other server",
-            server_id="other-server",
-            requested_by_discord_id="2", requested_by_username="B",
-            status="pending", created_at=datetime.now(timezone.utc),
-        ))
+        db.add(
+            MCCommand(
+                command="say legacy behavior",
+                requested_by_discord_id="1",
+                requested_by_username="A",
+                status="pending",
+                created_at=datetime.now(timezone.utc),
+                # server_id intentionally omitted — exercises the column default
+            )
+        )
+        db.add(
+            MCCommand(
+                command="say other server",
+                server_id="other-server",
+                requested_by_discord_id="2",
+                requested_by_username="B",
+                status="pending",
+                created_at=datetime.now(timezone.utc),
+            )
+        )
         await db.commit()
 
     response = await client.get("/api/v1/mc/commands/pending", headers=PLUGIN_HEADERS)

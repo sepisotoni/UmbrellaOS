@@ -37,6 +37,7 @@ different player cannot be relinked; a player already verified+linked to
 a different Discord account blocks the new link; re-confirming the exact
 same already-linked pair is treated as an idempotent success.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -45,7 +46,11 @@ from datetime import datetime, timezone
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.middleware.errors import ConflictException, ResourceNotFoundException, ValidationException
+from api.middleware.errors import (
+    ConflictException,
+    ResourceNotFoundException,
+    ValidationException,
+)
 from models import AuditLog, DiscordAccount, VerificationCode
 
 
@@ -53,7 +58,9 @@ from models import AuditLog, DiscordAccount, VerificationCode
 class ConfirmResult:
     player_uuid: str
     player_username: str
-    already_linked: bool  # True for the idempotent re-confirm case — no DB write happened
+    already_linked: (
+        bool  # True for the idempotent re-confirm case — no DB write happened
+    )
 
 
 @dataclass(frozen=True)
@@ -82,7 +89,9 @@ async def confirm_verification(
     only for this function's own extra verification.completed audit row,
     kept for parity with the router's behavior.
     """
-    result = await db.execute(select(VerificationCode).where(VerificationCode.code == code))
+    result = await db.execute(
+        select(VerificationCode).where(VerificationCode.code == code)
+    )
     verification_code = result.scalar_one_or_none()
 
     if not verification_code:
@@ -106,10 +115,17 @@ async def confirm_verification(
 
     verification_code.used = True
 
-    existing_account = await db.execute(select(DiscordAccount).where(DiscordAccount.discord_id == discord_id))
+    existing_account = await db.execute(
+        select(DiscordAccount).where(DiscordAccount.discord_id == discord_id)
+    )
     account = existing_account.scalar_one_or_none()
 
-    if account and account.verified and account.player_uuid and account.player_uuid != verification_code.player_uuid:
+    if (
+        account
+        and account.verified
+        and account.player_uuid
+        and account.player_uuid != verification_code.player_uuid
+    ):
         raise ConflictException(
             "This Discord account is already linked to a different Minecraft account and cannot be relinked."
         )
@@ -124,7 +140,9 @@ async def confirm_verification(
         )
     )
     if existing_for_player.scalar_one_or_none():
-        raise ConflictException("This Minecraft account is already linked to a different Discord account.")
+        raise ConflictException(
+            "This Minecraft account is already linked to a different Discord account."
+        )
 
     already_linked = False
     if account:
@@ -170,7 +188,9 @@ class LinkByDiscordResult:
     player_username: str | None
 
 
-async def get_link_by_discord(db: AsyncSession, *, discord_id: str) -> LinkByDiscordResult:
+async def get_link_by_discord(
+    db: AsyncSession, *, discord_id: str
+) -> LinkByDiscordResult:
     """Reverse of get_verification_status: given a Discord ID, resolve the
     linked player_uuid (if any). Added to close the gap flagged in
     umbrella-discord's player_risk_cog.py - the only prior path from a
@@ -190,7 +210,11 @@ async def get_link_by_discord(db: AsyncSession, *, discord_id: str) -> LinkByDis
     result = await db.execute(
         select(DiscordAccount, Player)
         .join(Player, Player.uuid == DiscordAccount.player_uuid, isouter=True)
-        .where(and_(DiscordAccount.discord_id == discord_id, DiscordAccount.verified == True))  # noqa: E712
+        .where(
+            and_(
+                DiscordAccount.discord_id == discord_id, DiscordAccount.verified == True
+            )
+        )  # noqa: E712
     )
     row = result.first()
     if not row:
@@ -204,13 +228,22 @@ async def get_link_by_discord(db: AsyncSession, *, discord_id: str) -> LinkByDis
     )
 
 
-async def get_verification_status(db: AsyncSession, *, player_uuid: str) -> StatusResult:
+async def get_verification_status(
+    db: AsyncSession, *, player_uuid: str
+) -> StatusResult:
     result = await db.execute(
         select(DiscordAccount).where(
-            and_(DiscordAccount.player_uuid == player_uuid, DiscordAccount.verified == True)  # noqa: E712
+            and_(
+                DiscordAccount.player_uuid == player_uuid,
+                DiscordAccount.verified == True,
+            )  # noqa: E712
         )
     )
     account = result.scalar_one_or_none()
     if account:
-        return StatusResult(verified=True, discord_id=account.discord_id, discord_username=account.discord_username)
+        return StatusResult(
+            verified=True,
+            discord_id=account.discord_id,
+            discord_username=account.discord_username,
+        )
     return StatusResult(verified=False, discord_id=None, discord_username=None)

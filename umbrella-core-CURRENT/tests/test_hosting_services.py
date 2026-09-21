@@ -8,6 +8,7 @@ public method signatures) rather than talking to a real daemon — the same
 dependency-injection pattern used by umbrella-daemon's own DockerClient
 interface and the Capability Registry's CallContext.
 """
+
 import pytest
 
 from services.allocation_service import AllocationError, AllocationService
@@ -34,40 +35,78 @@ class FakeDaemonClient:
         self.calls.append(("create", server_id, kwargs))
         self._maybe_fail("create")
         return ContainerState(
-            server_id=server_id, runtime_id="docker-fake", status=self._create_status,
-            started_at=None, finished_at=None, exit_code=None, oom_killed=False,
+            server_id=server_id,
+            runtime_id="docker-fake",
+            status=self._create_status,
+            started_at=None,
+            finished_at=None,
+            exit_code=None,
+            oom_killed=False,
         )
 
     async def start(self, server_id):
         self.calls.append(("start", server_id))
         self._maybe_fail("start")
-        return ContainerState(server_id=server_id, runtime_id="docker-fake", status="running",
-                               started_at=None, finished_at=None, exit_code=None, oom_killed=False)
+        return ContainerState(
+            server_id=server_id,
+            runtime_id="docker-fake",
+            status="running",
+            started_at=None,
+            finished_at=None,
+            exit_code=None,
+            oom_killed=False,
+        )
 
     async def stop(self, server_id, grace_period_seconds=None):
         self.calls.append(("stop", server_id, grace_period_seconds))
         self._maybe_fail("stop")
-        return ContainerState(server_id=server_id, runtime_id="docker-fake", status="stopped",
-                               started_at=None, finished_at=None, exit_code=0, oom_killed=False)
+        return ContainerState(
+            server_id=server_id,
+            runtime_id="docker-fake",
+            status="stopped",
+            started_at=None,
+            finished_at=None,
+            exit_code=0,
+            oom_killed=False,
+        )
 
     async def restart(self, server_id):
         self.calls.append(("restart", server_id))
         self._maybe_fail("restart")
-        return ContainerState(server_id=server_id, runtime_id="docker-fake", status="running",
-                               started_at=None, finished_at=None, exit_code=None, oom_killed=False)
+        return ContainerState(
+            server_id=server_id,
+            runtime_id="docker-fake",
+            status="running",
+            started_at=None,
+            finished_at=None,
+            exit_code=None,
+            oom_killed=False,
+        )
 
     async def kill(self, server_id):
         self.calls.append(("kill", server_id))
         self._maybe_fail("kill")
-        return ContainerState(server_id=server_id, runtime_id="docker-fake", status="stopped",
-                               started_at=None, finished_at=None, exit_code=137, oom_killed=False)
+        return ContainerState(
+            server_id=server_id,
+            runtime_id="docker-fake",
+            status="stopped",
+            started_at=None,
+            finished_at=None,
+            exit_code=137,
+            oom_killed=False,
+        )
 
     async def stats(self, server_id):
         self.calls.append(("stats", server_id))
         self._maybe_fail("stats")
-        return StatsSnapshot(timestamp="2026-07-07T00:00:00Z", cpu_percent=12.5,
-                              memory_used_bytes=100, memory_limit_bytes=200,
-                              network_rx_bytes=1, network_tx_bytes=2)
+        return StatsSnapshot(
+            timestamp="2026-07-07T00:00:00Z",
+            cpu_percent=12.5,
+            memory_used_bytes=100,
+            memory_limit_bytes=200,
+            network_rx_bytes=1,
+            network_tx_bytes=2,
+        )
 
     async def remove(self, server_id):
         self.calls.append(("remove", server_id))
@@ -138,12 +177,16 @@ async def test_create_template_defaults_to_version_1(db_session):
 @pytest.mark.asyncio
 async def test_update_template_bumps_version(db_session):
     async with db_session() as db:
-        template = await ServerTemplateService.create_template(db, "Paper", image="itzg/minecraft-server:1")
+        template = await ServerTemplateService.create_template(
+            db, "Paper", image="itzg/minecraft-server:1"
+        )
         await db.commit()
         template_id = template.id
 
     async with db_session() as db:
-        updated = await ServerTemplateService.update_template(db, template_id, image="itzg/minecraft-server:2")
+        updated = await ServerTemplateService.update_template(
+            db, template_id, image="itzg/minecraft-server:2"
+        )
         await db.commit()
         assert updated.version == 2
         assert updated.image == "itzg/minecraft-server:2"
@@ -158,7 +201,9 @@ async def test_update_template_rejects_unknown_field(db_session):
 
     async with db_session() as db:
         with pytest.raises(ServerTemplateError):
-            await ServerTemplateService.update_template(db, template_id, not_a_real_field="x")
+            await ServerTemplateService.update_template(
+                db, template_id, not_a_real_field="x"
+            )
 
 
 # --------------------------------------------------------------------------
@@ -192,7 +237,9 @@ async def test_bind_and_release_allocation(db_session):
         allocation_id = allocation.id
 
     async with db_session() as db:
-        bound = await AllocationService.bind_allocation(db, allocation_id, "fake-server-id", 25566)
+        bound = await AllocationService.bind_allocation(
+            db, allocation_id, "fake-server-id", 25566
+        )
         await db.commit()
         assert bound.server_id == "fake-server-id"
 
@@ -209,10 +256,15 @@ async def test_bind_and_release_allocation(db_session):
 
 async def _setup_node_template_allocation(db_session):
     async with db_session() as db:
-        node, _ = await NodeService.register_node(db, "node-orch", "https://node-orch:8443")
+        node, _ = await NodeService.register_node(
+            db, "node-orch", "https://node-orch:8443"
+        )
         template = await ServerTemplateService.create_template(
-            db, "Paper", image="itzg/minecraft-server:java21",
-            startup_command=["start"], default_env={"EULA": "TRUE"},
+            db,
+            "Paper",
+            image="itzg/minecraft-server:java21",
+            startup_command=["start"],
+            default_env={"EULA": "TRUE"},
         )
         await db.commit()
         node_id, template_id = node.id, template.id
@@ -227,12 +279,18 @@ async def _setup_node_template_allocation(db_session):
 
 @pytest.mark.asyncio
 async def test_create_server_happy_path(db_session):
-    node_id, template_id, allocation_id = await _setup_node_template_allocation(db_session)
+    node_id, template_id, allocation_id = await _setup_node_template_allocation(
+        db_session
+    )
     fake_client = FakeDaemonClient(create_status="created")
 
     async with db_session() as db:
         server = await ServerService.create_server(
-            db, "Survival", node_id, template_id, [allocation_id],
+            db,
+            "Survival",
+            node_id,
+            template_id,
+            [allocation_id],
             daemon_client=fake_client,
         )
         await db.commit()
@@ -244,17 +302,26 @@ async def test_create_server_happy_path(db_session):
     assert fake_client.calls[0][0] == "create"
     create_kwargs = fake_client.calls[0][2]
     assert create_kwargs["env"] == {"EULA": "TRUE"}
-    assert create_kwargs["port_bindings"] == [{"container_port": 25565, "host_port": 25565, "protocol": "tcp"}]
+    assert create_kwargs["port_bindings"] == [
+        {"container_port": 25565, "host_port": 25565, "protocol": "tcp"}
+    ]
 
 
 @pytest.mark.asyncio
 async def test_create_server_binds_allocation_to_server(db_session):
-    node_id, template_id, allocation_id = await _setup_node_template_allocation(db_session)
+    node_id, template_id, allocation_id = await _setup_node_template_allocation(
+        db_session
+    )
     fake_client = FakeDaemonClient()
 
     async with db_session() as db:
         server = await ServerService.create_server(
-            db, "Survival", node_id, template_id, [allocation_id], daemon_client=fake_client,
+            db,
+            "Survival",
+            node_id,
+            template_id,
+            [allocation_id],
+            daemon_client=fake_client,
         )
         await db.commit()
         server_id = server.id
@@ -266,80 +333,122 @@ async def test_create_server_binds_allocation_to_server(db_session):
 
 @pytest.mark.asyncio
 async def test_create_server_rejects_allocation_from_different_node(db_session):
-    node_id, template_id, allocation_id = await _setup_node_template_allocation(db_session)
+    node_id, template_id, allocation_id = await _setup_node_template_allocation(
+        db_session
+    )
 
     async with db_session() as db:
-        other_node, _ = await NodeService.register_node(db, "node-other", "https://other:8443")
+        other_node, _ = await NodeService.register_node(
+            db, "node-other", "https://other:8443"
+        )
         await db.commit()
         other_node_id = other_node.id
 
     async with db_session() as db:
         with pytest.raises(ServerError):
             await ServerService.create_server(
-                db, "Survival", other_node_id, template_id, [allocation_id],
+                db,
+                "Survival",
+                other_node_id,
+                template_id,
+                [allocation_id],
                 daemon_client=FakeDaemonClient(),
             )
 
 
 @pytest.mark.asyncio
 async def test_create_server_rejects_already_used_allocation(db_session):
-    node_id, template_id, allocation_id = await _setup_node_template_allocation(db_session)
+    node_id, template_id, allocation_id = await _setup_node_template_allocation(
+        db_session
+    )
 
     async with db_session() as db:
         await ServerService.create_server(
-            db, "Survival1", node_id, template_id, [allocation_id], daemon_client=FakeDaemonClient()
+            db,
+            "Survival1",
+            node_id,
+            template_id,
+            [allocation_id],
+            daemon_client=FakeDaemonClient(),
         )
         await db.commit()
 
     async with db_session() as db:
         with pytest.raises(ServerError):
             await ServerService.create_server(
-                db, "Survival2", node_id, template_id, [allocation_id], daemon_client=FakeDaemonClient()
+                db,
+                "Survival2",
+                node_id,
+                template_id,
+                [allocation_id],
+                daemon_client=FakeDaemonClient(),
             )
 
 
 @pytest.mark.asyncio
 async def test_create_server_raises_server_error_when_daemon_call_fails(db_session):
-    node_id, template_id, allocation_id = await _setup_node_template_allocation(db_session)
+    node_id, template_id, allocation_id = await _setup_node_template_allocation(
+        db_session
+    )
     fake_client = FakeDaemonClient(fail_on={"create"})
 
     async with db_session() as db:
         with pytest.raises(ServerError):
             await ServerService.create_server(
-                db, "Survival", node_id, template_id, [allocation_id], daemon_client=fake_client,
+                db,
+                "Survival",
+                node_id,
+                template_id,
+                [allocation_id],
+                daemon_client=fake_client,
             )
 
 
 @pytest.mark.asyncio
 async def test_start_stop_restart_kill_update_status_and_call_daemon(db_session):
-    node_id, template_id, allocation_id = await _setup_node_template_allocation(db_session)
+    node_id, template_id, allocation_id = await _setup_node_template_allocation(
+        db_session
+    )
     fake_client = FakeDaemonClient()
 
     async with db_session() as db:
         server = await ServerService.create_server(
-            db, "Survival", node_id, template_id, [allocation_id], daemon_client=fake_client
+            db,
+            "Survival",
+            node_id,
+            template_id,
+            [allocation_id],
+            daemon_client=fake_client,
         )
         await db.commit()
         server_id = server.id
 
     async with db_session() as db:
-        started = await ServerService.start_server(db, server_id, daemon_client=fake_client)
+        started = await ServerService.start_server(
+            db, server_id, daemon_client=fake_client
+        )
         await db.commit()
         assert started.status == "running"
         assert started.last_started_at is not None
 
     async with db_session() as db:
-        stopped = await ServerService.stop_server(db, server_id, grace_period_seconds=20, daemon_client=fake_client)
+        stopped = await ServerService.stop_server(
+            db, server_id, grace_period_seconds=20, daemon_client=fake_client
+        )
         await db.commit()
         assert stopped.status == "stopped"
 
     async with db_session() as db:
-        restarted = await ServerService.restart_server(db, server_id, daemon_client=fake_client)
+        restarted = await ServerService.restart_server(
+            db, server_id, daemon_client=fake_client
+        )
         await db.commit()
         assert restarted.status == "running"
 
     async with db_session() as db:
-        killed = await ServerService.kill_server(db, server_id, daemon_client=fake_client)
+        killed = await ServerService.kill_server(
+            db, server_id, daemon_client=fake_client
+        )
         await db.commit()
         assert killed.status == "stopped"
 
@@ -351,12 +460,19 @@ async def test_start_stop_restart_kill_update_status_and_call_daemon(db_session)
 
 @pytest.mark.asyncio
 async def test_get_stats_delegates_to_daemon_client(db_session):
-    node_id, template_id, allocation_id = await _setup_node_template_allocation(db_session)
+    node_id, template_id, allocation_id = await _setup_node_template_allocation(
+        db_session
+    )
     fake_client = FakeDaemonClient()
 
     async with db_session() as db:
         server = await ServerService.create_server(
-            db, "Survival", node_id, template_id, [allocation_id], daemon_client=fake_client
+            db,
+            "Survival",
+            node_id,
+            template_id,
+            [allocation_id],
+            daemon_client=fake_client,
         )
         await db.commit()
         server_id = server.id
@@ -368,12 +484,19 @@ async def test_get_stats_delegates_to_daemon_client(db_session):
 
 @pytest.mark.asyncio
 async def test_delete_server_removes_container_and_releases_allocations(db_session):
-    node_id, template_id, allocation_id = await _setup_node_template_allocation(db_session)
+    node_id, template_id, allocation_id = await _setup_node_template_allocation(
+        db_session
+    )
     fake_client = FakeDaemonClient()
 
     async with db_session() as db:
         server = await ServerService.create_server(
-            db, "Survival", node_id, template_id, [allocation_id], daemon_client=fake_client
+            db,
+            "Survival",
+            node_id,
+            template_id,
+            [allocation_id],
+            daemon_client=fake_client,
         )
         await db.commit()
         server_id = server.id

@@ -11,6 +11,7 @@ additionally require feature_flags.view; POST and DELETE require
 feature_flags.manage. The admin key (X-Admin-Key) bypasses role-based
 permission checks entirely — same pattern as every other router.
 """
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -87,13 +88,17 @@ async def upsert_flag(
     """
     flag = await svc.set_flag(db, body.name, body.enabled, body.description)
     actor = auth.username if isinstance(auth, User) else "admin"
-    db.add(AuditLog(
-        actor=actor,
-        actor_type="staff" if isinstance(auth, User) else "admin",
-        action="feature_flag.upsert",
-        target=body.name,
-        details_json=json.dumps({"enabled": body.enabled, "description": body.description}),
-    ))
+    db.add(
+        AuditLog(
+            actor=actor,
+            actor_type="staff" if isinstance(auth, User) else "admin",
+            action="feature_flag.upsert",
+            target=body.name,
+            details_json=json.dumps(
+                {"enabled": body.enabled, "description": body.description}
+            ),
+        )
+    )
     await db.flush()
     return _to_response(flag)
 
@@ -112,12 +117,14 @@ async def delete_flag(
     if not existed:
         raise HTTPException(status_code=404, detail=f"Feature flag '{name}' not found")
     actor = auth.username if isinstance(auth, User) else "admin"
-    db.add(AuditLog(
-        actor=actor,
-        actor_type="staff" if isinstance(auth, User) else "admin",
-        action="feature_flag.delete",
-        target=name,
-        details_json="{}",
-    ))
+    db.add(
+        AuditLog(
+            actor=actor,
+            actor_type="staff" if isinstance(auth, User) else "admin",
+            action="feature_flag.delete",
+            target=name,
+            details_json="{}",
+        )
+    )
     await db.flush()
     return {"deleted": True}

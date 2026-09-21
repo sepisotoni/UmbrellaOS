@@ -16,6 +16,7 @@ this pattern; it isn't an UmbrellaOS-specific compromise). The token is
 validated exactly the same way as an HTTP Bearer session token
 (`get_current_user`), just read from a different place.
 """
+
 import asyncio
 import logging
 
@@ -45,9 +46,9 @@ REQUIRED_PERMISSION = "hosting.server.view"
 def daemon_ws_url(daemon_url: str, server_id: str) -> str:
     """Translate a daemon's http(s) base URL into its ws(s) console endpoint."""
     if daemon_url.startswith("https://"):
-        base = "wss://" + daemon_url[len("https://"):]
+        base = "wss://" + daemon_url[len("https://") :]
     elif daemon_url.startswith("http://"):
-        base = "ws://" + daemon_url[len("http://"):]
+        base = "ws://" + daemon_url[len("http://") :]
     else:
         base = daemon_url
     return f"{base.rstrip('/')}/v1/servers/{server_id}/console"
@@ -59,17 +60,24 @@ async def proxy_console(websocket: WebSocket, server_id: str, token: str = Query
         try:
             user = await get_current_user(token, db)
         except Exception:
-            await websocket.close(code=ws_status.WS_1008_POLICY_VIOLATION, reason="invalid or expired session token")
+            await websocket.close(
+                code=ws_status.WS_1008_POLICY_VIOLATION,
+                reason="invalid or expired session token",
+            )
             return
 
         permissions = await resolve_user_permissions(user, db)
         if REQUIRED_PERMISSION not in permissions:
-            await websocket.close(code=ws_status.WS_1008_POLICY_VIOLATION, reason="missing permission")
+            await websocket.close(
+                code=ws_status.WS_1008_POLICY_VIOLATION, reason="missing permission"
+            )
             return
 
         server = await db.get(Server, server_id)
         if server is None:
-            await websocket.close(code=ws_status.WS_1008_POLICY_VIOLATION, reason="no such server")
+            await websocket.close(
+                code=ws_status.WS_1008_POLICY_VIOLATION, reason="no such server"
+            )
             return
 
         # FIX ([PLUGIN] subsystem audit): NodeService.get_node() raises
@@ -87,15 +95,22 @@ async def proxy_console(websocket: WebSocket, server_id: str, token: str = Query
         try:
             node = await NodeService.get_node(db, server.node_id)
         except NodeError:
-            await websocket.close(code=ws_status.WS_1008_POLICY_VIOLATION, reason="server's node no longer exists")
+            await websocket.close(
+                code=ws_status.WS_1008_POLICY_VIOLATION,
+                reason="server's node no longer exists",
+            )
             return
 
     await websocket.accept()
     decrypted_secret = NodeService.decrypted_signing_secret(node)
-    await pipe_console(websocket, daemon_ws_url(node.daemon_url, server_id), node.id, decrypted_secret)
+    await pipe_console(
+        websocket, daemon_ws_url(node.daemon_url, server_id), node.id, decrypted_secret
+    )
 
 
-async def pipe_console(client_ws, upstream_url: str, node_id: str, signing_secret: str) -> None:
+async def pipe_console(
+    client_ws, upstream_url: str, node_id: str, signing_secret: str
+) -> None:
     """
     Open the outbound connection to the daemon and pipe bytes both
     directions until either side disconnects. Split out from the route
@@ -109,8 +124,12 @@ async def pipe_console(client_ws, upstream_url: str, node_id: str, signing_secre
         async with websockets.connect(
             upstream_url, additional_headers={"Authorization": f"Bearer {node_token}"}
         ) as daemon_ws:
-            forward_in = asyncio.create_task(_forward_client_to_daemon(client_ws, daemon_ws))
-            forward_out = asyncio.create_task(_forward_daemon_to_client(daemon_ws, client_ws))
+            forward_in = asyncio.create_task(
+                _forward_client_to_daemon(client_ws, daemon_ws)
+            )
+            forward_out = asyncio.create_task(
+                _forward_daemon_to_client(daemon_ws, client_ws)
+            )
             try:
                 done, pending = await asyncio.wait(
                     {forward_in, forward_out}, return_when=asyncio.FIRST_COMPLETED

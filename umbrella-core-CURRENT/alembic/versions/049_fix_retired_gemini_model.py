@@ -23,6 +23,7 @@ Revision ID: 049_fix_retired_gemini_model
 Revises: 048_widen_alembic_version
 Create Date: 2026-08-31
 """
+
 from alembic import op
 import sqlalchemy as sa
 
@@ -33,15 +34,19 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute(sa.text(
-        "UPDATE ai_model_configs SET model_name = 'gemini-2.5-flash', "
-        "is_healthy = true, consecutive_failures = 0 "
-        "WHERE provider = 'gemini' AND model_name = 'gemini-1.5-flash'"
-    ))
+    op.execute(
+        sa.text(
+            "UPDATE ai_model_configs SET model_name = 'gemini-2.5-flash', "
+            "is_healthy = true, consecutive_failures = 0 "
+            "WHERE provider = 'gemini' AND model_name = 'gemini-1.5-flash'"
+        )
+    )
 
 
 def downgrade() -> None:
-    op.execute(sa.text(
-        "UPDATE ai_model_configs SET model_name = 'gemini-1.5-flash' "
-        "WHERE provider = 'gemini' AND model_name = 'gemini-2.5-flash'"
-    ))
+    op.execute(
+        sa.text(
+            "UPDATE ai_model_configs SET model_name = 'gemini-1.5-flash' "
+            "WHERE provider = 'gemini' AND model_name = 'gemini-2.5-flash'"
+        )
+    )

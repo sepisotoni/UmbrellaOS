@@ -8,6 +8,7 @@ Startup sequence:
 4. Mount all API routers.
 5. Start uvicorn.
 """
+
 import uvicorn
 import logging
 from contextlib import asynccontextmanager
@@ -111,6 +112,7 @@ async def lifespan(app: FastAPI):
         from alembic.config import Config
         from alembic import command as alembic_command
         import os
+
         alembic_cfg = Config(os.path.join(os.path.dirname(__file__), "alembic.ini"))
         alembic_cfg.set_main_option(
             "script_location", os.path.join(os.path.dirname(__file__), "alembic")
@@ -119,6 +121,7 @@ async def lifespan(app: FastAPI):
 
     try:
         import asyncio
+
         await asyncio.to_thread(_run_migrations)
         print("[Umbrella Core] Alembic migrations applied")
     except Exception as _mig_err:
@@ -148,9 +151,13 @@ async def lifespan(app: FastAPI):
     async with AsyncSessionLocal() as db:
         reloaded = await reload_installed_plugins(db)
         await db.commit()
-    print(f"[Umbrella Core] Reloaded {len(reloaded)} marketplace plugin capabilit{'y' if len(reloaded) == 1 else 'ies'}")
+    print(
+        f"[Umbrella Core] Reloaded {len(reloaded)} marketplace plugin capabilit{'y' if len(reloaded) == 1 else 'ies'}"
+    )
 
-    print(f"[Umbrella Core] Ready — listening on {settings.app_host}:{settings.app_port}")
+    print(
+        f"[Umbrella Core] Ready — listening on {settings.app_host}:{settings.app_port}"
+    )
 
     # Background scheduler loop (Phase 4) — runs due Schedule rows through
     # the same registry.call() path every other adapter uses. Started here
@@ -171,7 +178,9 @@ async def lifespan(app: FastAPI):
     # rows from the events outbox table and fans them out to in-process
     # subscribers. Same lifecycle pattern as the two loops above.
     event_dispatcher_stop_event = asyncio.Event()
-    event_dispatcher_task = asyncio.create_task(run_event_dispatcher_loop(event_dispatcher_stop_event))
+    event_dispatcher_task = asyncio.create_task(
+        run_event_dispatcher_loop(event_dispatcher_stop_event)
+    )
 
     # Background log-flush loop (Phase 9, item 3) — drains the in-process
     # queue DBLogHandler feeds into models.log_entry.LogEntry rows. Same

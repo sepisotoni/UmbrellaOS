@@ -31,6 +31,7 @@ doesn't assume that — a future non-Tier-2 consumer of `storage: "kv"`
 isn't restricted to booleans, only Tier 2's *dashboard-facing config
 toggle* capability is.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -48,7 +49,9 @@ class PluginKvEntry(Base):
         UniqueConstraint("plugin_id", "key", name="uq_plugin_kv_entries_plugin_key"),
     )
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
 
     plugin_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     key: Mapped[str] = mapped_column(String(128), nullable=False)
@@ -62,7 +65,10 @@ class PluginKvEntry(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
     )
 
     def __repr__(self) -> str:

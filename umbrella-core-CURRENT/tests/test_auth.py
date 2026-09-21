@@ -4,6 +4,7 @@ tests/test_auth.py — Tests for authentication enforcement.
 Every guarded route must return 401 on missing or wrong key,
 and 2xx on the correct key.
 """
+
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -15,12 +16,12 @@ from models.permissions import Role
 
 # Routes that require X-Admin-Key only (not session)
 ADMIN_ROUTES = [
-    ("GET",   "/api/v1/settings"),
-    ("GET",   "/api/v1/settings/server.name"),
-    ("GET",   "/api/v1/roles"),
-    ("GET",   "/api/v1/roles/permissions"),
-    ("GET",   "/api/v1/audit"),
-    ("GET",   "/api/v1/audit/settings.update"),
+    ("GET", "/api/v1/settings"),
+    ("GET", "/api/v1/settings/server.name"),
+    ("GET", "/api/v1/roles"),
+    ("GET", "/api/v1/roles/permissions"),
+    ("GET", "/api/v1/audit"),
+    ("GET", "/api/v1/audit/settings.update"),
 ]
 
 # Route migrated to admin-key-or-session auth
@@ -94,47 +95,60 @@ async def test_missing_key_returns_401(client, method, path):
 @pytest.mark.parametrize("method,path", ADMIN_ROUTES)
 async def test_wrong_key_returns_401(client, method, path):
     response = await client.request(method, path, headers=WRONG_HEADERS)
-    assert response.status_code == 401, f"{method} {path} should return 401 with wrong key"
+    assert response.status_code == 401, (
+        f"{method} {path} should return 401 with wrong key"
+    )
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("method,path", ADMIN_ROUTES)
 async def test_correct_key_not_401(client, method, path):
     response = await client.request(method, path, headers=ADMIN_HEADERS)
-    assert response.status_code != 401, f"{method} {path} should not return 401 with correct key"
+    assert response.status_code != 401, (
+        f"{method} {path} should not return 401 with correct key"
+    )
 
 
 @pytest.mark.asyncio
 async def test_valid_bearer_token_grants_access(client, bearer_headers):
     method, path = SESSION_ROUTE
     response = await client.request(method, path, headers=bearer_headers)
-    assert response.status_code != 401, f"{method} {path} should accept valid Bearer token"
+    assert response.status_code != 401, (
+        f"{method} {path} should accept valid Bearer token"
+    )
 
 
 @pytest.mark.asyncio
 async def test_expired_session_returns_401(client, expired_bearer_headers):
     method, path = SESSION_ROUTE
     response = await client.request(method, path, headers=expired_bearer_headers)
-    assert response.status_code == 401, f"{method} {path} should return 401 for expired session"
+    assert response.status_code == 401, (
+        f"{method} {path} should return 401 for expired session"
+    )
 
 
 @pytest.mark.asyncio
 async def test_revoked_session_returns_401(client, revoked_bearer_headers):
     method, path = SESSION_ROUTE
     response = await client.request(method, path, headers=revoked_bearer_headers)
-    assert response.status_code == 401, f"{method} {path} should return 401 for revoked session"
+    assert response.status_code == 401, (
+        f"{method} {path} should return 401 for revoked session"
+    )
 
 
 @pytest.mark.asyncio
 async def test_missing_auth_returns_401_on_session_route(client):
     method, path = SESSION_ROUTE
     response = await client.request(method, path)
-    assert response.status_code == 401, f"{method} {path} should return 401 without auth"
+    assert response.status_code == 401, (
+        f"{method} {path} should return 401 without auth"
+    )
 
 
 @pytest.mark.asyncio
 async def test_admin_key_still_works_on_session_route(client):
     method, path = SESSION_ROUTE
     response = await client.request(method, path, headers=ADMIN_HEADERS)
-    assert response.status_code != 401, f"{method} {path} should still accept X-Admin-Key"
-
+    assert response.status_code != 401, (
+        f"{method} {path} should still accept X-Admin-Key"
+    )

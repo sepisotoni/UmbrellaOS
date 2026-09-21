@@ -5,6 +5,7 @@ POST /api/v1/ai/copilot              — Route a copilot prompt through the AI o
 POST /api/v1/ai/providers/test       — Test an AI provider (live key test with latency)
 GET  /api/v1/ai/crash-risk/{server_id} — Expose crash risk assessment via REST
 """
+
 import time
 from datetime import datetime, timezone
 from typing import Optional
@@ -48,6 +49,7 @@ COPILOT_SYSTEM_PROMPT = (
 # ---------------------------------------------------------------------------
 # Task 4 — POST /api/v1/ai/copilot
 # ---------------------------------------------------------------------------
+
 
 class CopilotRequest(BaseModel):
     message: str
@@ -109,10 +111,12 @@ async def copilot_chat(
         for name, desc in AVAILABLE_TOOLS_DESCRIPTION:
             lines.append(f"- **{name}** — {desc}")
         lines.append(
-            "\nJust ask naturally (e.g. \"look up player Steve's punishment history\") "
+            '\nJust ask naturally (e.g. "look up player Steve\'s punishment history") '
             "— I'll figure out which tool(s) to use."
         )
-        return CopilotResponse(response="\n".join(lines), model_used="none (local)", latency_ms=0)
+        return CopilotResponse(
+            response="\n".join(lines), model_used="none (local)", latency_ms=0
+        )
 
     # [HEAD gap #3 — permission scoping, 2026-08-31] The copilot itself is
     # read/advice-only — it has no direct write path (see the prompt-injection
@@ -126,8 +130,13 @@ async def copilot_chat(
     # action_guard — this is advisory context for the model's phrasing, not
     # the security boundary itself.
     permission_summary = (
-        "full access (admin key / superuser)" if ctx.is_superuser
-        else (", ".join(sorted(ctx.permissions)) if ctx.permissions else "no granted permissions")
+        "full access (admin key / superuser)"
+        if ctx.is_superuser
+        else (
+            ", ".join(sorted(ctx.permissions))
+            if ctx.permissions
+            else "no granted permissions"
+        )
     )
 
     # [HEAD gap #2 — fleet awareness, 2026-08-31] Previously only knew
@@ -151,7 +160,9 @@ async def copilot_chat(
     else:
         scoped_ids = known_server_ids
 
-    fleet_lines = [f"{sid} ({server_by_id[sid]})" for sid in scoped_ids] or ["(no servers registered)"]
+    fleet_lines = [f"{sid} ({server_by_id[sid]})" for sid in scoped_ids] or [
+        "(no servers registered)"
+    ]
 
     identity_block = (
         f"<caller>\n"
@@ -172,7 +183,9 @@ async def copilot_chat(
     # no direct write path of its own — any capability it invokes (investigation.run,
     # knowledge.*) still goes through action_guard's hard, code-level restrictions —
     # but this is cheap defense in depth on the most user-facing AI surface.
-    question_block = f"{identity_block}\n\n<user_question>\n{body.message}\n</user_question>"
+    question_block = (
+        f"{identity_block}\n\n<user_question>\n{body.message}\n</user_question>"
+    )
     if body.context:
         question_block = f"<context>\n{body.context}\n</context>\n\n{question_block}"
 
@@ -241,6 +254,7 @@ async def copilot_chat(
 # Task 5 — POST /api/v1/ai/providers/test
 # ---------------------------------------------------------------------------
 
+
 class ProviderTestRequest(BaseModel):
     provider: str  # "gemini" | "anthropic" | "openrouter"
     api_key: Optional[str] = None
@@ -290,9 +304,12 @@ async def test_provider(
         if body.api_key:
             # Inline provider with the supplied key — don't touch DB settings
             from services.ai.provider_factory import _PROVIDER_REGISTRY
+
             entry = _PROVIDER_REGISTRY.get(provider_name)
             if entry is None:
-                raise HTTPException(status_code=400, detail=f"Provider {provider_name!r} not registered")
+                raise HTTPException(
+                    status_code=400, detail=f"Provider {provider_name!r} not registered"
+                )
             _, _, provider_cls = entry
             provider = provider_cls(api_key=body.api_key)
         else:
@@ -336,6 +353,7 @@ async def test_provider(
 # Task 6 — GET /api/v1/ai/crash-risk/{server_id}
 # ---------------------------------------------------------------------------
 
+
 class CrashRiskResponse(BaseModel):
     server_id: str
     risk_level: str
@@ -367,7 +385,9 @@ async def get_crash_risk(
     """
     result = await assess_crash_risk(db, server_id)
 
-    recommendation = _RISK_RECOMMENDATIONS.get(result.risk_level.value, result.reasoning)
+    recommendation = _RISK_RECOMMENDATIONS.get(
+        result.risk_level.value, result.reasoning
+    )
 
     return CrashRiskResponse(
         server_id=result.server_id,

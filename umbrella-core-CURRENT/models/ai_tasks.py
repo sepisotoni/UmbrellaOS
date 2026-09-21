@@ -1,6 +1,7 @@
 """
 models/ai_tasks.py — AI moderation task tracking.
 """
+
 from datetime import datetime, timedelta
 
 from sqlalchemy import DateTime, Float, Integer, String, Text, func
@@ -15,7 +16,9 @@ class AITask(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     task_type: Mapped[str] = mapped_column(String(32), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
-    player_uuid: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    player_uuid: Mapped[str | None] = mapped_column(
+        String(36), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -27,7 +30,9 @@ class AITask(Base):
     ai_confidence: Mapped[float] = mapped_column(Float, nullable=False)
     evidence: Mapped[str | None] = mapped_column(Text, nullable=True)
     reviewed_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     action_taken: Mapped[str | None] = mapped_column(String(256), nullable=True)
 
     def __repr__(self) -> str:

@@ -3,6 +3,7 @@ services/alt_detection_service.py — Suspicion scoring and alt detection servic
 
 Implements rule-based suspicion scoring for detecting potential alt accounts.
 """
+
 import json
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,18 +38,16 @@ async def calculate_suspicion(
 ) -> dict:
     """
     Calculate suspicion score for a player based on various rules.
-    
+
     Returns { score, triggers: [list of triggered rules] }
     """
     triggers = []
     total_score = 0
-    
+
     # Ensure player exists
-    result = await db.execute(
-        select(Player).where(Player.uuid == player_uuid)
-    )
+    result = await db.execute(select(Player).where(Player.uuid == player_uuid))
     player = result.scalar_one_or_none()
-    
+
     if not player:
         # Create player if it doesn't exist
         player = Player(
@@ -57,7 +56,7 @@ async def calculate_suspicion(
         )
         db.add(player)
         await db.flush()
-    
+
     # Add IP address record for this player
     result = await db.execute(
         select(IPAddress).where(
@@ -68,7 +67,7 @@ async def calculate_suspicion(
         )
     )
     ip_record = result.scalar_one_or_none()
-    
+
     if not ip_record:
         ip_record = IPAddress(
             player_uuid=player_uuid,
@@ -76,7 +75,7 @@ async def calculate_suspicion(
         )
         db.add(ip_record)
         await db.flush()
-    
+
     # Rule: same_ip - find other players with same IP
     result = await db.execute(
         select(IPAddress).where(
@@ -90,7 +89,7 @@ async def calculate_suspicion(
     if same_ip_players:
         triggers.append("same_ip")
         total_score += SUSPICION_RULES["same_ip"]
-    
+
     # Rule: joined_within_5_minutes - check if another player joined from same IP in last 5 minutes
     five_minutes_ago = datetime.now(timezone.utc) - timedelta(minutes=5)
     result = await db.execute(
@@ -102,7 +101,7 @@ async def calculate_suspicion(
         )
     )
     recent_players = result.scalars().all()
-    
+
     # Check if any recent players share the IP
     for recent_player in recent_players:
         result = await db.execute(
@@ -117,7 +116,7 @@ async def calculate_suspicion(
             triggers.append("joined_within_5_minutes")
             total_score += SUSPICION_RULES["joined_within_5_minutes"]
             break
-    
+
     # Rule: no_discord_verification - check DiscordAccount table
     result = await db.execute(
         select(DiscordAccount).where(
@@ -130,7 +129,7 @@ async def calculate_suspicion(
     if not result.scalar_one_or_none():
         triggers.append("no_discord_verification")
         total_score += SUSPICION_RULES["no_discord_verification"]
-    
+
     # Rule: previously_punished_ip - check punishments joined with ip_addresses
     #
     # A `player_punishments` query used to sit here, fetching the CURRENT
@@ -156,16 +155,12 @@ async def calculate_suspicion(
             triggers.append("previously_punished_ip")
             total_score += SUSPICION_RULES["previously_punished_ip"]
             break
-    
+
     # Rule: similar_username_to_banned_player - check Levenshtein distance
     # For simplicity, we'll check for exact substring matches
-    result = await db.execute(
-        select(Punishment).where(
-            Punishment.active == True
-        )
-    )
+    result = await db.execute(select(Punishment).where(Punishment.active == True))
     active_punishments = result.scalars().all()
-    
+
     for punishment in active_punishments:
         # Get the punished player's username
         result = await db.execute(
@@ -174,12 +169,14 @@ async def calculate_suspicion(
         punished_player = result.scalar_one_or_none()
         if punished_player:
             # Simple similarity check: if username contains banned player's username or vice versa
-            if (punished_player.username.lower() in username.lower() or
-                username.lower() in punished_player.username.lower()):
+            if (
+                punished_player.username.lower() in username.lower()
+                or username.lower() in punished_player.username.lower()
+            ):
                 triggers.append("similar_username_to_banned_player")
                 total_score += SUSPICION_RULES["similar_username_to_banned_player"]
                 break
-    
+
     # Save each triggered rule as SuspicionEvent
     for trigger in triggers:
         event = SuspicionEvent(
@@ -189,7 +186,7 @@ async def calculate_suspicion(
             metadata_json=json.dumps({"ip_address": ip_address, "username": username}),
         )
         db.add(event)
-    
+
     # Update player.suspicion_score in players table.
     #
     # AUDIT-2026-08-29 fix: this used to overwrite suspicion_score with the
@@ -198,15 +195,13 @@ async def calculate_suspicion(
     # clear a false positive — but the very next join recalculated and
     # overwrote the score from scratch, silently undoing every false-positive
     # review. Accumulating instead of overwriting preserves those reviews.
-    result = await db.execute(
-        select(Player).where(Player.uuid == player_uuid)
-    )
+    result = await db.execute(select(Player).where(Player.uuid == player_uuid))
     player = result.scalar_one_or_none()
     if player:
         player.suspicion_score = (player.suspicion_score or 0) + total_score
-    
+
     await db.flush()
-    
+
     return {
         "score": total_score,
         "triggers": triggers,
@@ -221,14 +216,14 @@ async def flag_player(
 ) -> dict:
     """
     Flag a player based on suspicion score.
-    
+
     Creates audit log entries for high-risk players.
-    
+
     Returns { flagged: bool, risk_level: "low/medium/high/critical" }
     """
     flagged = False
     risk_level = "low"
-    
+
     if score >= 95:
         risk_level = "critical"
         flagged = True
@@ -255,9 +250,9 @@ async def flag_player(
         risk_level = "medium"
     else:
         risk_level = "low"
-    
+
     await db.flush()
-    
+
     return {
         "flagged": flagged,
         "risk_level": risk_level,
@@ -277,12 +272,16 @@ async def decay_stale_suspicion_scores(db: AsyncSession) -> int:
     background loop.
     """
     settings = get_settings()
-    cutoff = datetime.now(timezone.utc) - timedelta(days=settings.suspicion_score_decay_after_days)
+    cutoff = datetime.now(timezone.utc) - timedelta(
+        days=settings.suspicion_score_decay_after_days
+    )
 
     # Players with a recent trigger are exempt from decay this tick —
     # only players who've gone quiet for the full window get decayed.
     recent_result = await db.execute(
-        select(SuspicionEvent.player_uuid).where(SuspicionEvent.created_at >= cutoff).distinct()
+        select(SuspicionEvent.player_uuid)
+        .where(SuspicionEvent.created_at >= cutoff)
+        .distinct()
     )
     recently_triggered = {row[0] for row in recent_result.all()}
 
@@ -293,7 +292,9 @@ async def decay_stale_suspicion_scores(db: AsyncSession) -> int:
     for player in players:
         if player.uuid in recently_triggered:
             continue
-        player.suspicion_score = max(0, player.suspicion_score - settings.suspicion_score_decay_points)
+        player.suspicion_score = max(
+            0, player.suspicion_score - settings.suspicion_score_decay_points
+        )
         decayed_count += 1
 
     await db.flush()

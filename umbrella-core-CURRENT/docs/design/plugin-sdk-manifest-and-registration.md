@@ -164,8 +164,8 @@ For each declared capability:
            plugin_id=manifest.plugin_id,
            entrypoint=cap.entrypoint,
            params=params.model_dump(),
-           actor_id=ctx.actor_id,   # sandbox never receives ctx.db or ctx.permissions —
-       )                            # see sandboxing doc for exactly what crosses the boundary
+           actor_id=ctx.actor_id,  # sandbox never receives ctx.db or ctx.permissions —
+       )  # see sandboxing doc for exactly what crosses the boundary
        return result_model.model_validate(raw_result)
    ```
 5. Call `registry.register(CapabilitySpec(name=full_name, ...))` — same

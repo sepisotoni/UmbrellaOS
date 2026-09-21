@@ -12,6 +12,7 @@ InvestigationFindings - this is the one piece of real, still-useful value
 from Moo's registry.py (a consolidated report a staff member or the AI can
 read in one place), kept without the intent-classification layer.
 """
+
 from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,7 +39,9 @@ async def run_investigation(
         findings.append(await tool.run(db, context))
 
     summary = " | ".join(f"[{f.tool_key}] {f.finding_text}" for f in findings)
-    confidence = sum(f.confidence for f in findings) / len(findings) if findings else 0.0
+    confidence = (
+        sum(f.confidence for f in findings) / len(findings) if findings else 0.0
+    )
 
     investigation = await InvestigationRepository.create_investigation(
         db,
@@ -61,5 +64,12 @@ async def run_investigation(
         "investigation_id": investigation.id,
         "summary": summary,
         "confidence": confidence,
-        "findings": [{"tool_key": f.tool_key, "finding_text": f.finding_text, "confidence": f.confidence} for f in findings],
+        "findings": [
+            {
+                "tool_key": f.tool_key,
+                "finding_text": f.finding_text,
+                "confidence": f.confidence,
+            }
+            for f in findings
+        ],
     }

@@ -7,6 +7,7 @@ happen, when nothing anywhere in this codebase reads or acts on the
 PluginCommand row it writes. Fixed to return 202 with an explicit "note"
 field saying so. This is the first test coverage this endpoint has had.
 """
+
 import pytest
 
 from tests.conftest import PLUGIN_HEADERS

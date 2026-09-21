@@ -4,6 +4,7 @@ api/middleware/session.py — Session token authentication.
 Validates Bearer tokens issued by the Discord OAuth flow.
 Used by dashboard users; plugin-to-core traffic continues to use X-Admin-Key.
 """
+
 import hmac
 
 from fastapi import Depends, Header, HTTPException, Security

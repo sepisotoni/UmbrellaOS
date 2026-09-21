@@ -13,6 +13,7 @@ producing a real session, at which point the CLI gains per-user identity
 instead of always running as the superuser tier — deliberately not built
 here, since Phase 0 has no session/login capability yet to build it against.
 """
+
 from __future__ import annotations
 
 import asyncio

@@ -23,6 +23,7 @@ no such action either - facts are only surfaced via `list`, or read
 internally by the AI itself, never queried one-by-one by a human. Not
 inventing a command Moo never had.
 """
+
 from __future__ import annotations
 
 import logging
@@ -41,10 +42,17 @@ class MemoryCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    @app_commands.command(name="memory_set", description="Set a durable server fact (server IP, store URL, etc).")
+    @app_commands.command(
+        name="memory_set",
+        description="Set a durable server fact (server IP, store URL, etc).",
+    )
     @require_owner_role()
-    @app_commands.describe(fact_key="The fact's key, e.g. 'server_ip'", value="The fact's value")
-    async def memory_set(self, interaction: discord.Interaction, fact_key: str, value: str) -> None:
+    @app_commands.describe(
+        fact_key="The fact's key, e.g. 'server_ip'", value="The fact's value"
+    )
+    async def memory_set(
+        self, interaction: discord.Interaction, fact_key: str, value: str
+    ) -> None:
         await interaction.response.defer(thinking=True, ephemeral=True)
 
         try:
@@ -59,22 +67,34 @@ class MemoryCog(commands.Cog):
 
         await interaction.followup.send(self._format_set_result(entry), ephemeral=True)
 
-    @app_commands.command(name="memory_list", description="List durable server facts and top recurring topics.")
+    @app_commands.command(
+        name="memory_list",
+        description="List durable server facts and top recurring topics.",
+    )
     async def memory_list(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(thinking=True, ephemeral=True)
 
         try:
-            facts = await self.bot.core.invoke("memory.server_fact.list", {}, discord_user_id=str(interaction.user.id))
+            facts = await self.bot.core.invoke(
+                "memory.server_fact.list", {}, discord_user_id=str(interaction.user.id)
+            )
             recurring = await self.bot.core.invoke(
-                "memory.recurring.top", {"limit": 5}, discord_user_id=str(interaction.user.id)
+                "memory.recurring.top",
+                {"limit": 5},
+                discord_user_id=str(interaction.user.id),
             )
         except UmbrellaCoreError as exc:
             await interaction.followup.send(self._format_error(exc), ephemeral=True)
             return
 
-        await interaction.followup.send(embed=self._format_list_result(facts, recurring), ephemeral=True)
+        await interaction.followup.send(
+            embed=self._format_list_result(facts, recurring), ephemeral=True
+        )
 
-    @app_commands.command(name="memory_purge", description="[Staff] Remove expired short-term memory entries (never touches server facts or recurring topics).")
+    @app_commands.command(
+        name="memory_purge",
+        description="[Staff] Remove expired short-term memory entries (never touches server facts or recurring topics).",
+    )
     @app_commands.default_permissions(manage_guild=True)
     @require_owner_role()
     async def memory_purge(self, interaction: discord.Interaction) -> None:
@@ -82,13 +102,17 @@ class MemoryCog(commands.Cog):
 
         try:
             result = await self.bot.core.invoke(
-                "memory.maintenance.purge_expired", {}, discord_user_id=str(interaction.user.id)
+                "memory.maintenance.purge_expired",
+                {},
+                discord_user_id=str(interaction.user.id),
             )
         except UmbrellaCoreError as exc:
             await interaction.followup.send(self._format_error(exc), ephemeral=True)
             return
 
-        await interaction.followup.send(f"🧹 Purged {result['purged_count']} expired entries.", ephemeral=True)
+        await interaction.followup.send(
+            f"🧹 Purged {result['purged_count']} expired entries.", ephemeral=True
+        )
 
     @staticmethod
     def _format_error(exc: UmbrellaCoreError) -> str:
@@ -112,12 +136,19 @@ class MemoryCog(commands.Cog):
         embed = discord.Embed(title="Server memory", color=discord.Color.blurple())
 
         fact_entries = facts.get("facts", [])
-        fact_lines = [f"`{f['key']}`: {f['value'][:80]}" for f in fact_entries] or ["(none)"]
+        fact_lines = [f"`{f['key']}`: {f['value'][:80]}" for f in fact_entries] or [
+            "(none)"
+        ]
         embed.add_field(name="Server facts", value="\n".join(fact_lines), inline=False)
 
         recurring_entries = recurring.get("entries", [])
-        recurring_lines = [f"`{e['key']}` (seen {e['hit_count']}×): {e['value'][:80]}" for e in recurring_entries] or ["(none)"]
-        embed.add_field(name="Top recurring topics", value="\n".join(recurring_lines), inline=False)
+        recurring_lines = [
+            f"`{e['key']}` (seen {e['hit_count']}×): {e['value'][:80]}"
+            for e in recurring_entries
+        ] or ["(none)"]
+        embed.add_field(
+            name="Top recurring topics", value="\n".join(recurring_lines), inline=False
+        )
 
         return embed
 

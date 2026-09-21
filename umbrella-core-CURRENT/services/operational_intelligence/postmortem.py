@@ -34,6 +34,7 @@ publishes a "staff_escalation.created" event via EventBus.publish in the
 SAME db session/transaction as the escalation row, so the two either both
 commit or neither does (the outbox pattern's whole point).
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -75,7 +76,9 @@ async def _gather_incident_evidence(db: AsyncSession, server: Server) -> str:
     window_start = last_crash_at - dt.timedelta(hours=_LOOKBACK_HOURS)
     stmt = (
         select(AuditLog)
-        .where(AuditLog.created_at >= window_start, AuditLog.created_at <= last_crash_at)
+        .where(
+            AuditLog.created_at >= window_start, AuditLog.created_at <= last_crash_at
+        )
         .order_by(AuditLog.created_at.asc())
         .limit(50)
     )
@@ -89,12 +92,16 @@ async def _gather_incident_evidence(db: AsyncSession, server: Server) -> str:
                 f"{entry.action} (target: {entry.target or 'n/a'})"
             )
     else:
-        lines.append(f"No audit trail activity was logged in the {_LOOKBACK_HOURS}h before the crash.")
+        lines.append(
+            f"No audit trail activity was logged in the {_LOOKBACK_HOURS}h before the crash."
+        )
 
     return "\n".join(lines)
 
 
-async def draft_postmortem(db: AsyncSession, server_id: str, *, requested_by: str | None = None) -> dict:
+async def draft_postmortem(
+    db: AsyncSession, server_id: str, *, requested_by: str | None = None
+) -> dict:
     """Drafts an incident postmortem for staff review. Raises
     ResourceNotFoundException if server_id doesn't exist. Returns a draft
     even if no crash has been recorded (a genuinely useful "nothing to
@@ -115,7 +122,9 @@ async def draft_postmortem(db: AsyncSession, server_id: str, *, requested_by: st
     )
     task_prompt = f"Draft a postmortem for this incident.\n\n{evidence}"
 
-    result = await Orchestrator.run(db, _TASK_TYPE, task_prompt, requested_by=requested_by)
+    result = await Orchestrator.run(
+        db, _TASK_TYPE, task_prompt, requested_by=requested_by
+    )
 
     if result.escalated:
         escalation = await ModerationIntelRepository.create_escalation(

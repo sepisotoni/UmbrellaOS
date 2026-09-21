@@ -14,6 +14,7 @@ GET    /api/v1/auth/me                 — Get current user (from session token)
 
 All responses require admin key authentication (except OAuth flow).
 """
+
 import secrets
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
@@ -82,7 +83,8 @@ async def _user_to_schema(user: User, db: AsyncSession) -> UserSchema:
         if role:
             role_name = role.name
             permissions = sorted(
-                {p.permission_key for p in role.permissions} | set(user.extra_permissions or [])
+                {p.permission_key for p in role.permissions}
+                | set(user.extra_permissions or [])
             )
     return UserSchema(
         id=user.id,
@@ -92,7 +94,9 @@ async def _user_to_schema(user: User, db: AsyncSession) -> UserSchema:
         role_id=user.role_id,
         role=role_name,
         permissions=permissions,
-        avatar_url=_compute_avatar_url(user.discord_id, getattr(user, "discord_avatar_hash", None)),
+        avatar_url=_compute_avatar_url(
+            user.discord_id, getattr(user, "discord_avatar_hash", None)
+        ),
         is_active=user.is_active,
         mfa_enabled=user.mfa_enabled,
         created_at=user.created_at,
@@ -141,6 +145,7 @@ class DiscordOAuthCallbackResponse(BaseModel):
 
 # Staff User Management
 
+
 @router.get("", response_model=list[UserSchema])
 async def list_users(
     skip: int = Query(0, ge=0),
@@ -149,9 +154,7 @@ async def list_users(
     _auth=Depends(RoleChecker(["roles.manage", "players.view"], require_all=False)),
 ) -> list[UserSchema]:
     """List all staff users."""
-    result = await db.execute(
-        select(User).offset(skip).limit(limit)
-    )
+    result = await db.execute(select(User).offset(skip).limit(limit))
     users = result.scalars().all()
     return [await _user_to_schema(u, db) for u in users]
 
@@ -163,9 +166,7 @@ async def get_user(
     _auth: str = Depends(require_admin_key),
 ) -> UserSchema:
     """Get a user by ID."""
-    result = await db.execute(
-        select(User).where(User.id == user_id)
-    )
+    result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
 
     if user is None:
@@ -182,12 +183,11 @@ async def create_user(
 ) -> UserSchema:
     """Create a new staff user account."""
     # Check if Discord ID already exists
-    existing = await db.execute(
-        select(User).where(User.discord_id == body.discord_id)
-    )
+    existing = await db.execute(select(User).where(User.discord_id == body.discord_id))
     if existing.scalar_one_or_none():
         raise HTTPException(
-            status_code=400, detail=f"User with Discord ID '{body.discord_id}' already exists"
+            status_code=400,
+            detail=f"User with Discord ID '{body.discord_id}' already exists",
         )
 
     user = User(
@@ -210,9 +210,7 @@ async def update_user(
     _auth: str = Depends(require_admin_key),
 ) -> UserSchema:
     """Update user details."""
-    result = await db.execute(
-        select(User).where(User.id == user_id)
-    )
+    result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
 
     if user is None:
@@ -239,9 +237,7 @@ async def delete_user(
     _auth: str = Depends(require_admin_key),
 ) -> None:
     """Deactivate a user account."""
-    result = await db.execute(
-        select(User).where(User.id == user_id)
-    )
+    result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
 
     if user is None:
@@ -267,6 +263,7 @@ async def delete_user(
 
 
 # Discord OAuth Flow (Phase 5 Prep)
+
 
 @router.post("/discord/authorize", response_model=dict)
 async def discord_authorize(
@@ -338,8 +335,14 @@ async def discord_callback(
     if pending is None:
         raise HTTPException(status_code=400, detail="Invalid or expired OAuth state")
 
-    client_id = await SettingsService.get_value(db, "discord.client_id") or get_settings().discord_client_id
-    client_secret = await SettingsService.get_value(db, "discord.client_secret") or get_settings().discord_client_secret
+    client_id = (
+        await SettingsService.get_value(db, "discord.client_id")
+        or get_settings().discord_client_id
+    )
+    client_secret = (
+        await SettingsService.get_value(db, "discord.client_secret")
+        or get_settings().discord_client_secret
+    )
 
     try:
         token_data = await discord_service.exchange_code(
@@ -350,7 +353,9 @@ async def discord_callback(
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
     discord_id = discord_user["id"]
-    username = discord_user.get("global_name") or discord_user.get("username", "unknown")
+    username = discord_user.get("global_name") or discord_user.get(
+        "username", "unknown"
+    )
     email = discord_user.get("email")
     avatar_hash = discord_user.get("avatar")
 
@@ -370,7 +375,10 @@ async def discord_callback(
             owner_role = await db.scalar(select(Role).where(Role.name == "owner"))
             if owner_role:
                 role_id = owner_role.id
-        elif settings.initial_admin_discord_id and discord_id == settings.initial_admin_discord_id:
+        elif (
+            settings.initial_admin_discord_id
+            and discord_id == settings.initial_admin_discord_id
+        ):
             # If INITIAL_ADMIN_DISCORD_ID matches, assign owner role
             owner_role = await db.scalar(select(Role).where(Role.name == "owner"))
             if owner_role:
@@ -400,6 +408,7 @@ async def discord_callback(
     # /api/v1/auth/mfa/verify with the pre-session token to complete login.
     # This prevents MFA from being silently bypassed at the OAuth callback step.
     from services.mfa_service import MFAService
+
     if user.mfa_enabled:
         # Issue a short-lived (5-minute) pre-session token scoped only to MFA
         # verification — it cannot be used for any other authenticated endpoint.
@@ -473,10 +482,14 @@ async def logout(
     if authorization and authorization.startswith("Bearer "):
         token = authorization.removeprefix("Bearer ").strip() or None
     if not token:
-        raise HTTPException(status_code=401, detail="Missing session token in Authorization header")
+        raise HTTPException(
+            status_code=401, detail="Missing session token in Authorization header"
+        )
 
     result = await db.execute(
-        select(Session).options(selectinload(Session.user)).where(Session.token == token)
+        select(Session)
+        .options(selectinload(Session.user))
+        .where(Session.token == token)
     )
     session = result.scalar_one_or_none()
 
@@ -508,12 +521,12 @@ async def get_current_user_endpoint(
     return await _user_to_schema(current_user, db)
 
 
-
 # ---------------------------------------------------------------------------
 # MFA verification — exchanges a short-lived mfa: pre-session token + TOTP
 # code for a full session token. Called after /discord/callback returns 403
 # with mfa_required=True.
 # ---------------------------------------------------------------------------
+
 
 class MFAVerifyRequest(BaseModel):
     mfa_token: str
@@ -589,6 +602,7 @@ async def mfa_verify(
 # they operate on the caller's own account and we need a real user identity.
 # ---------------------------------------------------------------------------
 
+
 class MFABeginResponse(BaseModel):
     provisioning_uri: str
     """otpauth:// URI — render as a QR code in the dashboard."""
@@ -617,6 +631,7 @@ async def mfa_enable(
     MFA is NOT active until the user calls /mfa/confirm with a valid code.
     """
     from services.mfa_service import MFAService
+
     secret, uri = await MFAService.begin_enrollment(db, current_user)
     await db.commit()
     return MFABeginResponse(provisioning_uri=uri, secret=secret)
@@ -633,6 +648,7 @@ async def mfa_confirm(
     authenticator app and mark MFA as active on their account.
     """
     from services.mfa_service import MFAService, MFAError
+
     try:
         await MFAService.confirm_enrollment(db, current_user, body.code)
         await db.commit()
@@ -653,13 +669,17 @@ async def mfa_disable(
     where an attacker with a stolen session token disables MFA silently.
     """
     from services.mfa_service import MFAService
+
     if not current_user.mfa_enabled:
-        raise HTTPException(status_code=400, detail="MFA is not enabled on this account")
+        raise HTTPException(
+            status_code=400, detail="MFA is not enabled on this account"
+        )
     if not await MFAService.verify_code(current_user, body.code):
         raise HTTPException(status_code=401, detail="Invalid TOTP code")
     await MFAService.disable(db, current_user)
     await db.commit()
     return {"success": True, "message": "MFA disabled"}
+
 
 # ---------------------------------------------------------------------------
 # API Key management — REST facades over the identity.apikey.* capabilities
@@ -701,9 +721,13 @@ async def list_api_keys(
     keys = await ApiKeyService.list_api_keys(db)
     return [
         ApiKeySchema(
-            id=k.id, name=k.name, key_prefix=k.key_prefix,
-            permissions=k.permissions, revoked=k.revoked,
-            created_at=k.created_at, last_used_at=k.last_used_at,
+            id=k.id,
+            name=k.name,
+            key_prefix=k.key_prefix,
+            permissions=k.permissions,
+            revoked=k.revoked,
+            created_at=k.created_at,
+            last_used_at=k.last_used_at,
             expires_at=k.expires_at,
         )
         for k in keys
@@ -718,17 +742,24 @@ async def create_api_key(
 ) -> ApiKeySchema:
     """Create a new scoped API key. The plaintext key is shown once."""
     key, plaintext = await ApiKeyService.create_api_key(
-        db, body.name, body.permissions,
+        db,
+        body.name,
+        body.permissions,
         # FIX: pass real creator identity instead of None
         created_by=_auth.username if hasattr(_auth, "username") else "admin",
         expires_in_days=body.expires_in_days,
     )
     await db.commit()
     return ApiKeySchema(
-        id=key.id, name=key.name, key_prefix=key.key_prefix,
-        permissions=key.permissions, revoked=key.revoked,
-        created_at=key.created_at, last_used_at=key.last_used_at,
-        expires_at=key.expires_at, plaintext_key=plaintext,
+        id=key.id,
+        name=key.name,
+        key_prefix=key.key_prefix,
+        permissions=key.permissions,
+        revoked=key.revoked,
+        created_at=key.created_at,
+        last_used_at=key.last_used_at,
+        expires_at=key.expires_at,
+        plaintext_key=plaintext,
     )
 
 
@@ -742,6 +773,7 @@ async def revoke_api_key(
     # FIX: catch only ResourceNotFoundException (404); let other errors
     # propagate as 500 — same pattern as webhooks_rest F009 fix.
     from api.middleware.errors import ResourceNotFoundException
+
     try:
         await ApiKeyService.revoke_api_key(db, key_id)
     except ResourceNotFoundException as exc:

@@ -13,6 +13,7 @@ through the Capability Registry's own permission check and audit write
 model(s) answered, whether they agreed, and the resulting confidence -
 recorded to AIDecisionLog for every call, successful or escalated.
 """
+
 from __future__ import annotations
 
 import logging
@@ -83,7 +84,11 @@ class Orchestrator:
         text-similarity behavior) - every existing caller is unaffected.
         """
         settings = get_settings()
-        dual_review = settings.dual_review_enabled if require_dual_review is None else require_dual_review
+        dual_review = (
+            settings.dual_review_enabled
+            if require_dual_review is None
+            else require_dual_review
+        )
         compare = agreement_fn or _similarity
 
         system_prompt = await ConstitutionService.build_system_prompt(db, task_prompt)
@@ -97,7 +102,11 @@ class Orchestrator:
         if dual_review:
             try:
                 secondary = await ModelRouter.generate(
-                    db, task_type, system_prompt, task_prompt, exclude_providers={primary.provider}
+                    db,
+                    task_type,
+                    system_prompt,
+                    task_prompt,
+                    exclude_providers={primary.provider},
                 )
                 score = compare(primary.result.text, secondary.result.text)
                 agreement = score >= agreement_threshold
@@ -116,7 +125,9 @@ class Orchestrator:
                     primary.provider,
                 )
 
-        escalated = confidence < settings.confidence_escalation_threshold or agreement is False
+        escalated = (
+            confidence < settings.confidence_escalation_threshold or agreement is False
+        )
 
         log = AIDecisionLog(
             task_type=task_type,

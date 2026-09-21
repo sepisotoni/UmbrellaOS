@@ -10,6 +10,7 @@ Capability Registry's CallContext — this module only adds request-scoped
 caching on top of that shared resolver, it does not compute permissions
 itself.
 """
+
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -89,11 +90,19 @@ class RoleChecker:
         if isinstance(auth, (str, ApiKey)):
             if isinstance(auth, ApiKey):
                 if self.require_all:
-                    missing = [p for p in self.permissions if p not in (auth.permissions or [])]
+                    missing = [
+                        p for p in self.permissions if p not in (auth.permissions or [])
+                    ]
                     if missing:
-                        raise HTTPException(status_code=403, detail=f"API key missing permissions: {', '.join(missing)}")
+                        raise HTTPException(
+                            status_code=403,
+                            detail=f"API key missing permissions: {', '.join(missing)}",
+                        )
                 elif not any(p in (auth.permissions or []) for p in self.permissions):
-                    raise HTTPException(status_code=403, detail=f"API key missing one of: {', '.join(self.permissions)}")
+                    raise HTTPException(
+                        status_code=403,
+                        detail=f"API key missing one of: {', '.join(self.permissions)}",
+                    )
             return auth
 
         user_permissions = await _load_role_permissions(auth, db, request)
@@ -138,7 +147,10 @@ async def require_owner(
     legitimately satisfy this check; they are unconditionally denied.
     """
     if isinstance(auth, ApiKey):
-        raise HTTPException(status_code=403, detail="Owner access required — API keys cannot access owner-only endpoints")
+        raise HTTPException(
+            status_code=403,
+            detail="Owner access required — API keys cannot access owner-only endpoints",
+        )
     if isinstance(auth, str):
         return auth
     if not auth.role_id:

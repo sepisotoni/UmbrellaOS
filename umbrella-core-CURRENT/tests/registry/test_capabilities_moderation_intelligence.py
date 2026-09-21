@@ -11,6 +11,7 @@ that the capabilities are listed, that permissions are enforced per role,
 and that create/get/escalation-list/resolve round-trip correctly through
 the real HTTP stack.
 """
+
 import pytest
 
 from tests.conftest import ADMIN_HEADERS
@@ -38,7 +39,9 @@ async def test_create_report_via_admin_key(client):
     body = response.json()
     assert body["reported_user_id"] == "discord-999"
     assert body["status"] == "pending"
-    assert body["reporter_id"] == "admin-key"  # REST admin-key calls attribute normally; only AI-sourced calls don't
+    assert (
+        body["reporter_id"] == "admin-key"
+    )  # REST admin-key calls attribute normally; only AI-sourced calls don't
 
 
 @pytest.mark.asyncio
@@ -120,7 +123,9 @@ async def test_escalation_list_and_resolve_round_trip(client, db_session):
     from models.moderation_intelligence import StaffEscalation
 
     async with db_session() as db:
-        escalation = StaffEscalation(source="moderation", summary="Needs a human look", confidence=0.4)
+        escalation = StaffEscalation(
+            source="moderation", summary="Needs a human look", confidence=0.4
+        )
         db.add(escalation)
         await db.flush()
         await db.commit()
@@ -157,7 +162,9 @@ async def test_new_escalations_have_null_notified_at(client, db_session):
     from models.moderation_intelligence import StaffEscalation
 
     async with db_session() as db:
-        escalation = StaffEscalation(source="moderation", summary="Fresh one", confidence=0.4)
+        escalation = StaffEscalation(
+            source="moderation", summary="Fresh one", confidence=0.4
+        )
         db.add(escalation)
         await db.flush()
         await db.commit()
@@ -173,11 +180,15 @@ async def test_new_escalations_have_null_notified_at(client, db_session):
 
 
 @pytest.mark.asyncio
-async def test_mark_notified_sets_timestamp_and_is_reflected_in_list(client, db_session):
+async def test_mark_notified_sets_timestamp_and_is_reflected_in_list(
+    client, db_session
+):
     from models.moderation_intelligence import StaffEscalation
 
     async with db_session() as db:
-        escalation = StaffEscalation(source="investigation", summary="Needs a look", confidence=0.6)
+        escalation = StaffEscalation(
+            source="investigation", summary="Needs a look", confidence=0.6
+        )
         db.add(escalation)
         await db.flush()
         await db.commit()

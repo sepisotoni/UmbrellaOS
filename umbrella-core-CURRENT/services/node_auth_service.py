@@ -20,6 +20,7 @@ Changing this contract requires changing both sides together — it is
 intentionally not something either side can version independently, since
 there is exactly one verifier (the daemon) and one issuer (this service).
 """
+
 from __future__ import annotations
 
 import time
@@ -28,7 +29,9 @@ from dataclasses import dataclass
 import jwt
 
 NODE_TOKEN_SCOPE = "node"
-DEFAULT_TOKEN_TTL_SECONDS = 300  # short-lived by design — see ADR-0002 on the daemon side
+DEFAULT_TOKEN_TTL_SECONDS = (
+    300  # short-lived by design — see ADR-0002 on the daemon side
+)
 
 
 class NodeAuthError(Exception):
@@ -41,7 +44,9 @@ class NodeClaims:
     scope: str
 
 
-def issue_node_token(node_id: str, signing_secret: str, ttl_seconds: int = DEFAULT_TOKEN_TTL_SECONDS) -> str:
+def issue_node_token(
+    node_id: str, signing_secret: str, ttl_seconds: int = DEFAULT_TOKEN_TTL_SECONDS
+) -> str:
     """
     Issue a signed token asserting node_id, valid for ttl_seconds.
 
@@ -54,7 +59,9 @@ def issue_node_token(node_id: str, signing_secret: str, ttl_seconds: int = DEFAU
     if not node_id:
         raise NodeAuthError("node_id must not be empty")
     if len(signing_secret) < 32:
-        raise NodeAuthError(f"signing_secret must be at least 32 characters, got {len(signing_secret)}")
+        raise NodeAuthError(
+            f"signing_secret must be at least 32 characters, got {len(signing_secret)}"
+        )
 
     now = int(time.time())
     payload = {

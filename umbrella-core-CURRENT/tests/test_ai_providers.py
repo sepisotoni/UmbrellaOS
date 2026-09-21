@@ -3,6 +3,7 @@ tests/test_ai_providers.py - Tests for services/ai/{openrouter,anthropic,
 gemini}_provider.py, using httpx.MockTransport injected through each
 provider's real constructor (same pattern as tests/test_daemon_client.py).
 """
+
 import json
 
 import httpx
@@ -26,7 +27,9 @@ async def test_openrouter_generate_success():
             },
         )
 
-    provider = OpenRouterProvider(api_key="test-key", transport=httpx.MockTransport(handler))
+    provider = OpenRouterProvider(
+        api_key="test-key", transport=httpx.MockTransport(handler)
+    )
     result = await provider.generate("some-model", "system prompt", "user prompt")
 
     assert result.text == "hello from the model"
@@ -46,7 +49,9 @@ async def test_openrouter_http_error_raises_provider_error():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(401, text="invalid api key")
 
-    provider = OpenRouterProvider(api_key="bad-key", transport=httpx.MockTransport(handler))
+    provider = OpenRouterProvider(
+        api_key="bad-key", transport=httpx.MockTransport(handler)
+    )
     with pytest.raises(ProviderError, match="401"):
         await provider.generate("some-model", "sys", "user")
 
@@ -56,7 +61,9 @@ async def test_openrouter_malformed_response_raises_provider_error():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"unexpected": "shape"})
 
-    provider = OpenRouterProvider(api_key="test-key", transport=httpx.MockTransport(handler))
+    provider = OpenRouterProvider(
+        api_key="test-key", transport=httpx.MockTransport(handler)
+    )
     with pytest.raises(ProviderError, match="unexpected shape"):
         await provider.generate("some-model", "sys", "user")
 
@@ -66,7 +73,9 @@ async def test_openrouter_network_error_raises_provider_error():
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("connection refused")
 
-    provider = OpenRouterProvider(api_key="test-key", transport=httpx.MockTransport(handler))
+    provider = OpenRouterProvider(
+        api_key="test-key", transport=httpx.MockTransport(handler)
+    )
     with pytest.raises(ProviderError, match="request failed"):
         await provider.generate("some-model", "sys", "user")
 
@@ -84,7 +93,9 @@ async def test_anthropic_generate_success():
             },
         )
 
-    provider = AnthropicProvider(api_key="test-key", transport=httpx.MockTransport(handler))
+    provider = AnthropicProvider(
+        api_key="test-key", transport=httpx.MockTransport(handler)
+    )
     result = await provider.generate("claude-x", "system", "user")
 
     assert result.text == "hello from claude"
@@ -102,7 +113,9 @@ async def test_anthropic_sends_system_prompt_as_top_level_field():
         captured["messages"] = body.get("messages")
         return httpx.Response(200, json={"content": [{"text": "ok"}]})
 
-    provider = AnthropicProvider(api_key="test-key", transport=httpx.MockTransport(handler))
+    provider = AnthropicProvider(
+        api_key="test-key", transport=httpx.MockTransport(handler)
+    )
     await provider.generate("claude-x", "you are a helpful bot", "hi there")
 
     assert captured["system"] == "you are a helpful bot"
@@ -120,7 +133,9 @@ async def test_anthropic_http_error_raises_provider_error():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(529, text="overloaded")
 
-    provider = AnthropicProvider(api_key="test-key", transport=httpx.MockTransport(handler))
+    provider = AnthropicProvider(
+        api_key="test-key", transport=httpx.MockTransport(handler)
+    )
     with pytest.raises(ProviderError, match="529"):
         await provider.generate("claude-x", "sys", "user")
 
@@ -138,7 +153,9 @@ async def test_gemini_generate_success():
             },
         )
 
-    provider = GeminiProvider(api_key="test-key", transport=httpx.MockTransport(handler))
+    provider = GeminiProvider(
+        api_key="test-key", transport=httpx.MockTransport(handler)
+    )
     result = await provider.generate("gemini-x", "system", "user")
 
     assert result.text == "hello from gemini"
@@ -154,9 +171,13 @@ async def test_gemini_sends_system_instruction_separately():
         body = json.loads(request.content)
         captured["systemInstruction"] = body.get("systemInstruction")
         captured["contents"] = body.get("contents")
-        return httpx.Response(200, json={"candidates": [{"content": {"parts": [{"text": "ok"}]}}]})
+        return httpx.Response(
+            200, json={"candidates": [{"content": {"parts": [{"text": "ok"}]}}]}
+        )
 
-    provider = GeminiProvider(api_key="test-key", transport=httpx.MockTransport(handler))
+    provider = GeminiProvider(
+        api_key="test-key", transport=httpx.MockTransport(handler)
+    )
     await provider.generate("gemini-x", "be nice", "hello")
 
     assert captured["systemInstruction"] == {"parts": [{"text": "be nice"}]}
@@ -174,6 +195,8 @@ async def test_gemini_malformed_response_raises_provider_error():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"candidates": []})
 
-    provider = GeminiProvider(api_key="test-key", transport=httpx.MockTransport(handler))
+    provider = GeminiProvider(
+        api_key="test-key", transport=httpx.MockTransport(handler)
+    )
     with pytest.raises(ProviderError, match="unexpected shape"):
         await provider.generate("gemini-x", "sys", "user")

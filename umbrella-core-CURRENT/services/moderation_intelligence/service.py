@@ -38,6 +38,7 @@ RecommendedAction enum, action_guard's capability-level enforcement once
 Phase 6 wires up execution, and the confidence/agreement escalation below),
 not eliminated.
 """
+
 from __future__ import annotations
 
 import json
@@ -117,18 +118,25 @@ class ModerationIntelligenceService:
         recent, relevant context, not everything ever said."""
         messages_result = await db.execute(
             select(ChatMessage)
-            .where(ChatMessage.discord_id == reported_user_id, ChatMessage.source == "discord")
+            .where(
+                ChatMessage.discord_id == reported_user_id,
+                ChatMessage.source == "discord",
+            )
             .order_by(ChatMessage.timestamp.desc())
             .limit(10)
         )
         recent_messages = list(reversed(messages_result.scalars().all()))
 
-        since = datetime.now(timezone.utc) - timedelta(hours=get_settings().repeat_offender_lookback_hours)
+        since = datetime.now(timezone.utc) - timedelta(
+            hours=get_settings().repeat_offender_lookback_hours
+        )
         recent_warning_count = await ModerationIntelRepository.count_recent_warnings(
             db, reported_user_id, since=since
         )
 
-        lines = [f"Recent warning count (last {get_settings().repeat_offender_lookback_hours}h): {recent_warning_count}"]
+        lines = [
+            f"Recent warning count (last {get_settings().repeat_offender_lookback_hours}h): {recent_warning_count}"
+        ]
         if recent_messages:
             lines.append("Recent messages from this user:")
             for msg in recent_messages:
@@ -147,7 +155,9 @@ class ModerationIntelligenceService:
         callers - a future Discord cog, a REST endpoint - don't need to
         know about SQLAlchemy session lifecycle to read the result.
         """
-        evidence = await ModerationIntelligenceService._gather_evidence(db, report.reported_user_id)
+        evidence = await ModerationIntelligenceService._gather_evidence(
+            db, report.reported_user_id
+        )
         system_prompt = await ConstitutionService.build_system_prompt(
             db, f"You are analyzing a moderation report. {_RESULT_SCHEMA_INSTRUCTIONS}"
         )
@@ -164,7 +174,9 @@ class ModerationIntelligenceService:
         parsed = _safe_parse(result.text)
 
         try:
-            recommended_action = RecommendedAction(parsed.get("recommended_action", "escalate"))
+            recommended_action = RecommendedAction(
+                parsed.get("recommended_action", "escalate")
+            )
         except ValueError:
             # Bug B, fixed: the model returned something outside the five
             # allowed values (or omitted the field). Fail safe to
@@ -175,7 +187,10 @@ class ModerationIntelligenceService:
 
         risk_score = parsed.get("risk_score")
         risk_score = float(risk_score) if isinstance(risk_score, (int, float)) else 0.5
-        evidence_summary = parsed.get("evidence_summary") or "No evidence summary provided by the model."
+        evidence_summary = (
+            parsed.get("evidence_summary")
+            or "No evidence summary provided by the model."
+        )
 
         low_confidence_action = (
             recommended_action != RecommendedAction.NONE
@@ -196,14 +211,18 @@ class ModerationIntelligenceService:
             evidence_summary=evidence_summary,
             primary_model=f"{result.primary_provider}/{result.primary_model}",
             secondary_model=(
-                f"{result.secondary_provider}/{result.secondary_model}" if result.secondary_provider else None
+                f"{result.secondary_provider}/{result.secondary_model}"
+                if result.secondary_provider
+                else None
             ),
             agreement=result.dual_review_agreement,
             action_taken=False,  # Phase 6 sets this once real execution exists
         )
 
         if should_escalate:
-            await ModerationIntelRepository.set_report_status(db, report.id, ReportStatus.ESCALATED)
+            await ModerationIntelRepository.set_report_status(
+                db, report.id, ReportStatus.ESCALATED
+            )
             escalation = await ModerationIntelRepository.create_escalation(
                 db,
                 source="moderation",
@@ -227,7 +246,9 @@ class ModerationIntelligenceService:
                 },
             )
         else:
-            await ModerationIntelRepository.set_report_status(db, report.id, ReportStatus.AUTO_RESOLVED)
+            await ModerationIntelRepository.set_report_status(
+                db, report.id, ReportStatus.AUTO_RESOLVED
+            )
 
         return {
             "report_id": report.id,
@@ -240,7 +261,9 @@ class ModerationIntelligenceService:
         }
 
     @staticmethod
-    async def check_repeat_offender(db: AsyncSession, user_id: str) -> ModerationReport | None:
+    async def check_repeat_offender(
+        db: AsyncSession, user_id: str
+    ) -> ModerationReport | None:
         """
         If a user has crossed the repeat-offender warning threshold within
         the lookback window, auto-creates a system-generated
@@ -250,8 +273,12 @@ class ModerationIntelligenceService:
         Returns the created report, or None if the threshold isn't met.
         """
         settings = get_settings()
-        since = datetime.now(timezone.utc) - timedelta(hours=settings.repeat_offender_lookback_hours)
-        warning_count = await ModerationIntelRepository.count_recent_warnings(db, user_id, since=since)
+        since = datetime.now(timezone.utc) - timedelta(
+            hours=settings.repeat_offender_lookback_hours
+        )
+        warning_count = await ModerationIntelRepository.count_recent_warnings(
+            db, user_id, since=since
+        )
 
         if warning_count < settings.repeat_offender_warning_count:
             return None

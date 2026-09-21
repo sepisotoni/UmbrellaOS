@@ -3,6 +3,7 @@ tests/registry/test_capabilities_identity.py — REST integration tests for
 Phase 3's identity capabilities (API keys, MFA), through the real FastAPI
 app, registry, and database.
 """
+
 import pyotp
 import pytest
 
@@ -30,7 +31,9 @@ async def test_list_api_keys_never_includes_plaintext(client):
         headers=ADMIN_HEADERS,
     )
     response = await client.post(
-        "/api/v1/capabilities/identity.apikey.list/invoke", json={}, headers=ADMIN_HEADERS
+        "/api/v1/capabilities/identity.apikey.list/invoke",
+        json={},
+        headers=ADMIN_HEADERS,
     )
     assert response.status_code == 200
     for key in response.json():
@@ -38,7 +41,9 @@ async def test_list_api_keys_never_includes_plaintext(client):
 
 
 @pytest.mark.asyncio
-async def test_created_api_key_actually_authenticates_on_the_real_invoke_endpoint(client):
+async def test_created_api_key_actually_authenticates_on_the_real_invoke_endpoint(
+    client,
+):
     create_response = await client.post(
         "/api/v1/capabilities/identity.apikey.create/invoke",
         json={"name": "real-auth-check", "permissions": []},
@@ -97,7 +102,9 @@ async def test_mfa_enrollment_full_round_trip_via_rest(client, db_session):
     headers = await session_headers_for_role(db_session, "owner", suffix="-mfa")
 
     begin_response = await client.post(
-        "/api/v1/capabilities/identity.mfa.begin_enrollment/invoke", json={}, headers=headers
+        "/api/v1/capabilities/identity.mfa.begin_enrollment/invoke",
+        json={},
+        headers=headers,
     )
     assert begin_response.status_code == 200
     secret = begin_response.json()["secret"]
@@ -136,7 +143,9 @@ async def test_mfa_disable_without_code_is_rejected(client, db_session):
     """
     headers = await session_headers_for_role(db_session, "owner", suffix="-mfa-nocode")
     begin_response = await client.post(
-        "/api/v1/capabilities/identity.mfa.begin_enrollment/invoke", json={}, headers=headers
+        "/api/v1/capabilities/identity.mfa.begin_enrollment/invoke",
+        json={},
+        headers=headers,
     )
     secret = begin_response.json()["secret"]
     code = pyotp.TOTP(secret).now()
@@ -155,9 +164,13 @@ async def test_mfa_disable_without_code_is_rejected(client, db_session):
 @pytest.mark.asyncio
 async def test_mfa_disable_with_wrong_code_is_rejected(client, db_session):
     """identity.mfa.disable must reject a wrong TOTP code with 401, not disable MFA."""
-    headers = await session_headers_for_role(db_session, "owner", suffix="-mfa-wrongcode")
+    headers = await session_headers_for_role(
+        db_session, "owner", suffix="-mfa-wrongcode"
+    )
     begin_response = await client.post(
-        "/api/v1/capabilities/identity.mfa.begin_enrollment/invoke", json={}, headers=headers
+        "/api/v1/capabilities/identity.mfa.begin_enrollment/invoke",
+        json={},
+        headers=headers,
     )
     secret = begin_response.json()["secret"]
     code = pyotp.TOTP(secret).now()
@@ -188,7 +201,9 @@ async def test_mfa_confirm_code_never_appears_in_audit_log(client, db_session):
 
     headers = await session_headers_for_role(db_session, "owner", suffix="-mfa-audit")
     begin_response = await client.post(
-        "/api/v1/capabilities/identity.mfa.begin_enrollment/invoke", json={}, headers=headers
+        "/api/v1/capabilities/identity.mfa.begin_enrollment/invoke",
+        json={},
+        headers=headers,
     )
     secret = begin_response.json()["secret"]
     code = pyotp.TOTP(secret).now()
@@ -205,14 +220,20 @@ async def test_mfa_confirm_code_never_appears_in_audit_log(client, db_session):
         rows = result.scalars().all()
         assert len(rows) >= 1
         for row in rows:
-            assert code not in (row.details_json or ""), "raw TOTP code must never appear in audit log"
+            assert code not in (row.details_json or ""), (
+                "raw TOTP code must never appear in audit log"
+            )
 
 
 @pytest.mark.asyncio
 async def test_mfa_confirm_with_wrong_code_returns_error(client, db_session):
     headers = await session_headers_for_role(db_session, "owner", suffix="-mfa-wrong")
 
-    await client.post("/api/v1/capabilities/identity.mfa.begin_enrollment/invoke", json={}, headers=headers)
+    await client.post(
+        "/api/v1/capabilities/identity.mfa.begin_enrollment/invoke",
+        json={},
+        headers=headers,
+    )
     response = await client.post(
         "/api/v1/capabilities/identity.mfa.confirm_enrollment/invoke",
         json={"code": "000000"},
@@ -227,7 +248,9 @@ async def test_mfa_denied_for_admin_key_actor(client):
     """MFA is a personal setting for a real staff account — the admin-key
     bootstrap tier has no underlying User row to attach one to."""
     response = await client.post(
-        "/api/v1/capabilities/identity.mfa.begin_enrollment/invoke", json={}, headers=ADMIN_HEADERS
+        "/api/v1/capabilities/identity.mfa.begin_enrollment/invoke",
+        json={},
+        headers=ADMIN_HEADERS,
     )
     assert response.status_code == 400
     assert response.json()["code"] == "MFA_ERROR"

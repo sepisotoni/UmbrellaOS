@@ -7,6 +7,7 @@ The HTTP-layer rate limit integration is covered indirectly by all other
 test_*.py files — those use _NoOpRateLimiter from conftest and confirm
 the middleware doesn't interfere with normal flows.
 """
+
 import pytest
 from unittest.mock import AsyncMock, MagicMock, call
 
@@ -30,6 +31,7 @@ def limiter(mock_redis):
 # ------------------------------------------------------------------
 # Basic allow/deny
 # ------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_first_request_allowed(limiter, mock_redis):
@@ -59,6 +61,7 @@ async def test_request_over_limit_denied(limiter, mock_redis):
 # ------------------------------------------------------------------
 # Bug #7 fix — expire called with nx=True every request
 # ------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_expire_called_on_first_request(limiter, mock_redis):
@@ -118,6 +121,7 @@ async def test_key_includes_window_seconds(limiter, mock_redis):
 # TTL / reset_seconds handling
 # ------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_reset_seconds_from_ttl(limiter, mock_redis):
     mock_redis.incr.return_value = 1
@@ -147,6 +151,7 @@ async def test_result_is_frozen_dataclass(limiter, mock_redis):
 # ------------------------------------------------------------------
 # Key prefix customisation
 # ------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_custom_key_prefix(mock_redis):

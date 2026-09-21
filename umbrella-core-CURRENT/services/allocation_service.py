@@ -7,6 +7,7 @@ The (node_id, port, protocol) uniqueness constraint lives in the database
 resulting IntegrityError and raises a clear, specific AllocationError
 rather than letting a raw database exception surface to a capability caller.
 """
+
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -42,7 +43,9 @@ class AllocationService:
     @staticmethod
     async def list_free_allocations(db: AsyncSession, node_id: str) -> list[Allocation]:
         result = await db.execute(
-            select(Allocation).where(Allocation.node_id == node_id, Allocation.server_id.is_(None))
+            select(Allocation).where(
+                Allocation.node_id == node_id, Allocation.server_id.is_(None)
+            )
         )
         return list(result.scalars().all())
 
@@ -63,7 +66,8 @@ class AllocationService:
         allocation = await AllocationService.get_allocation(db, allocation_id)
         if allocation.server_id is not None and allocation.server_id != server_id:
             raise AllocationError(
-                f"allocation {allocation_id!r} is already bound to a different server", 409
+                f"allocation {allocation_id!r} is already bound to a different server",
+                409,
             )
         allocation.server_id = server_id
         allocation.container_port = container_port

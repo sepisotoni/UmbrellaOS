@@ -3,6 +3,7 @@ api/routers/ai_config.py — AI Configuration API endpoints.
 
 Handles AI-powered configuration requests and approvals.
 """
+
 import json
 import uuid
 from fastapi import APIRouter, Depends, HTTPException
@@ -15,7 +16,11 @@ from database import get_db
 from models import AIConfigAction
 from models.ai import AIModelConfig
 from api.dependencies.permissions import require_permission
-from services.ai_config_service import process_ai_config_request, apply_config_action, AIConfigServiceError
+from services.ai_config_service import (
+    process_ai_config_request,
+    apply_config_action,
+    AIConfigServiceError,
+)
 
 router = APIRouter(prefix="/api/v1/ai/config", tags=["ai-config"])
 
@@ -49,7 +54,7 @@ async def request_ai_config(
 ) -> AIConfigResponse:
     """
     Request AI-generated configuration.
-    
+
     Uses OpenRouter API to interpret natural language and generate
     configuration suggestions that must be approved before applying.
     """
@@ -76,7 +81,8 @@ async def get_pending_configs(
     Get all pending AI configuration actions.
     """
     result = await db.execute(
-        select(AIConfigAction).where(AIConfigAction.status == "pending")
+        select(AIConfigAction)
+        .where(AIConfigAction.status == "pending")
         .order_by(AIConfigAction.created_at.desc())
     )
     pending = result.scalars().all()
@@ -116,18 +122,20 @@ async def reject_config(
     """
     result = await db.execute(select(AIConfigAction).where(AIConfigAction.id == id))
     config_action = result.scalar_one_or_none()
-    
+
     if not config_action:
         raise HTTPException(status_code=404, detail="AI config action not found")
-    
+
     if config_action.status != "pending":
-        raise HTTPException(status_code=400, detail=f"Action is {config_action.status}, cannot reject")
-    
+        raise HTTPException(
+            status_code=400, detail=f"Action is {config_action.status}, cannot reject"
+        )
+
     config_action.status = "rejected"
     config_action.reviewed_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(config_action)
-    
+
     return AIConfigResponse.model_validate(config_action)
 
 
@@ -158,17 +166,21 @@ async def reject_config(
 VALID_PROVIDERS = {"gemini", "anthropic", "openrouter"}
 
 KNOWN_TASK_TYPES = {
-    "player_review", "appeal_review", "copilot",
-    "crash_risk", "chat_review", "moderation_review",
+    "player_review",
+    "appeal_review",
+    "copilot",
+    "crash_risk",
+    "chat_review",
+    "moderation_review",
 }
 
 # Default model strings per provider — used when creating new ai_model_configs rows.
 _DEFAULT_MODELS: dict[str, str] = {
     # gemini-1.5-flash was retired by Google before 2026-08-31 — see the
     # identical note in api/routers/ai_copilot.py's _PROVIDER_DEFAULT_MODELS.
-    "gemini":      "gemini-2.5-flash",
-    "anthropic":   "claude-haiku-4-5-20251001",
-    "openrouter":  "openai/gpt-4o-mini",
+    "gemini": "gemini-2.5-flash",
+    "anthropic": "claude-haiku-4-5-20251001",
+    "openrouter": "openai/gpt-4o-mini",
 }
 
 
@@ -247,11 +259,20 @@ async def update_task_config(
     the ModelRouter queries so routing changes take effect immediately.
     """
     if body.task not in KNOWN_TASK_TYPES:
-        raise HTTPException(status_code=400, detail=f"Unknown task type: {body.task!r}. Valid: {sorted(KNOWN_TASK_TYPES)}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown task type: {body.task!r}. Valid: {sorted(KNOWN_TASK_TYPES)}",
+        )
     if body.primary not in VALID_PROVIDERS:
-        raise HTTPException(status_code=400, detail=f"Unknown provider: {body.primary!r}. Valid: {sorted(VALID_PROVIDERS)}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown provider: {body.primary!r}. Valid: {sorted(VALID_PROVIDERS)}",
+        )
     if body.failover is not None and body.failover not in VALID_PROVIDERS:
-        raise HTTPException(status_code=400, detail=f"Unknown failover provider: {body.failover!r}. Valid: {sorted(VALID_PROVIDERS)}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown failover provider: {body.failover!r}. Valid: {sorted(VALID_PROVIDERS)}",
+        )
 
     # Load all existing rows for this task_type
     result = await db.execute(
@@ -274,16 +295,18 @@ async def update_task_config(
         primary_row.is_healthy = True
         primary_row.consecutive_failures = 0
     else:
-        db.add(AIModelConfig(
-            id=str(uuid.uuid4()),
-            provider=body.primary,
-            model_name=_DEFAULT_MODELS.get(body.primary, body.primary),
-            task_type=body.task,
-            priority=10,
-            enabled=True,
-            is_healthy=True,
-            consecutive_failures=0,
-        ))
+        db.add(
+            AIModelConfig(
+                id=str(uuid.uuid4()),
+                provider=body.primary,
+                model_name=_DEFAULT_MODELS.get(body.primary, body.primary),
+                task_type=body.task,
+                priority=10,
+                enabled=True,
+                is_healthy=True,
+                consecutive_failures=0,
+            )
+        )
 
     # Upsert or disable failover
     if body.failover:
@@ -294,16 +317,18 @@ async def update_task_config(
             failover_row.is_healthy = True
             failover_row.consecutive_failures = 0
         else:
-            db.add(AIModelConfig(
-                id=str(uuid.uuid4()),
-                provider=body.failover,
-                model_name=_DEFAULT_MODELS.get(body.failover, body.failover),
-                task_type=body.task,
-                priority=20,
-                enabled=True,
-                is_healthy=True,
-                consecutive_failures=0,
-            ))
+            db.add(
+                AIModelConfig(
+                    id=str(uuid.uuid4()),
+                    provider=body.failover,
+                    model_name=_DEFAULT_MODELS.get(body.failover, body.failover),
+                    task_type=body.task,
+                    priority=20,
+                    enabled=True,
+                    is_healthy=True,
+                    consecutive_failures=0,
+                )
+            )
     elif failover_row:
         # Failover was cleared — disable it rather than deleting so health history is preserved
         failover_row.enabled = False

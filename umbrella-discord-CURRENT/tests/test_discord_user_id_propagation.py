@@ -15,6 +15,7 @@ notifications_cog.py is the one deliberate exception - it's a background
 poll with no invoking Discord user at all, documented in its own
 poll_escalations() comment.
 """
+
 import ast
 from pathlib import Path
 

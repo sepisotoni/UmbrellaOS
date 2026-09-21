@@ -6,6 +6,7 @@ Design decisions:
 - A separate sync engine is provided only for Alembic migrations.
 - Sessions are scoped per-request via FastAPI dependency injection.
 """
+
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 from config.settings import get_settings
@@ -42,7 +43,7 @@ engine = create_async_engine(
 AsyncSessionLocal = async_sessionmaker(
     bind=engine,
     class_=AsyncSession,
-    expire_on_commit=False,    # Avoid lazy-load issues after commit
+    expire_on_commit=False,  # Avoid lazy-load issues after commit
     autoflush=False,
     autocommit=False,
 )
@@ -50,6 +51,7 @@ AsyncSessionLocal = async_sessionmaker(
 
 class Base(DeclarativeBase):
     """Shared declarative base. All ORM models inherit from this."""
+
     pass
 
 

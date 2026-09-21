@@ -9,8 +9,10 @@ async def test_automation_capabilities_are_listed(client):
     response = await client.get("/api/v1/capabilities")
     names = {c["name"] for c in response.json()}
     assert {
-        "automation.schedule.create", "automation.schedule.list",
-        "automation.schedule.set_enabled", "automation.schedule.delete",
+        "automation.schedule.create",
+        "automation.schedule.list",
+        "automation.schedule.set_enabled",
+        "automation.schedule.delete",
     } <= names
 
 
@@ -33,7 +35,11 @@ async def test_create_schedule_via_rest(client):
 async def test_create_schedule_rejects_unknown_capability(client):
     response = await client.post(
         "/api/v1/capabilities/automation.schedule.create/invoke",
-        json={"name": "bad", "cron_expression": "0 3 * * *", "capability_name": "does.not.exist"},
+        json={
+            "name": "bad",
+            "cron_expression": "0 3 * * *",
+            "capability_name": "does.not.exist",
+        },
         headers=ADMIN_HEADERS,
     )
     assert response.status_code == 400
@@ -45,7 +51,11 @@ async def test_create_schedule_denied_without_permission(client, db_session):
     headers = await session_headers_for_role(db_session, "member")
     response = await client.post(
         "/api/v1/capabilities/automation.schedule.create/invoke",
-        json={"name": "x", "cron_expression": "0 3 * * *", "capability_name": "platform.system.whoami"},
+        json={
+            "name": "x",
+            "cron_expression": "0 3 * * *",
+            "capability_name": "platform.system.whoami",
+        },
         headers=headers,
     )
     assert response.status_code == 403
@@ -55,7 +65,11 @@ async def test_create_schedule_denied_without_permission(client, db_session):
 async def test_disable_then_enable_schedule(client):
     create_response = await client.post(
         "/api/v1/capabilities/automation.schedule.create/invoke",
-        json={"name": "toggle-me", "cron_expression": "0 3 * * *", "capability_name": "platform.system.whoami"},
+        json={
+            "name": "toggle-me",
+            "cron_expression": "0 3 * * *",
+            "capability_name": "platform.system.whoami",
+        },
         headers=ADMIN_HEADERS,
     )
     schedule_id = create_response.json()["id"]
@@ -79,7 +93,11 @@ async def test_disable_then_enable_schedule(client):
 async def test_delete_schedule_via_rest(client):
     create_response = await client.post(
         "/api/v1/capabilities/automation.schedule.create/invoke",
-        json={"name": "delete-me", "cron_expression": "0 3 * * *", "capability_name": "platform.system.whoami"},
+        json={
+            "name": "delete-me",
+            "cron_expression": "0 3 * * *",
+            "capability_name": "platform.system.whoami",
+        },
         headers=ADMIN_HEADERS,
     )
     schedule_id = create_response.json()["id"]
@@ -93,6 +111,8 @@ async def test_delete_schedule_via_rest(client):
     assert delete_response.json()["deleted"] is True
 
     list_response = await client.post(
-        "/api/v1/capabilities/automation.schedule.list/invoke", json={}, headers=ADMIN_HEADERS
+        "/api/v1/capabilities/automation.schedule.list/invoke",
+        json={},
+        headers=ADMIN_HEADERS,
     )
     assert schedule_id not in {s["id"] for s in list_response.json()}

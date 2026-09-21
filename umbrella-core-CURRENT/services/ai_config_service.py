@@ -9,6 +9,7 @@ model string ("openai/gpt-oss-20b:free").
 Bug fixed: old code bypassed all provider routing, ignored enabled flags,
 and used a hardcoded free model that may not exist on OpenRouter any more.
 """
+
 import json
 import re
 import uuid
@@ -57,6 +58,7 @@ _CONFIG_TASK_TYPE = "copilot"
 
 class AIConfigServiceError(Exception):
     """Raised when AI config service encounters an error."""
+
     pass
 
 
@@ -179,19 +181,29 @@ async def apply_config_action(
             for key, value in items:
                 cat = key.split(".")[0] if "." in key else "general"
                 if isinstance(value, bool):
-                    await SettingsService.set_value(db, str(key), "true" if value else "false", cat)
+                    await SettingsService.set_value(
+                        db, str(key), "true" if value else "false", cat
+                    )
                 elif isinstance(value, (str, int, float)):
                     await SettingsService.set_value(db, str(key), str(value), cat)
 
         elif action.action_type == "dashboard_layout":
-            for i, layout_item in enumerate(changes if isinstance(changes, list) else [changes]):
+            for i, layout_item in enumerate(
+                changes if isinstance(changes, list) else [changes]
+            ):
                 base_key = f"dashboard.layout.{i}"
-                await SettingsService.set_value(db, base_key, json.dumps(layout_item), "dashboard")
+                await SettingsService.set_value(
+                    db, base_key, json.dumps(layout_item), "dashboard"
+                )
 
         elif action.action_type == "discord_config":
-            for i, discord_item in enumerate(changes if isinstance(changes, list) else [changes]):
+            for i, discord_item in enumerate(
+                changes if isinstance(changes, list) else [changes]
+            ):
                 base_key = f"discord.config.{i}"
-                await SettingsService.set_value(db, base_key, json.dumps(discord_item), "discord")
+                await SettingsService.set_value(
+                    db, base_key, json.dumps(discord_item), "discord"
+                )
 
         action.status = "applied"
         action.applied_at = datetime.now(timezone.utc)
@@ -329,13 +341,15 @@ async def sync_task_model_setting(db: AsyncSession, key: str, value: str) -> Non
         existing.is_healthy = True
         existing.consecutive_failures = 0
     else:
-        db.add(AIModelConfig(
-            id=str(uuid.uuid4()),
-            provider=provider,
-            model_name=model_name,
-            task_type=task_type,
-            priority=priority,
-            enabled=True,
-            is_healthy=True,
-            consecutive_failures=0,
-        ))
+        db.add(
+            AIModelConfig(
+                id=str(uuid.uuid4()),
+                provider=provider,
+                model_name=model_name,
+                task_type=task_type,
+                priority=priority,
+                enabled=True,
+                is_healthy=True,
+                consecutive_failures=0,
+            )
+        )

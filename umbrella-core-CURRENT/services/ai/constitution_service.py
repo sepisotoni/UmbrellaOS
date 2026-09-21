@@ -11,6 +11,7 @@ actually *let it do*. That's the entire point of having both: a prompt
 layer for behavior shaping, and a code layer for anything that must never
 depend on the model choosing to comply.
 """
+
 from __future__ import annotations
 
 from sqlalchemy import select
@@ -57,25 +58,41 @@ class ConstitutionService:
         (matched by title), safe to call on every app startup the same
         way RolesService.seed_defaults already is."""
         for tier, title, rule_text in SEED_RULES:
-            existing = await db.scalar(select(ConstitutionRule).where(ConstitutionRule.title == title))
+            existing = await db.scalar(
+                select(ConstitutionRule).where(ConstitutionRule.title == title)
+            )
             if existing is None:
                 db.add(
-                    ConstitutionRule(tier=tier, title=title, rule_text=rule_text, is_seed_rule=True)
+                    ConstitutionRule(
+                        tier=tier, title=title, rule_text=rule_text, is_seed_rule=True
+                    )
                 )
         await db.flush()
 
     @staticmethod
     async def add_rule(
-        db: AsyncSession, tier: ConstitutionTier, title: str, rule_text: str, created_by: str | None = None
+        db: AsyncSession,
+        tier: ConstitutionTier,
+        title: str,
+        rule_text: str,
+        created_by: str | None = None,
     ) -> ConstitutionRule:
-        rule = ConstitutionRule(tier=tier, title=title, rule_text=rule_text, is_seed_rule=False, created_by=created_by)
+        rule = ConstitutionRule(
+            tier=tier,
+            title=title,
+            rule_text=rule_text,
+            is_seed_rule=False,
+            created_by=created_by,
+        )
         db.add(rule)
         await db.flush()
         return rule
 
     @staticmethod
     async def list_rules(db: AsyncSession) -> list[ConstitutionRule]:
-        result = await db.execute(select(ConstitutionRule).order_by(ConstitutionRule.tier.asc()))
+        result = await db.execute(
+            select(ConstitutionRule).order_by(ConstitutionRule.tier.asc())
+        )
         return list(result.scalars().all())
 
     @staticmethod
@@ -96,7 +113,9 @@ class ConstitutionService:
         return list(result.scalars().all())
 
     @staticmethod
-    async def set_enabled(db: AsyncSession, rule_id: str, enabled: bool) -> ConstitutionRule:
+    async def set_enabled(
+        db: AsyncSession, rule_id: str, enabled: bool
+    ) -> ConstitutionRule:
         rule = await db.get(ConstitutionRule, rule_id)
         if rule is None:
             raise ConstitutionError(f"no constitution rule with id {rule_id!r}", 404)
@@ -112,7 +131,8 @@ class ConstitutionService:
         if rule.is_seed_rule:
             raise ConstitutionError(
                 "seed rules cannot be deleted, only disabled (is_enabled=False) - "
-                "their underlying invariants are enforced in code regardless", 400
+                "their underlying invariants are enforced in code regardless",
+                400,
             )
         await db.delete(rule)
         await db.flush()

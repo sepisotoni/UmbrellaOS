@@ -1,6 +1,7 @@
 """
 tests/test_ai_tasks.py — AI moderation task API tests.
 """
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
@@ -13,14 +14,23 @@ async def test_post_ai_review_player_creates_task(client: AsyncClient, db_sessio
     """POST /ai/review/player/{uuid} creates AITask."""
     # First, set up the Anthropic API key in settings
     async with db_session() as db:
-        existing = await db.scalar(select(Setting).where(Setting.key == "ai.anthropic_api_key"))
+        existing = await db.scalar(
+            select(Setting).where(Setting.key == "ai.anthropic_api_key")
+        )
         if existing:
             existing.value = "test-key"
         else:
-            setting = Setting(key="ai.anthropic_api_key", value="test-key", category="ai", description="Test", sensitive=False, requires_restart=False)
+            setting = Setting(
+                key="ai.anthropic_api_key",
+                value="test-key",
+                category="ai",
+                description="Test",
+                sensitive=False,
+                requires_restart=False,
+            )
             db.add(setting)
         await db.commit()
-    
+
     # Create a player
     async with db_session() as db:
         player = Player(
@@ -31,11 +41,12 @@ async def test_post_ai_review_player_creates_task(client: AsyncClient, db_sessio
         )
         db.add(player)
         await db.commit()
-    
+
     # Mock the AI service call by patching it
     import services.ai_service
+
     original_review_flagged_player = services.ai_service.review_flagged_player
-    
+
     async def mock_review_flagged_player(player_uuid, db):
         return AITask(
             task_type="moderation_review",
@@ -48,9 +59,9 @@ async def test_post_ai_review_player_creates_task(client: AsyncClient, db_sessio
             ai_confidence=0.9,
             evidence='{"test": "data"}',
         )
-    
+
     services.ai_service.review_flagged_player = mock_review_flagged_player
-    
+
     try:
         response = await client.post(
             "/api/v1/ai/review/player/00000000-0000-0000-0000-000000000001",
@@ -98,7 +109,7 @@ async def test_get_ai_tasks_returns_list(client: AsyncClient, db_session):
         db.add(task1)
         db.add(task2)
         await db.commit()
-    
+
     response = await client.get(
         "/api/v1/ai/tasks",
         headers={"X-Admin-Key": "test-secret-key"},
@@ -109,7 +120,9 @@ async def test_get_ai_tasks_returns_list(client: AsyncClient, db_session):
 
 
 @pytest.mark.asyncio
-async def test_get_ai_tasks_status_pending_filters_correctly(client: AsyncClient, db_session):
+async def test_get_ai_tasks_status_pending_filters_correctly(
+    client: AsyncClient, db_session
+):
     """GET /ai/tasks?status=pending filters correctly."""
     # Create AI tasks with different statuses
     async with db_session() as db:
@@ -138,7 +151,7 @@ async def test_get_ai_tasks_status_pending_filters_correctly(client: AsyncClient
         db.add(task1)
         db.add(task2)
         await db.commit()
-    
+
     response = await client.get(
         "/api/v1/ai/tasks?status=pending",
         headers={"X-Admin-Key": "test-secret-key"},
@@ -167,7 +180,7 @@ async def test_get_ai_task_id_returns_full_task(client: AsyncClient, db_session)
         db.add(task)
         await db.commit()
         await db.refresh(task)
-    
+
     response = await client.get(
         f"/api/v1/ai/tasks/{task.id}",
         headers={"X-Admin-Key": "test-secret-key"},
@@ -198,7 +211,7 @@ async def test_post_ai_tasks_id_approve_updates_status(client: AsyncClient, db_s
         db.add(task)
         await db.commit()
         await db.refresh(task)
-    
+
     response = await client.post(
         f"/api/v1/ai/tasks/{task.id}/approve",
         json={"action_taken": "Banned for 7 days", "reviewed_by": "staff123"},
@@ -230,7 +243,7 @@ async def test_post_ai_tasks_id_deny_updates_status(client: AsyncClient, db_sess
         db.add(task)
         await db.commit()
         await db.refresh(task)
-    
+
     response = await client.post(
         f"/api/v1/ai/tasks/{task.id}/deny",
         json={"reviewed_by": "staff123", "reason": "False positive"},
@@ -264,7 +277,7 @@ async def test_approved_task_cannot_be_approved_again(client: AsyncClient, db_se
         db.add(task)
         await db.commit()
         await db.refresh(task)
-    
+
     response = await client.post(
         f"/api/v1/ai/tasks/{task.id}/approve",
         json={"action_taken": "Banned again", "reviewed_by": "staff456"},
@@ -294,7 +307,7 @@ async def test_denied_task_cannot_be_denied_again(client: AsyncClient, db_sessio
         db.add(task)
         await db.commit()
         await db.refresh(task)
-    
+
     response = await client.post(
         f"/api/v1/ai/tasks/{task.id}/deny",
         json={"reviewed_by": "staff456", "reason": "Another reason"},
@@ -308,13 +321,13 @@ async def test_unauthenticated_requests_return_401(client: AsyncClient):
     """Unauthenticated requests return 401."""
     response = await client.get("/api/v1/ai/tasks")
     assert response.status_code == 401
-    
+
     response = await client.get("/api/v1/ai/tasks/1")
     assert response.status_code == 401
-    
+
     response = await client.post("/api/v1/ai/tasks/1/approve", json={})
     assert response.status_code == 401
-    
+
     response = await client.post("/api/v1/ai/tasks/1/deny", json={})
     assert response.status_code == 401
 
@@ -324,14 +337,23 @@ async def test_post_ai_review_appeal_creates_task(client: AsyncClient, db_sessio
     """POST /ai/review/appeal/{appeal_id} creates AITask."""
     # Set up the Anthropic API key in settings
     async with db_session() as db:
-        existing = await db.scalar(select(Setting).where(Setting.key == "ai.anthropic_api_key"))
+        existing = await db.scalar(
+            select(Setting).where(Setting.key == "ai.anthropic_api_key")
+        )
         if existing:
             existing.value = "test-key"
         else:
-            setting = Setting(key="ai.anthropic_api_key", value="test-key", category="ai", description="Test", sensitive=False, requires_restart=False)
+            setting = Setting(
+                key="ai.anthropic_api_key",
+                value="test-key",
+                category="ai",
+                description="Test",
+                sensitive=False,
+                requires_restart=False,
+            )
             db.add(setting)
         await db.commit()
-    
+
     # Create a player and appeal
     async with db_session() as db:
         player = Player(
@@ -343,8 +365,9 @@ async def test_post_ai_review_appeal_creates_task(client: AsyncClient, db_sessio
         db.add(player)
         await db.commit()
         await db.refresh(player)
-        
+
         from models import Punishment
+
         punishment = Punishment(
             id="appeal-001",
             player_uuid=player.uuid,
@@ -355,8 +378,9 @@ async def test_post_ai_review_appeal_creates_task(client: AsyncClient, db_sessio
         db.add(punishment)
         await db.commit()
         await db.refresh(punishment)
-        
+
         from models import Appeal
+
         appeal = Appeal(
             id="appeal-001",
             punishment_id=punishment.id,
@@ -366,11 +390,12 @@ async def test_post_ai_review_appeal_creates_task(client: AsyncClient, db_sessio
         )
         db.add(appeal)
         await db.commit()
-    
+
     # Mock the AI service call
     import services.ai_service
+
     original_review_appeal = services.ai_service.review_appeal
-    
+
     async def mock_review_appeal(appeal_id, db):
         return AITask(
             task_type="appeal_review",
@@ -383,9 +408,9 @@ async def test_post_ai_review_appeal_creates_task(client: AsyncClient, db_sessio
             ai_confidence=0.85,
             evidence='{"test": "data"}',
         )
-    
+
     services.ai_service.review_appeal = mock_review_appeal
-    
+
     try:
         response = await client.post(
             "/api/v1/ai/review/appeal/appeal-001",
@@ -401,7 +426,9 @@ async def test_post_ai_review_appeal_creates_task(client: AsyncClient, db_sessio
 
 
 @pytest.mark.asyncio
-async def test_get_ai_tasks_task_type_filters_correctly(client: AsyncClient, db_session):
+async def test_get_ai_tasks_task_type_filters_correctly(
+    client: AsyncClient, db_session
+):
     """GET /ai/tasks?task_type filters correctly."""
     # Create AI tasks with different types
     async with db_session() as db:
@@ -430,7 +457,7 @@ async def test_get_ai_tasks_task_type_filters_correctly(client: AsyncClient, db_
         db.add(task1)
         db.add(task2)
         await db.commit()
-    
+
     response = await client.get(
         "/api/v1/ai/tasks?task_type=moderation_review",
         headers={"X-Admin-Key": "test-secret-key"},

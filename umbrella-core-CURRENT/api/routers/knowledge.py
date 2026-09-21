@@ -17,6 +17,7 @@ DELETE /api/v1/knowledge/{entry_id}       — hard delete
 POST   /api/v1/knowledge/{entry_id}/approve — approve pending correction
 POST   /api/v1/knowledge/{entry_id}/reject  — reject pending correction
 """
+
 from __future__ import annotations
 
 import json
@@ -43,6 +44,7 @@ router = APIRouter(prefix="/api/v1/knowledge", tags=["knowledge"])
 # ---------------------------------------------------------------------------
 # Schemas
 # ---------------------------------------------------------------------------
+
 
 class KnowledgeEntrySchema(BaseModel):
     id: str
@@ -80,6 +82,7 @@ class KnowledgeUpdateRequest(BaseModel):
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _actor_id(auth: User | str) -> str:
     return str(auth.id) if isinstance(auth, User) else "admin"
 
@@ -110,24 +113,29 @@ async def _audit(
     flushed with no audit trail. Every state-changing operation now records
     who did what and to which entry.
     """
-    db.add(AuditLog(
-        actor=actor,
-        actor_type=actor_type,
-        action=action,
-        target=target,
-        details_json=json.dumps(details or {}),
-    ))
+    db.add(
+        AuditLog(
+            actor=actor,
+            actor_type=actor_type,
+            action=action,
+            target=target,
+            details_json=json.dumps(details or {}),
+        )
+    )
 
 
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
 
+
 @router.get("", response_model=dict)
 async def list_knowledge(
     query: str = Query(default="", description="ILIKE keyword search"),
     limit: int = Query(default=20, ge=1, le=50),
-    status: str | None = Query(default=None, description="approved | pending | rejected"),
+    status: str | None = Query(
+        default=None, description="approved | pending | rejected"
+    ),
     auth: User | str = Depends(require_admin_hmac_or_session),
     _perm=Depends(require_permission("knowledge.entry.search")),
     db: AsyncSession = Depends(get_db),

@@ -1,4 +1,5 @@
 """services/ai/anthropic_provider.py — Anthropic's Messages API."""
+
 from services.ai.base import HTTPProvider
 
 ANTHROPIC_API_VERSION = "2023-06-01"
@@ -19,7 +20,9 @@ class AnthropicProvider(HTTPProvider):
             "content-type": "application/json",
         }
 
-    def _request_body(self, model, system_prompt, user_prompt, max_tokens, temperature) -> dict:
+    def _request_body(
+        self, model, system_prompt, user_prompt, max_tokens, temperature
+    ) -> dict:
         return {
             "model": model,
             "system": system_prompt,

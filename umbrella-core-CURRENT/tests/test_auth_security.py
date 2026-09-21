@@ -18,6 +18,7 @@ must never regress:
 8. /verification/count requires verification.link.view permission, not
    raw admin key bypass.
 """
+
 import hashlib
 import hmac
 import time
@@ -38,9 +39,12 @@ from tests.conftest import ADMIN_HEADERS, PLUGIN_HEADERS, WRONG_HEADERS
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 async def _make_owner(db) -> User:
     role = await db.scalar(select(Role).where(Role.name == "owner"))
-    user = User(discord_id=f"sec-{id(db)}", username=f"secuser_{id(db)}", role_id=role.id)
+    user = User(
+        discord_id=f"sec-{id(db)}", username=f"secuser_{id(db)}", role_id=role.id
+    )
     db.add(user)
     await db.flush()
     return user
@@ -61,6 +65,7 @@ async def _make_session(db, user: User, prefix: str = "") -> str:
 # ---------------------------------------------------------------------------
 # 1. Wrong keys always get 401 (covers timing-safe comparison paths)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_wrong_plugin_key_is_401(client):
@@ -87,6 +92,7 @@ async def test_plugin_key_on_admin_route_is_401(client):
 # ---------------------------------------------------------------------------
 # 2. Session token MUST NOT be accepted in query parameters
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_logout_rejects_query_param_token(client, db_session):
@@ -153,6 +159,7 @@ async def test_me_accepts_bearer_header(client, db_session):
 # 3. MFA gate — mfa_enabled users must not get a full session from /callback
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_mfa_enabled_user_gets_403_at_callback(client, db_session):
     """
@@ -183,8 +190,10 @@ async def test_mfa_enabled_user_gets_403_at_callback(client, db_session):
     # discord_callback calls discord_service.exchange_code() then
     # discord_service.fetch_user() to resolve the Discord identity — mock
     # both so no real network call happens.
-    with patch("api.routers.auth.discord_service.exchange_code") as mock_exchange, \
-         patch("api.routers.auth.discord_service.fetch_user") as mock_fetch_user:
+    with (
+        patch("api.routers.auth.discord_service.exchange_code") as mock_exchange,
+        patch("api.routers.auth.discord_service.fetch_user") as mock_fetch_user,
+    ):
         mock_exchange.return_value = {"access_token": "fake-access-token"}
         mock_fetch_user.return_value = {
             "id": "mfa-gated-discord-id",
@@ -216,6 +225,7 @@ async def test_mfa_enabled_user_gets_403_at_callback(client, db_session):
 # 4. mfa: pre-session token cannot be used on regular endpoints
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_mfa_presession_token_rejected_on_regular_endpoint(client, db_session):
     """
@@ -239,12 +249,15 @@ async def test_mfa_presession_token_rejected_on_regular_endpoint(client, db_sess
         "/api/v1/auth/me",
         headers={"Authorization": f"Bearer {mfa_token}"},
     )
-    assert resp.status_code == 401, "mfa: pre-session token must not grant access to /me"
+    assert resp.status_code == 401, (
+        "mfa: pre-session token must not grant access to /me"
+    )
 
 
 # ---------------------------------------------------------------------------
 # 5. MFA disable requires valid TOTP code
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_mfa_disable_requires_valid_code(client, db_session):
@@ -320,6 +333,7 @@ async def test_mfa_disable_when_not_enabled_returns_400(client, db_session):
 # 6. UserSchema includes mfa_enabled
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_user_schema_exposes_mfa_enabled(client, db_session):
     """GET /auth/me response body must include mfa_enabled boolean."""
@@ -328,7 +342,9 @@ async def test_user_schema_exposes_mfa_enabled(client, db_session):
         token = await _make_session(db, user)
         await db.commit()
 
-    resp = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+    resp = await client.get(
+        "/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"}
+    )
     assert resp.status_code == 200
     body = resp.json()
     assert "mfa_enabled" in body
@@ -338,6 +354,7 @@ async def test_user_schema_exposes_mfa_enabled(client, db_session):
 # ---------------------------------------------------------------------------
 # 7. Generic 500 handler does not leak exception detail
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_500_handler_does_not_leak_exception_detail(client):
@@ -354,13 +371,16 @@ async def test_500_handler_does_not_leak_exception_detail(client):
 
     if resp.status_code == 500:
         body = resp.text
-        assert "INTERNAL SECRET" not in body, "Exception detail must not appear in 500 response"
+        assert "INTERNAL SECRET" not in body, (
+            "Exception detail must not appear in 500 response"
+        )
         assert "abc123" not in body
 
 
 # ---------------------------------------------------------------------------
 # 8. /verification/count requires permission, not raw admin bypass
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_verification_count_requires_permission(client):
@@ -379,6 +399,7 @@ async def test_verification_count_requires_permission(client):
 # 9. require_owner must reject ANY ApiKey, regardless of its permission list
 #    (CRITICAL fix, 2026-08-30 — see api/dependencies/permissions.py)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_owner_endpoint_rejects_scoped_api_key(client, db_session):
@@ -445,7 +466,10 @@ async def test_owner_endpoint_accepts_admin_key(client):
         json={"value": "admin-set-value"},
         headers=ADMIN_HEADERS,
     )
-    assert resp.status_code in (200, 404)  # 404 if setting key doesn't exist in schema — not 401/403
+    assert resp.status_code in (
+        200,
+        404,
+    )  # 404 if setting key doesn't exist in schema — not 401/403
 
 
 @pytest.mark.asyncio
@@ -469,7 +493,9 @@ async def test_owner_endpoint_rejects_non_owner_role_user(client, db_session):
     """A session-authenticated user WITHOUT the owner role must be rejected."""
     async with db_session() as db:
         member_role = await db.scalar(select(Role).where(Role.name == "member"))
-        user = User(discord_id="non-owner-test", username="nonowneruser", role_id=member_role.id)
+        user = User(
+            discord_id="non-owner-test", username="nonowneruser", role_id=member_role.id
+        )
         db.add(user)
         await db.flush()
         token = await _make_session(db, user)
@@ -489,6 +515,7 @@ async def test_owner_endpoint_rejects_non_owner_role_user(client, db_session):
 #     privilege-escalation-to-owner via PATCH /auth/users/{id}
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_member_session_cannot_self_promote_to_owner(client, db_session):
     """
@@ -502,7 +529,11 @@ async def test_member_session_cannot_self_promote_to_owner(client, db_session):
     async with db_session() as db:
         member_role = await db.scalar(select(Role).where(Role.name == "member"))
         owner_role = await db.scalar(select(Role).where(Role.name == "owner"))
-        attacker = User(discord_id="escalation-attacker", username="attacker", role_id=member_role.id)
+        attacker = User(
+            discord_id="escalation-attacker",
+            username="attacker",
+            role_id=member_role.id,
+        )
         db.add(attacker)
         await db.flush()
         token = await _make_session(db, attacker)
@@ -515,7 +546,9 @@ async def test_member_session_cannot_self_promote_to_owner(client, db_session):
         json={"role_id": owner_role_id},
         headers={"Authorization": f"Bearer {token}"},
     )
-    assert resp.status_code == 403, "member-role session must not reach PATCH /users/{id}"
+    assert resp.status_code == 403, (
+        "member-role session must not reach PATCH /users/{id}"
+    )
 
     # Confirm the DB was not mutated
     async with db_session() as db:
@@ -549,7 +582,9 @@ async def test_admin_role_session_passes_require_admin_key(client, db_session):
     only member/helper/moderator/no-role sessions should be rejected."""
     async with db_session() as db:
         admin_role = await db.scalar(select(Role).where(Role.name == "admin"))
-        admin_user = User(discord_id="legit-admin", username="legitadmin", role_id=admin_role.id)
+        admin_user = User(
+            discord_id="legit-admin", username="legitadmin", role_id=admin_role.id
+        )
         db.add(admin_user)
         await db.flush()
         token = await _make_session(db, admin_user)
@@ -568,7 +603,9 @@ async def test_moderator_session_rejected_from_admin_key_endpoint(client, db_ses
     """A moderator-role session (mid-tier, well below admin) must also be rejected."""
     async with db_session() as db:
         mod_role = await db.scalar(select(Role).where(Role.name == "moderator"))
-        mod_user = User(discord_id="mod-user-test", username="moduser", role_id=mod_role.id)
+        mod_user = User(
+            discord_id="mod-user-test", username="moduser", role_id=mod_role.id
+        )
         db.add(mod_user)
         await db.flush()
         token = await _make_session(db, mod_user)

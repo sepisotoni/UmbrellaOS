@@ -20,6 +20,7 @@ Revision ID: 043_ai_model_configs_unique
 Revises: 042_seed_ai_model_configs
 Create Date: 2026-08-28
 """
+
 from alembic import op
 import sqlalchemy as sa
 
@@ -42,7 +43,8 @@ def upgrade() -> None:
         # UNIQUE raises duplicate_table specifically (via its backing unique
         # index), not duplicate_object as general "conditional DDL" examples
         # might suggest. Catching only one left the other uncaught on rerun.
-        op.execute(sa.text("""
+        op.execute(
+            sa.text("""
             DO $$
             BEGIN
                 ALTER TABLE ai_model_configs
@@ -52,7 +54,8 @@ def upgrade() -> None:
                 WHEN duplicate_table THEN NULL;
                 WHEN duplicate_object THEN NULL;
             END $$;
-        """))
+        """)
+        )
     # SQLite does not support ADD CONSTRAINT and has no need for it
     # (the SQLite path in 042 uses per-row existence checks, not ON CONFLICT).
 
@@ -60,7 +63,9 @@ def upgrade() -> None:
 def downgrade() -> None:
     bind = op.get_bind()
     if bind.dialect.name == "postgresql":
-        op.execute(sa.text(
-            "ALTER TABLE ai_model_configs "
-            "DROP CONSTRAINT IF EXISTS uq_ai_model_configs_provider_model_task"
-        ))
+        op.execute(
+            sa.text(
+                "ALTER TABLE ai_model_configs "
+                "DROP CONSTRAINT IF EXISTS uq_ai_model_configs_provider_model_task"
+            )
+        )

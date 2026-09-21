@@ -9,6 +9,7 @@ Decision 4).
 httpx is mocked at the AsyncClient.post level, same pattern as
 tests/test_ai_config.py, rather than hitting a real network endpoint.
 """
+
 import hashlib
 import hmac
 import json
@@ -18,7 +19,11 @@ import pytest
 
 from services.events.bus import EventBus
 from services.events.dispatcher import EventDispatcher
-from services.webhooks.service import WebhookDeliveryError, WebhookDeliveryService, WebhookService
+from services.webhooks.service import (
+    WebhookDeliveryError,
+    WebhookDeliveryService,
+    WebhookService,
+)
 
 
 class _MockResponse:
@@ -27,7 +32,9 @@ class _MockResponse:
 
 
 @pytest.mark.asyncio
-async def test_deliver_sends_signed_payload_to_subscription_url(db_session, monkeypatch):
+async def test_deliver_sends_signed_payload_to_subscription_url(
+    db_session, monkeypatch
+):
     calls = []
 
     async def mock_post(self, url, **kwargs):
@@ -53,7 +60,9 @@ async def test_deliver_sends_signed_payload_to_subscription_url(db_session, monk
     assert kwargs["headers"]["X-Umbrella-Event-Id"] == "evt-1"
 
     body = kwargs["content"]
-    expected_signature = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
+    expected_signature = hmac.new(
+        secret.encode("utf-8"), body, hashlib.sha256
+    ).hexdigest()
     assert kwargs["headers"]["X-Umbrella-Signature"] == expected_signature
     assert json.loads(body)["payload"] == {"a": 1}
 
@@ -109,14 +118,18 @@ def _real_subscribers_registered():
     import services.events.subscribers as subscribers_module
 
     EventBus.reset_for_tests()
-    EventBus.subscribe("staff_escalation.created", subscribers_module._log_staff_escalation_created)
+    EventBus.subscribe(
+        "staff_escalation.created", subscribers_module._log_staff_escalation_created
+    )
     EventBus.subscribe_global(subscribers_module._deliver_webhooks)
     yield
     EventBus.reset_for_tests()
 
 
 @pytest.mark.asyncio
-async def test_dispatch_pending_delivers_to_registered_webhook_subscription(db_session, monkeypatch):
+async def test_dispatch_pending_delivers_to_registered_webhook_subscription(
+    db_session, monkeypatch
+):
     """End-to-end: publish an event, dispatch it, and confirm the
     already-registered global webhook subscriber (imported at app startup
     via services.events) actually POSTs to a real WebhookSubscription row
@@ -131,9 +144,14 @@ async def test_dispatch_pending_delivers_to_registered_webhook_subscription(db_s
 
     async with db_session() as db:
         await WebhookService.create(
-            db, topic="webhook.e2e.topic", url="https://example.com/e2e-hook", created_by=None
+            db,
+            topic="webhook.e2e.topic",
+            url="https://example.com/e2e-hook",
+            created_by=None,
         )
-        event = await EventBus.publish(db, topic="webhook.e2e.topic", payload={"hello": "world"})
+        event = await EventBus.publish(
+            db, topic="webhook.e2e.topic", payload={"hello": "world"}
+        )
         await db.commit()
 
         dispatched = await EventDispatcher.dispatch_pending(db)
@@ -144,7 +162,9 @@ async def test_dispatch_pending_delivers_to_registered_webhook_subscription(db_s
 
 
 @pytest.mark.asyncio
-async def test_dispatch_pending_retries_event_when_webhook_delivery_fails(db_session, monkeypatch):
+async def test_dispatch_pending_retries_event_when_webhook_delivery_fails(
+    db_session, monkeypatch
+):
     async def mock_post(self, url, **kwargs):
         return _MockResponse(500)
 
@@ -152,7 +172,10 @@ async def test_dispatch_pending_retries_event_when_webhook_delivery_fails(db_ses
 
     async with db_session() as db:
         await WebhookService.create(
-            db, topic="webhook.e2e.failure", url="https://example.com/down", created_by=None
+            db,
+            topic="webhook.e2e.failure",
+            url="https://example.com/down",
+            created_by=None,
         )
         event = await EventBus.publish(db, topic="webhook.e2e.failure", payload={})
         await db.commit()
@@ -177,7 +200,10 @@ async def test_dispatch_pending_ignores_inactive_subscriptions(db_session, monke
 
     async with db_session() as db:
         subscription, _ = await WebhookService.create(
-            db, topic="webhook.inactive.topic", url="https://example.com/inactive", created_by=None
+            db,
+            topic="webhook.inactive.topic",
+            url="https://example.com/inactive",
+            created_by=None,
         )
         await WebhookService.update(db, subscription.id, active=False)
         event = await EventBus.publish(db, topic="webhook.inactive.topic", payload={})
@@ -212,7 +238,9 @@ def test_validate_webhook_url_rejects_hostname_resolving_to_private_ip():
     fake_resolution = [
         (2, 1, 6, "", ("10.0.0.99", 0)),  # AF_INET, SOCK_STREAM, private IP
     ]
-    with patch("services.webhooks.service.socket.getaddrinfo", return_value=fake_resolution):
+    with patch(
+        "services.webhooks.service.socket.getaddrinfo", return_value=fake_resolution
+    ):
         with pytest.raises(WebhookError, match="disallowed address"):
             _validate_webhook_url("http://attacker-controlled.example/hook")
 
@@ -223,10 +251,12 @@ def test_validate_webhook_url_rejects_if_any_resolved_address_is_private():
     decoy address and an internal one — an attacker only needs one request
     to land on the bad address. Every resolved address must be checked."""
     fake_resolution = [
-        (2, 1, 6, "", ("8.8.8.8", 0)),      # public — would pass alone
+        (2, 1, 6, "", ("8.8.8.8", 0)),  # public — would pass alone
         (2, 1, 6, "", ("192.168.1.1", 0)),  # private — must still block the whole URL
     ]
-    with patch("services.webhooks.service.socket.getaddrinfo", return_value=fake_resolution):
+    with patch(
+        "services.webhooks.service.socket.getaddrinfo", return_value=fake_resolution
+    ):
         with pytest.raises(WebhookError, match="disallowed address"):
             _validate_webhook_url("http://multi-record.example/hook")
 
@@ -236,7 +266,9 @@ def test_validate_webhook_url_allows_hostname_resolving_to_public_ips_only():
         (2, 1, 6, "", ("8.8.8.8", 0)),
         (2, 1, 6, "", ("1.1.1.1", 0)),
     ]
-    with patch("services.webhooks.service.socket.getaddrinfo", return_value=fake_resolution):
+    with patch(
+        "services.webhooks.service.socket.getaddrinfo", return_value=fake_resolution
+    ):
         _validate_webhook_url("http://genuinely-public.example/hook")  # must not raise
 
 
@@ -246,9 +278,15 @@ def test_validate_webhook_url_rejects_unresolvable_hostname():
     a 500 — this is a normal, expected input (a typo'd domain, a domain
     that doesn't exist yet), not an exceptional condition."""
     import socket
-    with patch("services.webhooks.service.socket.getaddrinfo", side_effect=socket.gaierror("nodename nor servname provided")):
+
+    with patch(
+        "services.webhooks.service.socket.getaddrinfo",
+        side_effect=socket.gaierror("nodename nor servname provided"),
+    ):
         with pytest.raises(WebhookError, match="could not resolve"):
-            _validate_webhook_url("http://this-domain-does-not-exist-xyz123.invalid/hook")
+            _validate_webhook_url(
+                "http://this-domain-does-not-exist-xyz123.invalid/hook"
+            )
 
 
 def test_validate_webhook_url_rejects_missing_scheme():

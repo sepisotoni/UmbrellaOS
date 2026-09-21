@@ -8,6 +8,7 @@ POST /api/v1/replay/sessions/{replay_id}/events
 POST /api/v1/replay/sessions/{replay_id}/finalize
 GET  /api/v1/replay/sessions/{replay_id}/events
 """
+
 import pytest
 from tests.conftest import ADMIN_HEADERS, WRONG_HEADERS
 
@@ -21,7 +22,9 @@ async def test_post_replay_sessions_creates_session_returns_201(client):
         "minecraft_uuid": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
         "incident_at": "2024-01-01T12:00:00Z",
     }
-    response = await client.post("/api/v1/replay/sessions", json=payload, headers=ADMIN_HEADERS)
+    response = await client.post(
+        "/api/v1/replay/sessions", json=payload, headers=ADMIN_HEADERS
+    )
     assert response.status_code == 201
     data = response.json()
     assert "id" in data
@@ -38,7 +41,9 @@ async def test_post_replay_sessions_with_invalid_trigger_still_creates(client):
         "minecraft_uuid": "bbbbbbbb-cccc-dddd-eeee-ffffffffffff",
         "incident_at": "2024-01-01T12:00:00Z",
     }
-    response = await client.post("/api/v1/replay/sessions", json=payload, headers=ADMIN_HEADERS)
+    response = await client.post(
+        "/api/v1/replay/sessions", json=payload, headers=ADMIN_HEADERS
+    )
     assert response.status_code == 201
     data = response.json()
     assert data["trigger"] == "invalid_trigger"
@@ -55,7 +60,7 @@ async def test_get_replay_sessions_returns_list(client):
         "incident_at": "2024-01-01T12:00:00Z",
     }
     await client.post("/api/v1/replay/sessions", json=payload, headers=ADMIN_HEADERS)
-    
+
     response = await client.get("/api/v1/replay/sessions", headers=ADMIN_HEADERS)
     assert response.status_code == 200
     data = response.json()
@@ -66,7 +71,7 @@ async def test_get_replay_sessions_returns_list(client):
 async def test_get_replay_sessions_with_minecraft_uuid_filter(client):
     """GET /replay/sessions?minecraft_uuid=<uuid> filters correctly."""
     uuid = "dddddddd-eeee-ffff-aaaa-bbbbbbbbbbbb"
-    
+
     # Create session for specific player
     payload1 = {
         "trigger": "ban",
@@ -75,7 +80,7 @@ async def test_get_replay_sessions_with_minecraft_uuid_filter(client):
         "incident_at": "2024-01-01T12:00:00Z",
     }
     await client.post("/api/v1/replay/sessions", json=payload1, headers=ADMIN_HEADERS)
-    
+
     # Create session for different player
     payload2 = {
         "trigger": "ban",
@@ -84,11 +89,13 @@ async def test_get_replay_sessions_with_minecraft_uuid_filter(client):
         "incident_at": "2024-01-01T12:00:00Z",
     }
     await client.post("/api/v1/replay/sessions", json=payload2, headers=ADMIN_HEADERS)
-    
-    response = await client.get(f"/api/v1/replay/sessions?minecraft_uuid={uuid}", headers=ADMIN_HEADERS)
+
+    response = await client.get(
+        f"/api/v1/replay/sessions?minecraft_uuid={uuid}", headers=ADMIN_HEADERS
+    )
     assert response.status_code == 200
     data = response.json()
-    
+
     # All returned sessions should be for the specific player
     for session in data:
         assert session["minecraft_uuid"] == uuid
@@ -104,10 +111,14 @@ async def test_get_replay_sessions_id_returns_session_dict(client):
         "minecraft_uuid": "ffffffff-ffff-ffff-ffff-ffffffffffff",
         "incident_at": "2024-01-01T12:00:00Z",
     }
-    create_response = await client.post("/api/v1/replay/sessions", json=payload, headers=ADMIN_HEADERS)
+    create_response = await client.post(
+        "/api/v1/replay/sessions", json=payload, headers=ADMIN_HEADERS
+    )
     session_id = create_response.json()["id"]
-    
-    response = await client.get(f"/api/v1/replay/sessions/{session_id}", headers=ADMIN_HEADERS)
+
+    response = await client.get(
+        f"/api/v1/replay/sessions/{session_id}", headers=ADMIN_HEADERS
+    )
     assert response.status_code == 200
     data = response.json()
     assert data["id"] == session_id
@@ -117,7 +128,9 @@ async def test_get_replay_sessions_id_returns_session_dict(client):
 @pytest.mark.asyncio
 async def test_get_replay_sessions_nonexistent_id_returns_404(client):
     """GET /replay/sessions/{nonexistent_id} returns 404."""
-    response = await client.get("/api/v1/replay/sessions/nonexistent-id", headers=ADMIN_HEADERS)
+    response = await client.get(
+        "/api/v1/replay/sessions/nonexistent-id", headers=ADMIN_HEADERS
+    )
     assert response.status_code == 404
 
 
@@ -131,9 +144,11 @@ async def test_post_replay_sessions_events_with_valid_events_returns_inserted(cl
         "minecraft_uuid": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
         "incident_at": "2024-01-01T12:00:00Z",
     }
-    create_response = await client.post("/api/v1/replay/sessions", json=payload, headers=ADMIN_HEADERS)
+    create_response = await client.post(
+        "/api/v1/replay/sessions", json=payload, headers=ADMIN_HEADERS
+    )
     session_id = create_response.json()["id"]
-    
+
     # Ingest events
     events_payload = {
         "events": [
@@ -174,13 +189,17 @@ async def test_post_replay_sessions_events_increments_event_count(client):
         "minecraft_uuid": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
         "incident_at": "2024-01-01T12:00:00Z",
     }
-    create_response = await client.post("/api/v1/replay/sessions", json=payload, headers=ADMIN_HEADERS)
+    create_response = await client.post(
+        "/api/v1/replay/sessions", json=payload, headers=ADMIN_HEADERS
+    )
     session_id = create_response.json()["id"]
-    
+
     # Get initial event count
-    session_response = await client.get(f"/api/v1/replay/sessions/{session_id}", headers=ADMIN_HEADERS)
+    session_response = await client.get(
+        f"/api/v1/replay/sessions/{session_id}", headers=ADMIN_HEADERS
+    )
     initial_count = session_response.json()["event_count"]
-    
+
     # Ingest events
     events_payload = {
         "events": [
@@ -197,11 +216,13 @@ async def test_post_replay_sessions_events_increments_event_count(client):
         json=events_payload,
         headers=ADMIN_HEADERS,
     )
-    
+
     # Get updated event count
-    updated_session_response = await client.get(f"/api/v1/replay/sessions/{session_id}", headers=ADMIN_HEADERS)
+    updated_session_response = await client.get(
+        f"/api/v1/replay/sessions/{session_id}", headers=ADMIN_HEADERS
+    )
     updated_count = updated_session_response.json()["event_count"]
-    
+
     # Event count should have increased
     assert updated_count > initial_count
 
@@ -216,9 +237,11 @@ async def test_post_replay_sessions_events_with_invalid_event_type_skips(client)
         "minecraft_uuid": "cccccccc-cccc-cccc-cccc-cccccccccccc",
         "incident_at": "2024-01-01T12:00:00Z",
     }
-    create_response = await client.post("/api/v1/replay/sessions", json=payload, headers=ADMIN_HEADERS)
+    create_response = await client.post(
+        "/api/v1/replay/sessions", json=payload, headers=ADMIN_HEADERS
+    )
     session_id = create_response.json()["id"]
-    
+
     # Ingest events with invalid event type
     events_payload = {
         "events": [
@@ -248,7 +271,9 @@ async def test_post_replay_sessions_events_with_invalid_event_type_skips(client)
 
 
 @pytest.mark.asyncio
-async def test_get_replay_sessions_events_returns_events_ordered_by_timestamp_asc(client):
+async def test_get_replay_sessions_events_returns_events_ordered_by_timestamp_asc(
+    client,
+):
     """GET /replay/sessions/{id}/events returns events ordered by timestamp ASC."""
     # Create a session
     payload = {
@@ -257,9 +282,11 @@ async def test_get_replay_sessions_events_returns_events_ordered_by_timestamp_as
         "minecraft_uuid": "dddddddd-dddd-dddd-dddd-dddddddddddd",
         "incident_at": "2024-01-01T12:00:00Z",
     }
-    create_response = await client.post("/api/v1/replay/sessions", json=payload, headers=ADMIN_HEADERS)
+    create_response = await client.post(
+        "/api/v1/replay/sessions", json=payload, headers=ADMIN_HEADERS
+    )
     session_id = create_response.json()["id"]
-    
+
     # Ingest events in reverse timestamp order
     events_payload = {
         "events": [
@@ -288,11 +315,13 @@ async def test_get_replay_sessions_events_returns_events_ordered_by_timestamp_as
         json=events_payload,
         headers=ADMIN_HEADERS,
     )
-    
-    response = await client.get(f"/api/v1/replay/sessions/{session_id}/events", headers=ADMIN_HEADERS)
+
+    response = await client.get(
+        f"/api/v1/replay/sessions/{session_id}/events", headers=ADMIN_HEADERS
+    )
     assert response.status_code == 200
     data = response.json()
-    
+
     # Events should be ordered by timestamp ASC
     timestamps = [event["timestamp"] for event in data]
     assert timestamps == sorted(timestamps)
@@ -308,9 +337,11 @@ async def test_get_replay_sessions_events_with_event_type_filter(client):
         "minecraft_uuid": "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
         "incident_at": "2024-01-01T12:00:00Z",
     }
-    create_response = await client.post("/api/v1/replay/sessions", json=payload, headers=ADMIN_HEADERS)
+    create_response = await client.post(
+        "/api/v1/replay/sessions", json=payload, headers=ADMIN_HEADERS
+    )
     session_id = create_response.json()["id"]
-    
+
     # Ingest events of different types
     events_payload = {
         "events": [
@@ -333,14 +364,14 @@ async def test_get_replay_sessions_events_with_event_type_filter(client):
         json=events_payload,
         headers=ADMIN_HEADERS,
     )
-    
+
     response = await client.get(
         f"/api/v1/replay/sessions/{session_id}/events?event_type=movement",
         headers=ADMIN_HEADERS,
     )
     assert response.status_code == 200
     data = response.json()
-    
+
     # All returned events should be movement type
     for event in data:
         assert event["event_type"] == "movement"
@@ -356,9 +387,11 @@ async def test_post_replay_sessions_finalize_sets_ended_at(client):
         "minecraft_uuid": "ffffffff-ffff-ffff-ffff-fffffffffffe",
         "incident_at": "2024-01-01T12:00:00Z",
     }
-    create_response = await client.post("/api/v1/replay/sessions", json=payload, headers=ADMIN_HEADERS)
+    create_response = await client.post(
+        "/api/v1/replay/sessions", json=payload, headers=ADMIN_HEADERS
+    )
     session_id = create_response.json()["id"]
-    
+
     # Finalize the session
     response = await client.post(
         f"/api/v1/replay/sessions/{session_id}/finalize",

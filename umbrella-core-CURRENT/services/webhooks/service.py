@@ -15,6 +15,7 @@ behavior worth documenting):
   propagate so the *event dispatcher's* existing attempts/backoff handles
   the retry, exactly as instructed.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -141,7 +142,9 @@ class WebhookService:
         return subscription, secret
 
     @staticmethod
-    async def list_all(db: AsyncSession, *, topic: str | None = None) -> list[WebhookSubscription]:
+    async def list_all(
+        db: AsyncSession, *, topic: str | None = None
+    ) -> list[WebhookSubscription]:
         stmt = select(WebhookSubscription)
         if topic is not None:
             stmt = stmt.where(WebhookSubscription.topic == topic)
@@ -150,7 +153,9 @@ class WebhookService:
         return list(result.scalars().all())
 
     @staticmethod
-    async def list_active_for_topic(db: AsyncSession, topic: str) -> list[WebhookSubscription]:
+    async def list_active_for_topic(
+        db: AsyncSession, topic: str
+    ) -> list[WebhookSubscription]:
         stmt = select(WebhookSubscription).where(
             WebhookSubscription.topic == topic, WebhookSubscription.active.is_(True)
         )
@@ -190,7 +195,9 @@ class WebhookService:
 
 class WebhookDeliveryService:
     @staticmethod
-    async def deliver(subscription: WebhookSubscription, *, topic: str, event_id: str, payload: dict) -> None:
+    async def deliver(
+        subscription: WebhookSubscription, *, topic: str, event_id: str, payload: dict
+    ) -> None:
         """One POST, one attempt. Raises WebhookDeliveryError on any
         non-2xx response, timeout, or connection error - never retries
         internally, see module docstring.
@@ -234,7 +241,9 @@ class WebhookDeliveryService:
 
         try:
             async with httpx.AsyncClient(timeout=DELIVERY_TIMEOUT_SECONDS) as client:
-                response = await client.post(subscription.url, content=body, headers=headers)
+                response = await client.post(
+                    subscription.url, content=body, headers=headers
+                )
         except httpx.HTTPError as exc:
             raise WebhookDeliveryError(
                 f"delivery to subscription {subscription.id} ({subscription.url}) failed: {exc}"

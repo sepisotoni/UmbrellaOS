@@ -8,6 +8,7 @@ permission path end-to-end, and `audit.search` proves the pattern for
 api/routers/audit.py, which now delegates to `search_audit_log` below
 instead of duplicating its query logic).
 """
+
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
@@ -105,7 +106,9 @@ class AuditSearchResult(BaseModel):
     reversible=True,
     audited=False,  # reading the audit log is not itself an action worth auditing
 )
-async def search_audit_log(ctx: CallContext, params: AuditSearchParams) -> AuditSearchResult:
+async def search_audit_log(
+    ctx: CallContext, params: AuditSearchParams
+) -> AuditSearchResult:
     """
     Query logic ported unchanged from the pre-Phase-0 `api/routers/audit.py`
     (both its list-all and filter-by-action endpoints, now unified into one

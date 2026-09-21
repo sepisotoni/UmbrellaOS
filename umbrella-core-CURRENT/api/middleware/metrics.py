@@ -16,6 +16,7 @@ player id would create its own metric series and cardinality would grow
 without bound, exactly the "known bad pattern" Prometheus's own best
 practices call out.
 """
+
 import logging
 import time
 

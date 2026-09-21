@@ -21,6 +21,7 @@ Revision ID: 030_add_anticheat_violations_table
 Revises: 029_feature_flags
 Create Date: 2026-08-22
 """
+
 import sqlalchemy as sa
 from alembic import op
 
@@ -51,15 +52,31 @@ def upgrade() -> None:
     )
 
     # Indexes matching the model's index=True annotations
-    op.create_index("ix_anticheat_violations_player_uuid", "anticheat_violations", ["player_uuid"])
-    op.create_index("ix_anticheat_violations_server_id", "anticheat_violations", ["server_id"])
-    op.create_index("ix_anticheat_violations_check_name", "anticheat_violations", ["check_name"])
-    op.create_index("ix_anticheat_violations_timestamp", "anticheat_violations", ["timestamp"])
+    op.create_index(
+        "ix_anticheat_violations_player_uuid", "anticheat_violations", ["player_uuid"]
+    )
+    op.create_index(
+        "ix_anticheat_violations_server_id", "anticheat_violations", ["server_id"]
+    )
+    op.create_index(
+        "ix_anticheat_violations_check_name", "anticheat_violations", ["check_name"]
+    )
+    op.create_index(
+        "ix_anticheat_violations_timestamp", "anticheat_violations", ["timestamp"]
+    )
 
 
 def downgrade() -> None:
-    op.drop_index("ix_anticheat_violations_timestamp", table_name="anticheat_violations")
-    op.drop_index("ix_anticheat_violations_check_name", table_name="anticheat_violations")
-    op.drop_index("ix_anticheat_violations_server_id", table_name="anticheat_violations")
-    op.drop_index("ix_anticheat_violations_player_uuid", table_name="anticheat_violations")
+    op.drop_index(
+        "ix_anticheat_violations_timestamp", table_name="anticheat_violations"
+    )
+    op.drop_index(
+        "ix_anticheat_violations_check_name", table_name="anticheat_violations"
+    )
+    op.drop_index(
+        "ix_anticheat_violations_server_id", table_name="anticheat_violations"
+    )
+    op.drop_index(
+        "ix_anticheat_violations_player_uuid", table_name="anticheat_violations"
+    )
     op.drop_table("anticheat_violations")

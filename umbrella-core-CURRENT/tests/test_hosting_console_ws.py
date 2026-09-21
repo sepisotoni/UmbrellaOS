@@ -10,6 +10,7 @@ elsewhere (get_current_user, resolve_user_permissions, NodeService.get_node)
 — see the module docstring in hosting_console_ws.py for why that split
 makes this a reasonable test boundary rather than a gap.
 """
+
 import asyncio
 
 import pytest
@@ -81,7 +82,12 @@ async def test_pipe_console_forwards_daemon_output_to_client():
         # client side is cancelled; bound it so a stuck proxy fails the
         # test instead of hanging CI.
         task = asyncio.create_task(
-            pipe_console(client_ws, upstream_url, "node-1", "a-signing-secret-at-least-32-bytes-long")
+            pipe_console(
+                client_ws,
+                upstream_url,
+                "node-1",
+                "a-signing-secret-at-least-32-bytes-long",
+            )
         )
         await asyncio.sleep(0.3)
         task.cancel()
@@ -109,7 +115,12 @@ async def test_pipe_console_forwards_client_input_to_daemon():
 
         client_ws = FakeClientWS(to_send=[b"say hello\n"])
         task = asyncio.create_task(
-            pipe_console(client_ws, upstream_url, "node-1", "a-signing-secret-at-least-32-bytes-long")
+            pipe_console(
+                client_ws,
+                upstream_url,
+                "node-1",
+                "a-signing-secret-at-least-32-bytes-long",
+            )
         )
         try:
             await asyncio.wait_for(daemon_got_message.wait(), timeout=2.0)
@@ -127,5 +138,10 @@ async def test_pipe_console_forwards_client_input_to_daemon():
 async def test_pipe_console_closes_client_gracefully_when_daemon_unreachable():
     client_ws = FakeClientWS(to_send=[])
     # Port 1 on localhost: nothing listens there, connection refused fast.
-    await pipe_console(client_ws, "ws://localhost:1", "node-1", "a-signing-secret-at-least-32-bytes-long")
+    await pipe_console(
+        client_ws,
+        "ws://localhost:1",
+        "node-1",
+        "a-signing-secret-at-least-32-bytes-long",
+    )
     assert client_ws.closed is True

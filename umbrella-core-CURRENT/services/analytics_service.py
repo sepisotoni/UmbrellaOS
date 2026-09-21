@@ -3,6 +3,7 @@ services/analytics_service.py — Analytics event tracking and player statistics
 
 Handles recording analytics events and aggregating player statistics.
 """
+
 import json
 from datetime import datetime, timezone, date, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,7 +32,7 @@ _EVENT_TYPE_ALIASES = {
     "player_kill": "kill",
     "player_chat": "chat",
     "player_command": "command",
-    "snapshot": "join",   # PlayerTelemetryListener sends "snapshot" on some paths
+    "snapshot": "join",  # PlayerTelemetryListener sends "snapshot" on some paths
 }
 
 
@@ -43,15 +44,17 @@ async def record_event(
 ) -> AnalyticsEvent:
     """
     Record an analytics event and auto-increment relevant player stats.
-    
+
     Returns the created AnalyticsEvent row.
     """
     # Normalise plugin aliases (e.g. "player_join" → "join") before validation
     event_type = _EVENT_TYPE_ALIASES.get(event_type, event_type)
 
     if event_type not in ALLOWED_EVENT_TYPES:
-        raise ValueError(f"Invalid event_type: {event_type}. Must be one of {ALLOWED_EVENT_TYPES}")
-    
+        raise ValueError(
+            f"Invalid event_type: {event_type}. Must be one of {ALLOWED_EVENT_TYPES}"
+        )
+
     # Create the event
     event = AnalyticsEvent(
         event_type=event_type,
@@ -60,12 +63,12 @@ async def record_event(
     )
     db.add(event)
     await db.flush()
-    
+
     # Auto-increment stats for relevant metrics
     if event_type in METRIC_MAPPING and minecraft_uuid:
         metric = METRIC_MAPPING[event_type]
         await _increment_stat(db, minecraft_uuid, metric, ["daily", "alltime"])
-    
+
     return event
 
 
@@ -78,11 +81,11 @@ async def _increment_stat(
 ) -> None:
     """
     Private helper to increment player stats for given periods.
-    
+
     Uses upsert pattern to avoid race conditions.
     """
     today = datetime.now(timezone.utc).date()
-    
+
     for period in periods:
         if period == "daily":
             period_start = today
@@ -93,7 +96,7 @@ async def _increment_stat(
             period_start = date(2000, 1, 1)
         else:
             continue
-        
+
         # Try to get existing stat
         result = await db.execute(
             select(PlayerStat).where(
@@ -106,7 +109,7 @@ async def _increment_stat(
             )
         )
         stat = result.scalar_one_or_none()
-        
+
         if stat:
             # Increment existing
             stat.value += amount
@@ -121,7 +124,7 @@ async def _increment_stat(
                 period_start=period_start,
             )
             db.add(stat)
-    
+
     await db.flush()
 
 
@@ -132,7 +135,7 @@ async def get_player_stats(
 ) -> list[dict]:
     """
     Get all stats for a specific player and period.
-    
+
     Returns list of dicts: { metric, value, period, period_start, updated_at }
     """
     result = await db.execute(
@@ -144,7 +147,7 @@ async def get_player_stats(
         )
     )
     stats = result.scalars().all()
-    
+
     return [
         {
             "metric": stat.metric,
@@ -160,7 +163,7 @@ async def get_player_stats(
 async def get_server_summary(db: AsyncSession) -> dict:
     """
     Get alltime totals across ALL players for each metric.
-    
+
     Returns: { joins, leaves, deaths, kills, chat_volume, playtime_seconds }
     """
     result = await db.execute(
@@ -169,7 +172,7 @@ async def get_server_summary(db: AsyncSession) -> dict:
         .group_by(PlayerStat.metric)
     )
     rows = result.all()
-    
+
     summary = {
         "joins": 0,
         "leaves": 0,
@@ -178,11 +181,11 @@ async def get_server_summary(db: AsyncSession) -> dict:
         "chat_volume": 0,
         "playtime_seconds": 0,
     }
-    
+
     for metric, total in rows:
         if metric in summary:
             summary[metric] = int(total)
-    
+
     return summary
 
 
@@ -194,25 +197,27 @@ async def get_recent_events(
 ) -> list[dict]:
     """
     Get the most recent analytics events, newest first.
-    
+
     Supports optional filters for event_type and minecraft_uuid.
-    
+
     Returns list of dicts: { id, event_type, minecraft_uuid, data_json, created_at }
     """
-    query = select(AnalyticsEvent).order_by(AnalyticsEvent.created_at.desc()).limit(limit)
-    
+    query = (
+        select(AnalyticsEvent).order_by(AnalyticsEvent.created_at.desc()).limit(limit)
+    )
+
     conditions = []
     if event_type:
         conditions.append(AnalyticsEvent.event_type == event_type)
     if minecraft_uuid:
         conditions.append(AnalyticsEvent.minecraft_uuid == minecraft_uuid)
-    
+
     if conditions:
         query = query.where(and_(*conditions))
-    
+
     result = await db.execute(query)
     events = result.scalars().all()
-    
+
     return [
         {
             "id": event.id,

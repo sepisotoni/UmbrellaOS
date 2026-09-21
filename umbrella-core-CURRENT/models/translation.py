@@ -1,6 +1,7 @@
 """
 models/translation.py — Player language preferences for translation.
 """
+
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, Integer, String, func
@@ -11,6 +12,7 @@ from database.engine import Base
 
 class PlayerLanguage(Base):
     """Player language preferences for translation."""
+
     __tablename__ = "player_languages"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

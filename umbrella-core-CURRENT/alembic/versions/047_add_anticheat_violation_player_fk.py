@@ -26,6 +26,7 @@ Revision ID: 047_add_anticheat_violation_player_fk
 Revises: 046_deprecate_ai_model_setting
 Create Date: 2026-08-29
 """
+
 from alembic import op
 
 revision = "047_add_anticheat_violation_player_fk"
@@ -51,6 +52,4 @@ def downgrade() -> None:
         "ALTER TABLE anticheat_violations "
         "DROP CONSTRAINT fk_anticheat_violations_player_uuid"
     )
-    op.execute(
-        "ALTER TABLE anticheat_violations ALTER COLUMN player_uuid SET NOT NULL"
-    )
+    op.execute("ALTER TABLE anticheat_violations ALTER COLUMN player_uuid SET NOT NULL")

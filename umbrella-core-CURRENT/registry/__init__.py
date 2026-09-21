@@ -10,6 +10,7 @@ Public surface:
                           code uses the shared `registry` instance below)
     registry            — the process-wide default CapabilityRegistry instance
 """
+
 from registry.context import CallContext
 from registry.decorator import capability
 from registry.registry import (

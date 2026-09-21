@@ -7,6 +7,7 @@ coupled to exactly which capabilities other domains have registered) and
 monkeypatches the adapter's DB session factory to point at the same
 in-memory SQLite the rest of the suite uses.
 """
+
 import json
 
 import pytest
@@ -63,7 +64,9 @@ async def cli_test_registry(monkeypatch):
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
-    session_factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+    session_factory = async_sessionmaker(
+        bind=engine, class_=AsyncSession, expire_on_commit=False
+    )
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -87,7 +90,9 @@ def test_build_cli_creates_nested_command_groups(cli_test_registry):
 
 def test_cli_invokes_capability_and_prints_json_result(cli_test_registry):
     app = cli_adapter.build_cli(cli_test_registry)
-    result = runner.invoke(app, ["test", "cli", "greet", "--params", json.dumps({"name": "umbrella"})])
+    result = runner.invoke(
+        app, ["test", "cli", "greet", "--params", json.dumps({"name": "umbrella"})]
+    )
     assert result.exit_code == 0
     payload = json.loads(result.output)
     assert payload["greeting"] == "hello, umbrella"
@@ -108,7 +113,9 @@ def test_cli_list_command_shows_registered_capabilities(cli_test_registry):
     assert "test.cli.greet" in result.output
 
 
-def test_cli_surfaces_capability_errors_with_nonzero_exit(cli_test_registry, monkeypatch):
+def test_cli_surfaces_capability_errors_with_nonzero_exit(
+    cli_test_registry, monkeypatch
+):
     async def _always_fails(ctx, params):
         raise RuntimeError("simulated failure")
 

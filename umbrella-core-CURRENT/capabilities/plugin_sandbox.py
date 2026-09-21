@@ -41,6 +41,7 @@ tried to actually run it against sqlite. Per-plugin row counts within any
 sane window are small enough that Python-side aggregation is not a
 real performance concern.
 """
+
 from __future__ import annotations
 
 import statistics
@@ -63,9 +64,12 @@ from services.plugins.runtime import plugin_sandbox
 class ExecutionHistoryParams(BaseModel):
     limit: int = Field(default=50, ge=1, le=200)
     offset: int = Field(default=0, ge=0)
-    plugin_id: str | None = Field(default=None, description="Filter to one plugin's executions.")
+    plugin_id: str | None = Field(
+        default=None, description="Filter to one plugin's executions."
+    )
     outcome: str | None = Field(
-        default=None, description="Filter by exact outcome: success | error | timeout | resource_limit_kill."
+        default=None,
+        description="Filter by exact outcome: success | error | timeout | resource_limit_kill.",
     )
 
 
@@ -111,7 +115,9 @@ class ExecutionHistoryResult(BaseModel):
     destructive=False,
     audited=False,
 )
-async def execution_history(ctx: CallContext, params: ExecutionHistoryParams) -> ExecutionHistoryResult:
+async def execution_history(
+    ctx: CallContext, params: ExecutionHistoryParams
+) -> ExecutionHistoryResult:
     """Query logic deliberately mirrors capabilities/system.py's
     search_audit_log almost line for line — same base_query/count/page
     structure, same "count first against the filtered subquery, then page"
@@ -119,11 +125,15 @@ async def execution_history(ctx: CallContext, params: ExecutionHistoryParams) ->
     shape rather than invent a different one."""
     base_query = select(PluginExecutionRecord)
     if params.plugin_id:
-        base_query = base_query.where(PluginExecutionRecord.plugin_id == params.plugin_id)
+        base_query = base_query.where(
+            PluginExecutionRecord.plugin_id == params.plugin_id
+        )
     if params.outcome:
         base_query = base_query.where(PluginExecutionRecord.outcome == params.outcome)
 
-    count_result = await ctx.db.execute(select(func.count()).select_from(base_query.subquery()))
+    count_result = await ctx.db.execute(
+        select(func.count()).select_from(base_query.subquery())
+    )
     total = count_result.scalar_one()
 
     page_query = (
@@ -182,7 +192,9 @@ class ExecutionDetailResult(ExecutionHistoryEntryResult):
     destructive=False,
     audited=False,
 )
-async def execution_detail(ctx: CallContext, params: ExecutionDetailParams) -> ExecutionDetailResult:
+async def execution_detail(
+    ctx: CallContext, params: ExecutionDetailParams
+) -> ExecutionDetailResult:
     row = await ctx.db.get(PluginExecutionRecord, params.execution_id)
     if row is None:
         raise ResourceNotFoundException("Plugin execution record", params.execution_id)
@@ -199,8 +211,13 @@ async def execution_detail(ctx: CallContext, params: ExecutionDetailParams) -> E
 
 
 class ProfileParams(BaseModel):
-    window_hours: int = Field(default=24, ge=1, le=720, description="Trailing window, in hours. Default 24h.")
-    plugin_id: str | None = Field(default=None, description="Limit to one plugin; omit for every plugin with activity in the window.")
+    window_hours: int = Field(
+        default=24, ge=1, le=720, description="Trailing window, in hours. Default 24h."
+    )
+    plugin_id: str | None = Field(
+        default=None,
+        description="Limit to one plugin; omit for every plugin with activity in the window.",
+    )
 
 
 class ProfileEntryResult(BaseModel):
@@ -230,7 +247,9 @@ async def profile(ctx: CallContext, params: ProfileParams) -> list[ProfileEntryR
     reason: p95 has no simple, portable SQL aggregate across both
     backends this codebase runs against."""
     cutoff = datetime.now(timezone.utc) - timedelta(hours=params.window_hours)
-    query = select(PluginExecutionRecord).where(PluginExecutionRecord.created_at >= cutoff)
+    query = select(PluginExecutionRecord).where(
+        PluginExecutionRecord.created_at >= cutoff
+    )
     if params.plugin_id:
         query = query.where(PluginExecutionRecord.plugin_id == params.plugin_id)
 
@@ -244,7 +263,9 @@ async def profile(ctx: CallContext, params: ProfileParams) -> list[ProfileEntryR
     entries: list[ProfileEntryResult] = []
     for plugin_id, plugin_rows in sorted(by_plugin.items()):
         wall_times = sorted(r.wall_time_ms for r in plugin_rows)
-        memory_samples = [r.peak_memory_bytes for r in plugin_rows if r.peak_memory_bytes is not None]
+        memory_samples = [
+            r.peak_memory_bytes for r in plugin_rows if r.peak_memory_bytes is not None
+        ]
         error_count = sum(1 for r in plugin_rows if r.outcome != "success")
 
         entries.append(
@@ -253,7 +274,9 @@ async def profile(ctx: CallContext, params: ProfileParams) -> list[ProfileEntryR
                 execution_count=len(plugin_rows),
                 avg_wall_time_ms=statistics.fmean(wall_times),
                 p95_wall_time_ms=_percentile(wall_times, 0.95),
-                avg_peak_memory_bytes=statistics.fmean(memory_samples) if memory_samples else None,
+                avg_peak_memory_bytes=statistics.fmean(memory_samples)
+                if memory_samples
+                else None,
                 error_rate=error_count / len(plugin_rows),
                 window_hours=params.window_hours,
             )
@@ -269,7 +292,9 @@ def _percentile(sorted_values: list[float], fraction: float) -> float:
     definition)."""
     if not sorted_values:
         return 0.0
-    index = min(len(sorted_values) - 1, max(0, round(fraction * (len(sorted_values) - 1))))
+    index = min(
+        len(sorted_values) - 1, max(0, round(fraction * (len(sorted_values) - 1)))
+    )
     return sorted_values[index]
 
 

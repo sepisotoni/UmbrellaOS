@@ -7,6 +7,7 @@ end-to-end - that needs a live discord.Interaction/gateway connection
 sandbox). Extracting the formatting logic into static methods is what
 makes this much tested without one.
 """
+
 import discord
 import pytest
 
@@ -15,7 +16,11 @@ from bot.services.umbrella_core_client import UmbrellaCoreError
 
 
 def test_format_error_permission_denied():
-    exc = UmbrellaCoreError("Missing permission: investigation.run", status_code=403, code="PERMISSION_DENIED")
+    exc = UmbrellaCoreError(
+        "Missing permission: investigation.run",
+        status_code=403,
+        code="PERMISSION_DENIED",
+    )
     message = InvestigationCog._format_error(exc)
     assert "don't have permission" in message
 

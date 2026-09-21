@@ -11,6 +11,7 @@ window is a reasonable future upgrade if abuse patterns actually exploit
 the boundary case, not something to build preemptively against a
 hypothetical.
 """
+
 from dataclasses import dataclass
 
 from redis.asyncio import Redis
@@ -29,7 +30,9 @@ class RateLimiter:
         self._redis = redis_client
         self._key_prefix = key_prefix
 
-    async def check(self, identifier: str, limit: int, window_seconds: int) -> RateLimitResult:
+    async def check(
+        self, identifier: str, limit: int, window_seconds: int
+    ) -> RateLimitResult:
         """
         Increment this identifier's counter for the current window and
         report whether it's still within `limit`.

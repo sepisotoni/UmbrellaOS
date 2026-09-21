@@ -14,6 +14,7 @@ All other behaviour (DM detection, nickname sync, role assignment) is
 unchanged from the previous revision; see the module docstring history in git
 for the reasoning behind those implementation choices.
 """
+
 from __future__ import annotations
 
 import logging
@@ -121,7 +122,8 @@ class VerificationCog(commands.Cog):
             except Exception as exc:  # network error, 404, etc.
                 logger.warning(
                     "Could not load template %r from core (%s) — keeping cached value.",
-                    key, exc,
+                    key,
+                    exc,
                 )
 
     @tasks.loop(minutes=5)
@@ -135,7 +137,9 @@ class VerificationCog(commands.Cog):
 
     def _t(self, key: str) -> str:
         """Return the cached template for *key*, falling back to the built-in default."""
-        return self._templates.get(key, _DEFAULTS.get(key, f"[missing template: {key}]"))
+        return self._templates.get(
+            key, _DEFAULTS.get(key, f"[missing template: {key}]")
+        )
 
     def _verification_enabled(self) -> bool:
         """Return True if verification is enabled (default: True).
@@ -143,7 +147,12 @@ class VerificationCog(commands.Cog):
         Reads from the cached templates dict so no network call is made per
         message — the cache is refreshed every 5 minutes by _refresh_templates.
         """
-        return self._t("verification.enabled").lower() not in ("false", "0", "no", "off")
+        return self._t("verification.enabled").lower() not in (
+            "false",
+            "0",
+            "no",
+            "off",
+        )
 
     # ------------------------------------------------------------------
     # Event listener
@@ -190,15 +199,24 @@ class VerificationCog(commands.Cog):
     def _format_success(self, result: dict, player: str) -> str:
         if result.get("already_linked"):
             return f"\u2705 You're already verified as **{player}**."
-        return render(self._t("verification.success_message"), player=player) or f"\u2705 Verified! You're linked as **{player}**."
+        return (
+            render(self._t("verification.success_message"), player=player)
+            or f"\u2705 Verified! You're linked as **{player}**."
+        )
 
     def _format_error(self, exc: UmbrellaCoreError) -> str:
         if exc.status_code == 403:
             return "I'm not able to confirm verification codes right now — please contact staff."
         if exc.status_code == 409:
-            return render(self._t("verification.error_already_linked")) or "Verification failed: account already linked."
+            return (
+                render(self._t("verification.error_already_linked"))
+                or "Verification failed: account already linked."
+            )
         if exc.status_code in (404, 422):
-            return render(self._t("verification.error_invalid_code")) or f"Verification failed: {exc}"
+            return (
+                render(self._t("verification.error_invalid_code"))
+                or f"Verification failed: {exc}"
+            )
         return f"Verification failed: {exc}"
 
     # ------------------------------------------------------------------
@@ -213,14 +231,19 @@ class VerificationCog(commands.Cog):
             if member is None:
                 continue
             try:
-                await member.edit(nick=nick, reason="Verification: synced to Minecraft username")
+                await member.edit(
+                    nick=nick, reason="Verification: synced to Minecraft username"
+                )
             except discord.Forbidden:
                 logger.warning(
                     "Nickname sync skipped for %s in guild %s: missing permission.",
-                    user.id, guild.id,
+                    user.id,
+                    guild.id,
                 )
             except discord.HTTPException:
-                logger.exception("Nickname sync failed for %s in guild %s", user.id, guild.id)
+                logger.exception(
+                    "Nickname sync failed for %s in guild %s", user.id, guild.id
+                )
 
     async def _assign_verified_role(self, user: discord.User) -> None:
         """Assign the verified role from RemoteConfig.  Best-effort only.
@@ -244,18 +267,25 @@ class VerificationCog(commands.Cog):
             if verified_role is None:
                 logger.warning(
                     "Verified role %s not found in guild %s — skipping for %s.",
-                    role_id, guild.id, user.id,
+                    role_id,
+                    guild.id,
+                    user.id,
                 )
                 continue
             try:
-                await member.add_roles(verified_role, reason="Minecraft account verified")
+                await member.add_roles(
+                    verified_role, reason="Minecraft account verified"
+                )
             except discord.Forbidden:
                 logger.warning(
                     "Role assignment skipped for %s in guild %s: missing Manage Roles.",
-                    user.id, guild.id,
+                    user.id,
+                    guild.id,
                 )
             except discord.HTTPException:
-                logger.exception("Role assignment failed for %s in guild %s", user.id, guild.id)
+                logger.exception(
+                    "Role assignment failed for %s in guild %s", user.id, guild.id
+                )
 
     # ------------------------------------------------------------------
     # Static helpers (kept separate so they're unit-testable)

@@ -29,6 +29,7 @@ silently glossed over:
    reliable: TPS and online player count, both already in PluginHeartbeat
    itself, in its own identity space.
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -43,7 +44,11 @@ class ServerMetricSnapshot(Base):
     __tablename__ = "server_metric_snapshots"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    server_id: Mapped[str] = mapped_column(String(64), index=True)  # PluginHeartbeat.server_id's identity space
+    server_id: Mapped[str] = mapped_column(
+        String(64), index=True
+    )  # PluginHeartbeat.server_id's identity space
     tps: Mapped[float] = mapped_column(Float)
     online_count: Mapped[int] = mapped_column(Integer)
-    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )

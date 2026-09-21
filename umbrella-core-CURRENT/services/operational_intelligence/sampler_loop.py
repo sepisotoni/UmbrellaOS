@@ -4,12 +4,16 @@ periodically snapshots PluginHeartbeat into ServerMetricSnapshot history,
 wired into main.py's app lifespan. Mirrors services/scheduler_loop.py's
 exact structure - same reasoning for each choice, not reinvented here.
 """
+
 import asyncio
 import logging
 
 from config import get_settings
 from database import AsyncSessionLocal
-from services.operational_intelligence.metrics import purge_old_snapshots, sample_all_servers
+from services.operational_intelligence.metrics import (
+    purge_old_snapshots,
+    sample_all_servers,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +36,9 @@ async def run_sampler_loop(stop_event: asyncio.Event) -> None:
                 if tick % _PURGE_EVERY_N_TICKS == 0:
                     purged = await purge_old_snapshots(db)
                     if purged:
-                        logger.info("server metrics: purged %d expired snapshot(s)", purged)
+                        logger.info(
+                            "server metrics: purged %d expired snapshot(s)", purged
+                        )
                 await db.commit()
                 if count:
                     logger.debug("server metrics: recorded %d snapshot(s)", count)
@@ -43,6 +49,9 @@ async def run_sampler_loop(stop_event: asyncio.Event) -> None:
             logger.exception("server metrics: error sampling, will retry next interval")
 
         try:
-            await asyncio.wait_for(stop_event.wait(), timeout=get_settings().server_metric_sample_interval_seconds)
+            await asyncio.wait_for(
+                stop_event.wait(),
+                timeout=get_settings().server_metric_sample_interval_seconds,
+            )
         except asyncio.TimeoutError:
             pass  # normal case: timed out waiting, loop again

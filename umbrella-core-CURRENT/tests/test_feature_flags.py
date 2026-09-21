@@ -6,6 +6,7 @@ Covers:
   - Service: get_flag returns False for a nonexistent flag (not an exception)
   - Permission enforcement: view vs manage
 """
+
 import pytest
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
@@ -28,7 +29,11 @@ async def _session_headers(db_session, role_name: str, suffix: str = "") -> dict
     token = f"token-ff-{role_name}{suffix}"
     async with db_session() as db:
         role = await db.scalar(select(Role).where(Role.name == role_name))
-        user = User(discord_id=discord_id, username=f"ff_user_{role_name}{suffix}", role_id=role.id)
+        user = User(
+            discord_id=discord_id,
+            username=f"ff_user_{role_name}{suffix}",
+            role_id=role.id,
+        )
         db.add(user)
         await db.flush()
         db.add(
@@ -42,7 +47,9 @@ async def _session_headers(db_session, role_name: str, suffix: str = "") -> dict
     return {"Authorization": f"Bearer {token}"}
 
 
-async def _seed_flag(db_session, name: str, enabled: bool = False, description: str = "test flag"):
+async def _seed_flag(
+    db_session, name: str, enabled: bool = False, description: str = "test flag"
+):
     """Insert a flag directly so tests have known state to work from."""
     async with db_session() as db:
         flag = FeatureFlag(name=name, enabled=enabled, description=description)
@@ -142,8 +149,14 @@ async def test_router_list_empty(client):
 
 @pytest.mark.asyncio
 async def test_router_create_flag(client):
-    payload = {"name": "router.create", "enabled": True, "description": "created via router"}
-    response = await client.post("/api/v1/feature-flags", json=payload, headers=ADMIN_HEADERS)
+    payload = {
+        "name": "router.create",
+        "enabled": True,
+        "description": "created via router",
+    }
+    response = await client.post(
+        "/api/v1/feature-flags", json=payload, headers=ADMIN_HEADERS
+    )
     assert response.status_code == 200
     data = response.json()
     assert data["name"] == "router.create"
@@ -159,7 +172,9 @@ async def test_router_read_flag(client):
         json={"name": "router.read", "enabled": False},
         headers=ADMIN_HEADERS,
     )
-    response = await client.get("/api/v1/feature-flags/router.read", headers=ADMIN_HEADERS)
+    response = await client.get(
+        "/api/v1/feature-flags/router.read", headers=ADMIN_HEADERS
+    )
     assert response.status_code == 200
     assert response.json()["name"] == "router.read"
     assert response.json()["enabled"] is False
@@ -167,7 +182,9 @@ async def test_router_read_flag(client):
 
 @pytest.mark.asyncio
 async def test_router_read_flag_not_found(client):
-    response = await client.get("/api/v1/feature-flags/does.not.exist", headers=ADMIN_HEADERS)
+    response = await client.get(
+        "/api/v1/feature-flags/does.not.exist", headers=ADMIN_HEADERS
+    )
     assert response.status_code == 404
 
 
@@ -208,14 +225,18 @@ async def test_router_delete_flag(client):
         json={"name": "router.delete", "enabled": True},
         headers=ADMIN_HEADERS,
     )
-    response = await client.delete("/api/v1/feature-flags/router.delete", headers=ADMIN_HEADERS)
+    response = await client.delete(
+        "/api/v1/feature-flags/router.delete", headers=ADMIN_HEADERS
+    )
     assert response.status_code == 200
     assert response.json()["deleted"] is True
 
 
 @pytest.mark.asyncio
 async def test_router_delete_flag_not_found(client):
-    response = await client.delete("/api/v1/feature-flags/ghost.flag", headers=ADMIN_HEADERS)
+    response = await client.delete(
+        "/api/v1/feature-flags/ghost.flag", headers=ADMIN_HEADERS
+    )
     assert response.status_code == 404
 
 
@@ -226,8 +247,12 @@ async def test_router_delete_flag_then_get_404(client):
         json={"name": "router.delete.verify", "enabled": True},
         headers=ADMIN_HEADERS,
     )
-    await client.delete("/api/v1/feature-flags/router.delete.verify", headers=ADMIN_HEADERS)
-    response = await client.get("/api/v1/feature-flags/router.delete.verify", headers=ADMIN_HEADERS)
+    await client.delete(
+        "/api/v1/feature-flags/router.delete.verify", headers=ADMIN_HEADERS
+    )
+    response = await client.get(
+        "/api/v1/feature-flags/router.delete.verify", headers=ADMIN_HEADERS
+    )
     assert response.status_code == 404
 
 
@@ -288,5 +313,7 @@ async def test_permission_manage_required_for_delete(client, db_session):
         headers=ADMIN_HEADERS,
     )
     headers = await _session_headers(db_session, "moderator", suffix="-manage-delete")
-    response = await client.delete("/api/v1/feature-flags/perm.delete.flag", headers=headers)
+    response = await client.delete(
+        "/api/v1/feature-flags/perm.delete.flag", headers=headers
+    )
     assert response.status_code in (200, 403)

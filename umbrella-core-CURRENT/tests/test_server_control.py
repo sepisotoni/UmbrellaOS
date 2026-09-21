@@ -6,6 +6,7 @@ field identically to enabled=False, so a request that simply omitted
 `enabled` would silently issue a stop command — no test coverage existed
 before this fix. First tests this endpoint has ever had.
 """
+
 import pytest
 
 from tests.conftest import ADMIN_HEADERS, PLUGIN_HEADERS

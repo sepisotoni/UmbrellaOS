@@ -9,6 +9,7 @@ domains should still add their module import here so the app's startup
 (`main.py`) has a single place that guarantees every capability is
 registered before the first request/CLI command is handled.
 """
+
 from . import system  # noqa: F401
 from . import hosting  # noqa: F401
 from . import identity  # noqa: F401
@@ -32,8 +33,25 @@ from . import plugin_sandbox  # noqa: F401
 from . import feature_flags  # noqa: F401
 
 __all__ = [
-    "system", "hosting", "identity", "automation", "moderation_intelligence",
-    "investigation", "anticheat_maintenance", "alt_detection_maintenance", "knowledge", "archive_search", "memory", "operational_intelligence",
-    "player_risk", "verification", "webhooks", "marketplace", "observability",
-    "dashboard_layout", "dev_auth", "plugin_sandbox", "feature_flags",
+    "system",
+    "hosting",
+    "identity",
+    "automation",
+    "moderation_intelligence",
+    "investigation",
+    "anticheat_maintenance",
+    "alt_detection_maintenance",
+    "knowledge",
+    "archive_search",
+    "memory",
+    "operational_intelligence",
+    "player_risk",
+    "verification",
+    "webhooks",
+    "marketplace",
+    "observability",
+    "dashboard_layout",
+    "dev_auth",
+    "plugin_sandbox",
+    "feature_flags",
 ]

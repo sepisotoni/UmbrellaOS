@@ -4,6 +4,7 @@ Revision ID: 023_webhook_subscriptions
 Revises: 022_events_outbox
 Create Date: 2026-08-08
 """
+
 import sqlalchemy as sa
 from alembic import op
 

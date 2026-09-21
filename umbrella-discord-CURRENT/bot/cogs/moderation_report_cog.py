@@ -26,6 +26,7 @@ doc's "not started" list. Only the explicit /report slash command — the
 part with a direct, unambiguous umbrella-core capability to call — is
 built now.
 """
+
 from __future__ import annotations
 
 import logging
@@ -43,11 +44,17 @@ class ModerationReportCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    @app_commands.command(name="report", description="Report a member for AI-assisted moderation review.")
+    @app_commands.command(
+        name="report", description="Report a member for AI-assisted moderation review."
+    )
     @app_commands.describe(member="The member to report", reason="What happened?")
-    async def report(self, interaction: discord.Interaction, member: discord.Member, reason: str) -> None:
+    async def report(
+        self, interaction: discord.Interaction, member: discord.Member, reason: str
+    ) -> None:
         if interaction.guild is None:
-            await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
+            await interaction.response.send_message(
+                "This command can only be used in a server.", ephemeral=True
+            )
             return
 
         await interaction.response.defer(thinking=True, ephemeral=True)
@@ -58,7 +65,9 @@ class ModerationReportCog(commands.Cog):
                 {
                     "reported_user_id": str(member.id),
                     "reason": reason,
-                    "channel_id": str(interaction.channel_id) if interaction.channel_id else None,
+                    "channel_id": str(interaction.channel_id)
+                    if interaction.channel_id
+                    else None,
                 },
                 discord_user_id=str(interaction.user.id),
             )
@@ -71,7 +80,9 @@ class ModerationReportCog(commands.Cog):
             await interaction.followup.send(self._format_error(exc), ephemeral=True)
             return
 
-        await interaction.followup.send(self._format_result(member, analysis), ephemeral=True)
+        await interaction.followup.send(
+            self._format_result(member, analysis), ephemeral=True
+        )
 
     @staticmethod
     def _format_error(exc: UmbrellaCoreError) -> str:

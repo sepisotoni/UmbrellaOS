@@ -14,6 +14,7 @@ Split to match the module's own pure/impure split:
   `httpx.MockTransport` in test_umbrella_core_client.py - no real network
   needed to test the logic.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -39,13 +40,25 @@ from bot.services.umbrella_core_client import UmbrellaCoreError
 # --------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("name", ["status", "server-status", "server_status", "a", "a" * 32])
+@pytest.mark.parametrize(
+    "name", ["status", "server-status", "server_status", "a", "a" * 32]
+)
 def test_valid_discord_names_accepted(name):
     assert _is_valid_discord_name(name)
 
 
 @pytest.mark.parametrize(
-    "name", ["", "Status", "hello world", "server!", "_status", "1status", "a" * 33, "hello.world"]
+    "name",
+    [
+        "",
+        "Status",
+        "hello world",
+        "server!",
+        "_status",
+        "1status",
+        "a" * 33,
+        "hello.world",
+    ],
 )
 def test_invalid_discord_names_rejected(name):
     assert not _is_valid_discord_name(name)
@@ -57,7 +70,18 @@ def test_valid_option_names_accepted(name):
 
 
 @pytest.mark.parametrize(
-    "name", ["", "Server_Id", "server-id", "server id", "class", "for", "interaction", "1server", "x" * 33]
+    "name",
+    [
+        "",
+        "Server_Id",
+        "server-id",
+        "server id",
+        "class",
+        "for",
+        "interaction",
+        "1server",
+        "x" * 33,
+    ],
 )
 def test_invalid_option_names_rejected(name):
     assert not _is_valid_option_name(name)
@@ -69,7 +93,10 @@ def test_invalid_option_names_rejected(name):
 
 
 def test_options_from_schema_required_field():
-    schema = {"properties": {"server_id": {"type": "string"}}, "required": ["server_id"]}
+    schema = {
+        "properties": {"server_id": {"type": "string"}},
+        "required": ["server_id"],
+    }
     options = _options_from_schema(schema)
     assert options == [OptionSpec(name="server_id", type="string", required=True)]
 
@@ -79,7 +106,9 @@ def test_options_from_schema_optional_field_uses_anyof_null_shape():
     # `str | None = None` field (see registration.py's
     # _build_pydantic_model) - not a synthetic simplification.
     schema = {
-        "properties": {"note": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None}},
+        "properties": {
+            "note": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None}
+        },
         "required": [],
     }
     options = _options_from_schema(schema)
@@ -124,12 +153,25 @@ def test_options_from_schema_multiple_types():
 # --------------------------------------------------------------------
 
 
-def _dc_entry(plugin_id="statusboard", name="status", description="Show status", capability_name="plugin.statusboard.status"):
-    return {"plugin_id": plugin_id, "name": name, "description": description, "capability_name": capability_name}
+def _dc_entry(
+    plugin_id="statusboard",
+    name="status",
+    description="Show status",
+    capability_name="plugin.statusboard.status",
+):
+    return {
+        "plugin_id": plugin_id,
+        "name": name,
+        "description": description,
+        "capability_name": capability_name,
+    }
 
 
 def _cap(name="plugin.statusboard.status", params_schema=None):
-    return {"name": name, "params_schema": params_schema or {"properties": {}, "required": []}}
+    return {
+        "name": name,
+        "params_schema": params_schema or {"properties": {}, "required": []},
+    }
 
 
 def test_build_desired_specs_happy_path():
@@ -150,15 +192,25 @@ def test_build_desired_specs_skips_invalid_name():
 
 
 def test_build_desired_specs_skips_reserved_name_collision():
-    specs, warnings = build_desired_specs([_dc_entry()], [_cap()], reserved_names={"status"})
+    specs, warnings = build_desired_specs(
+        [_dc_entry()], [_cap()], reserved_names={"status"}
+    )
     assert specs == []
     assert "collides with an existing command" in warnings[0]
 
 
 def test_build_desired_specs_skips_duplicate_across_plugins_first_wins():
     entries = [
-        _dc_entry(plugin_id="plugin-a", name="status", capability_name="plugin.plugin_a.status"),
-        _dc_entry(plugin_id="plugin-b", name="status", capability_name="plugin.plugin_b.status"),
+        _dc_entry(
+            plugin_id="plugin-a",
+            name="status",
+            capability_name="plugin.plugin_a.status",
+        ),
+        _dc_entry(
+            plugin_id="plugin-b",
+            name="status",
+            capability_name="plugin.plugin_b.status",
+        ),
     ]
     caps = [_cap(name="plugin.plugin_a.status"), _cap(name="plugin.plugin_b.status")]
     specs, warnings = build_desired_specs(entries, caps, reserved_names=set())
@@ -175,7 +227,12 @@ def test_build_desired_specs_skips_missing_capability():
 
 
 def test_build_desired_specs_skips_unsupported_param():
-    cap = _cap(params_schema={"properties": {"payload": {"type": "object"}}, "required": ["payload"]})
+    cap = _cap(
+        params_schema={
+            "properties": {"payload": {"type": "object"}},
+            "required": ["payload"],
+        }
+    )
     specs, warnings = build_desired_specs([_dc_entry()], [cap], reserved_names=set())
     assert specs == []
     assert "payload" in warnings[0]
@@ -203,7 +260,14 @@ def test_build_desired_specs_defaults_empty_description():
 
 
 def test_build_desired_specs_one_bad_command_does_not_block_others():
-    entries = [_dc_entry(name="Bad Name!"), _dc_entry(plugin_id="ok-plugin", name="goodcmd", capability_name="plugin.ok_plugin.status")]
+    entries = [
+        _dc_entry(name="Bad Name!"),
+        _dc_entry(
+            plugin_id="ok-plugin",
+            name="goodcmd",
+            capability_name="plugin.ok_plugin.status",
+        ),
+    ]
     caps = [_cap(), _cap(name="plugin.ok_plugin.status")]
     specs, warnings = build_desired_specs(entries, caps, reserved_names=set())
     assert len(specs) == 1
@@ -220,8 +284,14 @@ def test_build_dynamic_callback_has_real_inspectable_signature():
     import inspect
 
     spec = PluginCommandSpec(
-        discord_name="greet", description="d", capability_name="plugin.foo.greet", plugin_id="foo",
-        options=(OptionSpec("name", "string", True), OptionSpec("loud", "boolean", False)),
+        discord_name="greet",
+        description="d",
+        capability_name="plugin.foo.greet",
+        plugin_id="foo",
+        options=(
+            OptionSpec("name", "string", True),
+            OptionSpec("loud", "boolean", False),
+        ),
     )
 
     async def fake_run(spec, interaction, kwargs):
@@ -242,8 +312,14 @@ def test_build_dynamic_callback_required_before_optional_regardless_of_declarati
     required one in its manifest - that would be a SyntaxError in the
     generated function if not reordered (`def f(a, b=1, c)` is illegal)."""
     spec = PluginCommandSpec(
-        discord_name="cmd", description="d", capability_name="plugin.foo.cmd", plugin_id="foo",
-        options=(OptionSpec("optional_first", "string", False), OptionSpec("required_second", "string", True)),
+        discord_name="cmd",
+        description="d",
+        capability_name="plugin.foo.cmd",
+        plugin_id="foo",
+        options=(
+            OptionSpec("optional_first", "string", False),
+            OptionSpec("required_second", "string", True),
+        ),
     )
 
     async def fake_run(spec, interaction, kwargs):
@@ -258,7 +334,10 @@ def test_build_dynamic_callback_required_before_optional_regardless_of_declarati
 
 def test_build_dynamic_callback_forwards_kwargs_to_run_capability():
     spec = PluginCommandSpec(
-        discord_name="greet", description="d", capability_name="plugin.foo.greet", plugin_id="foo",
+        discord_name="greet",
+        description="d",
+        capability_name="plugin.foo.greet",
+        plugin_id="foo",
         options=(OptionSpec("name", "string", True),),
     )
     calls = []
@@ -273,7 +352,11 @@ def test_build_dynamic_callback_forwards_kwargs_to_run_capability():
 
 def test_build_dynamic_callback_with_no_options():
     spec = PluginCommandSpec(
-        discord_name="ping", description="d", capability_name="plugin.foo.ping", plugin_id="foo", options=()
+        discord_name="ping",
+        description="d",
+        capability_name="plugin.foo.ping",
+        plugin_id="foo",
+        options=(),
     )
     calls = []
 
@@ -291,7 +374,11 @@ def test_build_dynamic_callback_with_no_options():
 
 
 def test_format_error_permission_denied():
-    exc = UmbrellaCoreError("Missing permission: plugin.foo.greet", status_code=403, code="PERMISSION_DENIED")
+    exc = UmbrellaCoreError(
+        "Missing permission: plugin.foo.greet",
+        status_code=403,
+        code="PERMISSION_DENIED",
+    )
     assert "don't have permission" in MarketplaceCommandSync._format_error(exc)
 
 
@@ -366,7 +453,14 @@ async def test_sync_registers_new_plugin_command():
     bot = _make_bot()
     bot.core = _FakeCore(
         discord_commands=[_dc_entry()],
-        capabilities=[_cap(params_schema={"properties": {"server_id": {"type": "string"}}, "required": ["server_id"]})],
+        capabilities=[
+            _cap(
+                params_schema={
+                    "properties": {"server_id": {"type": "string"}},
+                    "required": ["server_id"],
+                }
+            )
+        ],
     )
     sync = MarketplaceCommandSync(bot)
 
@@ -432,7 +526,9 @@ async def test_sync_does_not_touch_static_cog_commands():
 
     from discord import app_commands
 
-    static_command = app_commands.Command(name="investigate", description="static", callback=_existing)
+    static_command = app_commands.Command(
+        name="investigate", description="static", callback=_existing
+    )
     bot.tree.add_command(static_command)
 
     bot.core = _FakeCore(discord_commands=[], capabilities=[])
@@ -451,9 +547,13 @@ async def test_sync_skips_plugin_command_colliding_with_static_command():
 
     from discord import app_commands
 
-    bot.tree.add_command(app_commands.Command(name="status", description="static", callback=_existing))
+    bot.tree.add_command(
+        app_commands.Command(name="status", description="static", callback=_existing)
+    )
 
-    bot.core = _FakeCore(discord_commands=[_dc_entry(name="status")], capabilities=[_cap()])
+    bot.core = _FakeCore(
+        discord_commands=[_dc_entry(name="status")], capabilities=[_cap()]
+    )
     sync = MarketplaceCommandSync(bot)
     outcome = await sync.sync()
 

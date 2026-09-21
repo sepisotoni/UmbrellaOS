@@ -65,6 +65,7 @@ periodic loop with a webhook receiver is a bounded change to this cog
 alone - `MarketplaceCommandSync.sync()` itself doesn't know or care what
 triggered it, so nothing in that module would need to change.
 """
+
 from __future__ import annotations
 
 import logging
@@ -120,11 +121,15 @@ class MarketplaceCog(commands.Cog):
             return "No changes — plugin commands already match umbrella-core."
         lines = []
         if outcome.added:
-            lines.append(f"Registered/updated: {', '.join(f'/{n}' for n in outcome.added)}")
+            lines.append(
+                f"Registered/updated: {', '.join(f'/{n}' for n in outcome.added)}"
+            )
         if outcome.removed:
             lines.append(f"Removed: {', '.join(f'/{n}' for n in outcome.removed)}")
         if outcome.warnings:
-            lines.append(f"{len(outcome.warnings)} command(s) skipped — see bot logs for details.")
+            lines.append(
+                f"{len(outcome.warnings)} command(s) skipped — see bot logs for details."
+            )
         return "\n".join(lines)
 
 

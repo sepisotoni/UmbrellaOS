@@ -1,6 +1,7 @@
 """
 tests/test_waf_middleware.py — Tests for api/middleware/waf.py (Phase 9, item 7).
 """
+
 import pytest
 
 from sqlalchemy import select
@@ -18,7 +19,10 @@ async def test_normal_request_passes_through(client):
 @pytest.mark.asyncio
 async def test_path_traversal_pattern_rejected(client):
     response = await client.get("/api/v1/players/../../etc/passwd")
-    assert response.status_code in (400, 404)  # httpx/starlette may normalize the path before routing
+    assert response.status_code in (
+        400,
+        404,
+    )  # httpx/starlette may normalize the path before routing
     if response.status_code == 400:
         assert response.json()["code"] == "BAD_REQUEST"
 
@@ -32,7 +36,9 @@ async def test_sqli_pattern_in_query_string_rejected(client):
 
 @pytest.mark.asyncio
 async def test_xss_pattern_in_query_string_rejected(client):
-    response = await client.get("/api/v1/audit", params={"q": "<script>alert(1)</script>"})
+    response = await client.get(
+        "/api/v1/audit", params={"q": "<script>alert(1)</script>"}
+    )
     assert response.status_code == 400
 
 
@@ -47,7 +53,9 @@ async def test_oversized_body_rejected(client):
 
 
 @pytest.mark.asyncio
-async def test_blocked_request_recorded_as_security_event(client, db_session, monkeypatch):
+async def test_blocked_request_recorded_as_security_event(
+    client, db_session, monkeypatch
+):
     # See tests/test_threat_detection.py's module docstring: the WAF
     # middleware records via threat_detection_service's own
     # AsyncSessionLocal (same real engine as `client`'s DB in production),
@@ -58,7 +66,15 @@ async def test_blocked_request_recorded_as_security_event(client, db_session, mo
     await client.get("/api/v1/audit", params={"q": "1 OR 1=1"})
 
     async with db_session() as db:
-        rows = (await db.execute(select(SecurityEvent).where(SecurityEvent.event_type == "waf_block"))).scalars().all()
+        rows = (
+            (
+                await db.execute(
+                    select(SecurityEvent).where(SecurityEvent.event_type == "waf_block")
+                )
+            )
+            .scalars()
+            .all()
+        )
     assert len(rows) == 1
 
 

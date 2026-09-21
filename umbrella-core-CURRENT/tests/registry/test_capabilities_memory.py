@@ -2,6 +2,7 @@
 tests/registry/test_capabilities_memory.py — REST integration tests for
 memory capabilities: listing, RBAC, and round-trip.
 """
+
 import pytest
 
 from tests.conftest import ADMIN_HEADERS
@@ -56,7 +57,9 @@ async def test_recurring_top_orders_by_hit_count(client):
     )
 
     top_resp = await client.post(
-        "/api/v1/capabilities/memory.recurring.top/invoke", json={}, headers=ADMIN_HEADERS
+        "/api/v1/capabilities/memory.recurring.top/invoke",
+        json={},
+        headers=ADMIN_HEADERS,
     )
     entries = top_resp.json()["entries"]
     assert entries[0]["key"] == "recurring:common-issue"
@@ -83,17 +86,29 @@ async def test_memory_capabilities_allowed_for_moderator(client, db_session):
 
 
 @pytest.mark.asyncio
-async def test_purge_expired_removes_only_expired_short_term_entries(client, db_session):
+async def test_purge_expired_removes_only_expired_short_term_entries(
+    client, db_session
+):
     from datetime import datetime, timedelta, timezone
     from models.memory import MemoryEntry, MemoryScope
 
     async with db_session() as db:
-        db.add_all([
-            MemoryEntry(scope=MemoryScope.SHORT_TERM, key="conversation:c1:u1", value="expired",
-                        expires_at=datetime.now(timezone.utc) - timedelta(minutes=1)),
-            MemoryEntry(scope=MemoryScope.SHORT_TERM, key="conversation:c2:u2", value="still fresh",
-                        expires_at=datetime.now(timezone.utc) + timedelta(minutes=10)),
-        ])
+        db.add_all(
+            [
+                MemoryEntry(
+                    scope=MemoryScope.SHORT_TERM,
+                    key="conversation:c1:u1",
+                    value="expired",
+                    expires_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+                ),
+                MemoryEntry(
+                    scope=MemoryScope.SHORT_TERM,
+                    key="conversation:c2:u2",
+                    value="still fresh",
+                    expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+                ),
+            ]
+        )
         await db.commit()
 
     # Server facts never have an expiry - confirms purge can never touch them.
@@ -104,7 +119,9 @@ async def test_purge_expired_removes_only_expired_short_term_entries(client, db_
     )
 
     response = await client.post(
-        "/api/v1/capabilities/memory.maintenance.purge_expired/invoke", json={}, headers=ADMIN_HEADERS
+        "/api/v1/capabilities/memory.maintenance.purge_expired/invoke",
+        json={},
+        headers=ADMIN_HEADERS,
     )
     assert response.status_code == 200
     assert response.json()["purged_count"] == 1
@@ -121,6 +138,8 @@ async def test_purge_expired_removes_only_expired_short_term_entries(client, db_
 async def test_purge_expired_denied_for_helper(client, db_session):
     headers = await session_headers_for_role(db_session, "helper")
     response = await client.post(
-        "/api/v1/capabilities/memory.maintenance.purge_expired/invoke", json={}, headers=headers
+        "/api/v1/capabilities/memory.maintenance.purge_expired/invoke",
+        json={},
+        headers=headers,
     )
     assert response.status_code == 403

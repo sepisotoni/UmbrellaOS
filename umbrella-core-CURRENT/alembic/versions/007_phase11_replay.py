@@ -6,6 +6,7 @@ Revises: 006_phase10_analytics
 Create Date: 2024-01-01 00:00:00.000000
 
 """
+
 from alembic import op
 import sqlalchemy as sa
 
@@ -26,10 +27,17 @@ def upgrade():
         sa.Column("incident_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("ended_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("event_count", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.func.now(),
+        ),
         sa.Column("notes", sa.Text(), nullable=True),
     )
-    op.create_index("ix_replay_sessions_minecraft_uuid", "replay_sessions", ["minecraft_uuid"])
+    op.create_index(
+        "ix_replay_sessions_minecraft_uuid", "replay_sessions", ["minecraft_uuid"]
+    )
     op.create_index("ix_replay_sessions_created_at", "replay_sessions", ["created_at"])
 
     # Create replay_events table
@@ -44,7 +52,9 @@ def upgrade():
         sa.Column("world", sa.String(128), nullable=True),
     )
     op.create_index("ix_replay_events_replay_id", "replay_events", ["replay_id"])
-    op.create_index("ix_replay_events_minecraft_uuid", "replay_events", ["minecraft_uuid"])
+    op.create_index(
+        "ix_replay_events_minecraft_uuid", "replay_events", ["minecraft_uuid"]
+    )
     op.create_index("ix_replay_events_timestamp", "replay_events", ["timestamp"])
     op.create_foreign_key(
         "fk_replay_events_replay_id_replay_sessions",

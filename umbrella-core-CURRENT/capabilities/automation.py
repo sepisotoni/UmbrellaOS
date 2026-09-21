@@ -2,6 +2,7 @@
 capabilities/automation.py — Phase 4's automation domain: scheduling any
 existing capability to run on a cron expression.
 """
+
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
@@ -32,11 +33,17 @@ class ScheduleResult(BaseModel):
     @classmethod
     def from_model(cls, schedule) -> "ScheduleResult":
         return cls(
-            id=schedule.id, name=schedule.name, cron_expression=schedule.cron_expression,
-            capability_name=schedule.capability_name, capability_params=schedule.capability_params,
+            id=schedule.id,
+            name=schedule.name,
+            cron_expression=schedule.cron_expression,
+            capability_name=schedule.capability_name,
+            capability_params=schedule.capability_params,
             enabled=schedule.enabled,
-            last_run_at=schedule.last_run_at.isoformat() if schedule.last_run_at else None,
-            last_run_status=schedule.last_run_status, last_run_error=schedule.last_run_error,
+            last_run_at=schedule.last_run_at.isoformat()
+            if schedule.last_run_at
+            else None,
+            last_run_status=schedule.last_run_status,
+            last_run_error=schedule.last_run_error,
         )
 
 
@@ -49,9 +56,15 @@ class ScheduleResult(BaseModel):
     destructive=False,
     audit_category="automation",
 )
-async def create_schedule(ctx: CallContext, params: CreateScheduleParams) -> ScheduleResult:
+async def create_schedule(
+    ctx: CallContext, params: CreateScheduleParams
+) -> ScheduleResult:
     schedule = await SchedulerService.create_schedule(
-        ctx.db, params.name, params.cron_expression, params.capability_name, params.capability_params
+        ctx.db,
+        params.name,
+        params.cron_expression,
+        params.capability_name,
+        params.capability_params,
     )
     return ScheduleResult.from_model(schedule)
 
@@ -69,7 +82,9 @@ class ListSchedulesParams(BaseModel):
     destructive=False,
     audited=False,
 )
-async def list_schedules(ctx: CallContext, params: ListSchedulesParams) -> list[ScheduleResult]:
+async def list_schedules(
+    ctx: CallContext, params: ListSchedulesParams
+) -> list[ScheduleResult]:
     schedules = await SchedulerService.list_schedules(ctx.db)
     return [ScheduleResult.from_model(s) for s in schedules]
 
@@ -98,8 +113,12 @@ class SetScheduleEnabledParams(BaseModel):
     destructive=False,
     audit_category="automation",
 )
-async def set_schedule_enabled(ctx: CallContext, params: SetScheduleEnabledParams) -> ScheduleResult:
-    schedule = await SchedulerService.set_enabled(ctx.db, params.schedule_id, params.enabled)
+async def set_schedule_enabled(
+    ctx: CallContext, params: SetScheduleEnabledParams
+) -> ScheduleResult:
+    schedule = await SchedulerService.set_enabled(
+        ctx.db, params.schedule_id, params.enabled
+    )
     return ScheduleResult.from_model(schedule)
 
 
@@ -117,6 +136,8 @@ class DeleteScheduleResult(BaseModel):
     reversible=False,
     audit_category="automation",
 )
-async def delete_schedule(ctx: CallContext, params: ScheduleIDParams) -> DeleteScheduleResult:
+async def delete_schedule(
+    ctx: CallContext, params: ScheduleIDParams
+) -> DeleteScheduleResult:
     await SchedulerService.delete_schedule(ctx.db, params.schedule_id)
     return DeleteScheduleResult(deleted=True)

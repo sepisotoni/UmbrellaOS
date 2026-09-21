@@ -1,4 +1,5 @@
 """Anticheat endpoints — Grim flag ingestion from Umbrella plugin."""
+
 from datetime import datetime
 from typing import Optional
 

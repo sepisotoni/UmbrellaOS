@@ -6,6 +6,7 @@ Discord bot, CLI, external integrations — are the intended users of API
 keys; see services/api_key_service.py for why a key can never carry
 superuser/wildcard access).
 """
+
 import hashlib
 import hmac
 import time
@@ -83,6 +84,7 @@ async def require_capability_auth(
         return await require_admin_key_or_session(x_admin_key, None, authorization, db)
     except (HTTPException, AppException) as exc:
         if exc.status_code == 401:
-            await threat_detection_service.record(event_type="auth_failure", source_ip=client_ip)
+            await threat_detection_service.record(
+                event_type="auth_failure", source_ip=client_ip
+            )
         raise
-

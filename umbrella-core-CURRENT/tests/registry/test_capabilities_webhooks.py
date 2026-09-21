@@ -3,6 +3,7 @@ tests/registry/test_capabilities_webhooks.py — REST integration tests for
 Phase 7's webhook subscription CRUD capabilities, through the real FastAPI
 app, registry, and database.
 """
+
 import pytest
 
 from tests.conftest import ADMIN_HEADERS
@@ -44,7 +45,9 @@ async def test_list_subscriptions_never_includes_secret(client):
         headers=ADMIN_HEADERS,
     )
     response = await client.post(
-        "/api/v1/capabilities/webhooks.subscription.list/invoke", json={}, headers=ADMIN_HEADERS
+        "/api/v1/capabilities/webhooks.subscription.list/invoke",
+        json={},
+        headers=ADMIN_HEADERS,
     )
     assert response.status_code == 200
     subscriptions = response.json()
@@ -86,7 +89,11 @@ async def test_update_subscription_can_deactivate_and_change_url(client):
 
     update_response = await client.post(
         "/api/v1/capabilities/webhooks.subscription.update/invoke",
-        json={"subscription_id": subscription_id, "url": "https://example.com/new", "active": False},
+        json={
+            "subscription_id": subscription_id,
+            "url": "https://example.com/new",
+            "active": False,
+        },
         headers=ADMIN_HEADERS,
     )
     assert update_response.status_code == 200
@@ -123,7 +130,9 @@ async def test_delete_subscription_removes_it_from_list(client):
     assert delete_response.json()["deleted"] is True
 
     list_response = await client.post(
-        "/api/v1/capabilities/webhooks.subscription.list/invoke", json={}, headers=ADMIN_HEADERS
+        "/api/v1/capabilities/webhooks.subscription.list/invoke",
+        json={},
+        headers=ADMIN_HEADERS,
     )
     ids = [s["id"] for s in list_response.json()]
     assert subscription_id not in ids
@@ -150,7 +159,9 @@ async def test_webhook_view_permission_allows_list_but_not_create(client, db_ses
     that has view-only access (no default role currently does)."""
     headers = await session_headers_for_role(db_session, "moderator")
     response = await client.post(
-        "/api/v1/capabilities/webhooks.subscription.list/invoke", json={}, headers=headers
+        "/api/v1/capabilities/webhooks.subscription.list/invoke",
+        json={},
+        headers=headers,
     )
     assert response.status_code == 403
 
@@ -163,6 +174,7 @@ async def test_webhook_view_permission_allows_list_but_not_create(client, db_ses
 # via socket.getaddrinfo, which correctly treats a literal IP as "resolving"
 # to itself, so these test the real code path without any network dependency
 # or flakiness from live DNS.
+
 
 @pytest.mark.asyncio
 async def test_create_subscription_rejects_loopback_url(client):
@@ -184,7 +196,10 @@ async def test_create_subscription_rejects_cloud_metadata_endpoint(client):
     specifically exercises that classification isn't missed."""
     response = await client.post(
         "/api/v1/capabilities/webhooks.subscription.create/invoke",
-        json={"topic": "ssrf.metadata", "url": "http://169.254.169.254/latest/meta-data/"},
+        json={
+            "topic": "ssrf.metadata",
+            "url": "http://169.254.169.254/latest/meta-data/",
+        },
         headers=ADMIN_HEADERS,
     )
     assert response.status_code == 400

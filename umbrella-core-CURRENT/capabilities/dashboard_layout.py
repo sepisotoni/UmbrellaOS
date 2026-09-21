@@ -18,6 +18,7 @@ existing per-file convention — see identity.py's own copy for precedent).
 doesn't exist or has no widget concept (e.g. "topology") is a 400, not a
 silently-accepted row nobody will ever read back.
 """
+
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
@@ -42,11 +43,15 @@ async def _current_staff_user(ctx: CallContext) -> User:
     is no "set someone else's layout" capability, and the admin-key tier
     (no underlying User row) has nothing to attach one to."""
     if ctx.actor_type != "staff":
-        raise DashboardLayoutError("dashboard layouts apply to staff accounts only", 400)
+        raise DashboardLayoutError(
+            "dashboard layouts apply to staff accounts only", 400
+        )
     result = await ctx.db.execute(select(User).where(User.discord_id == ctx.actor_id))
     user = result.scalar_one_or_none()
     if user is None:
-        raise DashboardLayoutError("no matching user account found for the current session", 404)
+        raise DashboardLayoutError(
+            "no matching user account found for the current session", 404
+        )
     return user
 
 
@@ -94,13 +99,19 @@ class DashboardLayoutResult(BaseModel):
     destructive=False,
     audited=False,
 )
-async def get_layout(ctx: CallContext, params: GetDashboardLayoutParams) -> DashboardLayoutResult:
+async def get_layout(
+    ctx: CallContext, params: GetDashboardLayoutParams
+) -> DashboardLayoutResult:
     _require_customizable(params.page_id)
     user = await _current_staff_user(ctx)
-    layout = await DashboardLayoutService.get(ctx.db, user_id=user.id, page_id=params.page_id)
+    layout = await DashboardLayoutService.get(
+        ctx.db, user_id=user.id, page_id=params.page_id
+    )
     if layout is None:
         return DashboardLayoutResult(page_id=params.page_id, widgets=None)
-    widgets = [LayoutWidgetEntry(**w) for w in DashboardLayoutService.parse_widgets(layout)]
+    widgets = [
+        LayoutWidgetEntry(**w) for w in DashboardLayoutService.parse_widgets(layout)
+    ]
     return DashboardLayoutResult(page_id=params.page_id, widgets=widgets)
 
 
@@ -126,7 +137,9 @@ class SetDashboardLayoutParams(BaseModel):
     destructive=False,
     audit_category="dashboard",
 )
-async def set_layout(ctx: CallContext, params: SetDashboardLayoutParams) -> DashboardLayoutResult:
+async def set_layout(
+    ctx: CallContext, params: SetDashboardLayoutParams
+) -> DashboardLayoutResult:
     _require_customizable(params.page_id)
     user = await _current_staff_user(ctx)
     widgets_payload = [w.model_dump() for w in params.widgets]
@@ -167,5 +180,7 @@ async def reset_layout(
 ) -> ResetDashboardLayoutResult:
     _require_customizable(params.page_id)
     user = await _current_staff_user(ctx)
-    existed = await DashboardLayoutService.reset(ctx.db, user_id=user.id, page_id=params.page_id)
+    existed = await DashboardLayoutService.reset(
+        ctx.db, user_id=user.id, page_id=params.page_id
+    )
     return ResetDashboardLayoutResult(reset=existed)

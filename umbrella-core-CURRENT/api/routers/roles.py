@@ -4,6 +4,7 @@ api/routers/roles.py — Role and permission endpoints.
 GET /api/v1/roles             — list all roles with their permissions
 GET /api/v1/roles/permissions — list all available permission keys
 """
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db

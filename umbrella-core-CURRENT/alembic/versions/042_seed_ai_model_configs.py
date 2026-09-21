@@ -18,6 +18,7 @@ Revision ID: 042_seed_ai_model_configs
 Revises: 041_fix_ipban_player_uuid_and_punishment_nullable
 Create Date: 2026-08-28
 """
+
 import uuid
 from alembic import op
 import sqlalchemy as sa
@@ -34,22 +35,22 @@ depends_on = None
 # Operators can add/reorder rows from the dashboard without touching code.
 _MODEL_ROWS = [
     # copilot — Gemini primary, OpenRouter fallback
-    ("gemini",     "gemini-2.5-flash",          "copilot",        10),
-    ("openrouter", "openai/gpt-4o-mini",         "copilot",        20),
+    ("gemini", "gemini-2.5-flash", "copilot", 10),
+    ("openrouter", "openai/gpt-4o-mini", "copilot", 20),
     # player_review — Gemini primary, Anthropic fallback
-    ("gemini",     "gemini-2.5-flash",          "player_review",  10),
-    ("anthropic",  "claude-haiku-4-5-20251001", "player_review",  20),
+    ("gemini", "gemini-2.5-flash", "player_review", 10),
+    ("anthropic", "claude-haiku-4-5-20251001", "player_review", 20),
     # appeal_review — Anthropic primary, Gemini fallback
-    ("anthropic",  "claude-haiku-4-5-20251001", "appeal_review",  10),
-    ("gemini",     "gemini-2.5-flash",          "appeal_review",  20),
+    ("anthropic", "claude-haiku-4-5-20251001", "appeal_review", 10),
+    ("gemini", "gemini-2.5-flash", "appeal_review", 20),
     # moderation_review (ai_service legacy path) — Anthropic primary, OpenRouter fallback
-    ("anthropic",  "claude-haiku-4-5-20251001", "moderation_review", 10),
-    ("openrouter", "openai/gpt-4o-mini",         "moderation_review", 20),
+    ("anthropic", "claude-haiku-4-5-20251001", "moderation_review", 10),
+    ("openrouter", "openai/gpt-4o-mini", "moderation_review", 20),
     # crash_risk — Gemini only (deterministic enough to skip dual-review)
-    ("gemini",     "gemini-2.5-flash",          "crash_risk",     10),
+    ("gemini", "gemini-2.5-flash", "crash_risk", 10),
     # chat_review — OpenRouter primary
-    ("openrouter", "openai/gpt-4o-mini",         "chat_review",    10),
-    ("anthropic",  "claude-haiku-4-5-20251001", "chat_review",    20),
+    ("openrouter", "openai/gpt-4o-mini", "chat_review", 10),
+    ("anthropic", "claude-haiku-4-5-20251001", "chat_review", 20),
 ]
 
 _CONSTITUTION_SEED_RULES = [
@@ -114,7 +115,8 @@ def upgrade() -> None:
         # against real Postgres 16: catching only duplicate_object let
         # duplicate_table through uncaught on the second run. Catching both
         # covers every way this specific constraint name can already exist.
-        op.execute(sa.text("""
+        op.execute(
+            sa.text("""
             DO $$
             BEGIN
                 ALTER TABLE ai_model_configs
@@ -124,7 +126,8 @@ def upgrade() -> None:
                 WHEN duplicate_table THEN NULL;
                 WHEN duplicate_object THEN NULL;
             END $$;
-        """))
+        """)
+        )
     # SQLite has no ALTER TABLE ADD CONSTRAINT, but also has no ON CONFLICT
     # index_elements requirement — it falls back to the per-row path below.
 
@@ -133,25 +136,25 @@ def upgrade() -> None:
     # ------------------------------------------------------------------ #
     ai_model_configs = sa.table(
         "ai_model_configs",
-        sa.column("id",                  sa.String),
-        sa.column("provider",            sa.String),
-        sa.column("model_name",          sa.String),
-        sa.column("task_type",           sa.String),
-        sa.column("priority",            sa.Integer),
-        sa.column("enabled",             sa.Boolean),
-        sa.column("is_healthy",          sa.Boolean),
-        sa.column("consecutive_failures",sa.Integer),
+        sa.column("id", sa.String),
+        sa.column("provider", sa.String),
+        sa.column("model_name", sa.String),
+        sa.column("task_type", sa.String),
+        sa.column("priority", sa.Integer),
+        sa.column("enabled", sa.Boolean),
+        sa.column("is_healthy", sa.Boolean),
+        sa.column("consecutive_failures", sa.Integer),
     )
 
     rows = [
         {
-            "id":                   str(uuid.uuid4()),
-            "provider":             provider,
-            "model_name":           model_name,
-            "task_type":            task_type,
-            "priority":             priority,
-            "enabled":              True,
-            "is_healthy":           True,
+            "id": str(uuid.uuid4()),
+            "provider": provider,
+            "model_name": model_name,
+            "task_type": task_type,
+            "priority": priority,
+            "enabled": True,
+            "is_healthy": True,
             "consecutive_failures": 0,
         }
         for provider, model_name, task_type, priority in _MODEL_ROWS
@@ -176,9 +179,7 @@ def upgrade() -> None:
                 {"p": row["provider"], "m": row["model_name"], "t": row["task_type"]},
             ).fetchone()
             if not existing:
-                op.execute(
-                    ai_model_configs.insert().values(row)
-                )
+                op.execute(ai_model_configs.insert().values(row))
 
     # ------------------------------------------------------------------ #
     # Seed constitution_rules                                             #
@@ -192,20 +193,25 @@ def upgrade() -> None:
     # references the existing type rather than trying to CREATE TYPE again.
     if is_postgres:
         tier_type = postgresql.ENUM(
-            "PLATFORM_SAFETY", "CORE_PLATFORM", "SERVER", "ROLE", "TASK",
-            name="constitutiontier", create_type=False,
+            "PLATFORM_SAFETY",
+            "CORE_PLATFORM",
+            "SERVER",
+            "ROLE",
+            "TASK",
+            name="constitutiontier",
+            create_type=False,
         )
     else:
         tier_type = sa.String
 
     constitution_rules = sa.table(
         "constitution_rules",
-        sa.column("id",          sa.String),
-        sa.column("tier",        tier_type),
-        sa.column("title",       sa.String),
-        sa.column("rule_text",   sa.Text),
-        sa.column("is_seed_rule",sa.Boolean),
-        sa.column("is_enabled",  sa.Boolean),
+        sa.column("id", sa.String),
+        sa.column("tier", tier_type),
+        sa.column("title", sa.String),
+        sa.column("rule_text", sa.Text),
+        sa.column("is_seed_rule", sa.Boolean),
+        sa.column("is_enabled", sa.Boolean),
     )
 
     for tier, title, rule_text in _CONSTITUTION_SEED_RULES:

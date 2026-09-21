@@ -36,6 +36,7 @@ Revision ID: 055_fix_admin_role_permissions
 Revises:     054_drop_redundant_console_lines_index
 Create Date: 2026-09-04
 """
+
 import sqlalchemy as sa
 from alembic import op
 
@@ -69,11 +70,15 @@ def upgrade() -> None:
         # seed_defaults() will create it correctly from here on.
         return
 
-    permission_ids = bind.execute(
-        sa.select(permissions.c.id).where(
-            permissions.c.permission_key.in_(PERMISSIONS_TO_REMOVE_FROM_ADMIN)
+    permission_ids = (
+        bind.execute(
+            sa.select(permissions.c.id).where(
+                permissions.c.permission_key.in_(PERMISSIONS_TO_REMOVE_FROM_ADMIN)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     if not permission_ids:
         return
 

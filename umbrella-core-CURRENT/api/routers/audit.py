@@ -14,6 +14,7 @@ Registry, with no duplicated implementation between them.
 The audit log remains read-only via API — writes only ever happen via
 `registry.audit.record_audit_event`, called from `CapabilityRegistry.call()`.
 """
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 

@@ -5,6 +5,7 @@ migration pattern capabilities/system.py established for
 `platform.audit.search` — the query logic lives here once, reachable via
 REST, CLI, and the AI Tool Registry with no duplication between them.
 """
+
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
@@ -22,10 +23,16 @@ from registry.decorator import capability
 
 
 class LogSearchParams(BaseModel):
-    query: str | None = Field(default=None, description="Substring match against message/logger name.")
+    query: str | None = Field(
+        default=None, description="Substring match against message/logger name."
+    )
     level: str | None = Field(default=None, description="Exact level, e.g. ERROR.")
-    source: str | None = Field(default=None, description="Originating process, e.g. umbrella-core.")
-    trace_id: str | None = Field(default=None, description="Filter to one request's trace.")
+    source: str | None = Field(
+        default=None, description="Originating process, e.g. umbrella-core."
+    )
+    trace_id: str | None = Field(
+        default=None, description="Filter to one request's trace."
+    )
     limit: int = Field(default=50, ge=1, le=500)
 
 
@@ -57,7 +64,10 @@ async def search_logs(ctx: CallContext, params: LogSearchParams) -> LogSearchRes
     stmt = select(LogEntry).order_by(desc(LogEntry.created_at)).limit(params.limit)
     if params.query:
         stmt = stmt.where(
-            or_(LogEntry.message.ilike(f"%{params.query}%"), LogEntry.logger_name.ilike(f"%{params.query}%"))
+            or_(
+                LogEntry.message.ilike(f"%{params.query}%"),
+                LogEntry.logger_name.ilike(f"%{params.query}%"),
+            )
         )
     if params.level:
         stmt = stmt.where(LogEntry.level == params.level.upper())
@@ -90,7 +100,10 @@ async def search_logs(ctx: CallContext, params: LogSearchParams) -> LogSearchRes
 
 
 class SecurityEventListParams(BaseModel):
-    event_type: str | None = Field(default=None, description="auth_failure | rate_limit_violation | sandbox_violation")
+    event_type: str | None = Field(
+        default=None,
+        description="auth_failure | rate_limit_violation | sandbox_violation",
+    )
     source_ip: str | None = Field(default=None)
     limit: int = Field(default=50, ge=1, le=500)
 
@@ -119,14 +132,18 @@ class SecurityEventListResult(BaseModel):
     reversible=True,
     audited=False,
 )
-async def list_security_events(ctx: CallContext, params: SecurityEventListParams) -> SecurityEventListResult:
+async def list_security_events(
+    ctx: CallContext, params: SecurityEventListParams
+) -> SecurityEventListResult:
     base_query = select(SecurityEvent)
     if params.event_type:
         base_query = base_query.where(SecurityEvent.event_type == params.event_type)
     if params.source_ip:
         base_query = base_query.where(SecurityEvent.source_ip == params.source_ip)
 
-    count_result = await ctx.db.execute(select(func.count()).select_from(base_query.subquery()))
+    count_result = await ctx.db.execute(
+        select(func.count()).select_from(base_query.subquery())
+    )
     total = count_result.scalar_one()
 
     page_query = base_query.order_by(desc(SecurityEvent.created_at)).limit(params.limit)

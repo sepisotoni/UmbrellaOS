@@ -3,6 +3,7 @@ models/snapshot.py — Player snapshot model.
 
 PlayerSnapshot: Represents a point-in-time capture of a player's state.
 """
+
 import uuid
 from datetime import datetime
 
@@ -15,10 +16,16 @@ from database.engine import Base
 class PlayerSnapshot(Base):
     __tablename__ = "player_snapshots"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
     minecraft_uuid: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
-    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
-    trigger: Mapped[str] = mapped_column(String(32), nullable=False, default="scheduled")
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    trigger: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="scheduled"
+    )
     health: Mapped[float | None] = mapped_column(Float, nullable=True)
     food: Mapped[int | None] = mapped_column(Integer, nullable=True)
     xp: Mapped[float | None] = mapped_column(Float, nullable=True)

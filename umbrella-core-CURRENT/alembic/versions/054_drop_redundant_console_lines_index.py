@@ -21,6 +21,7 @@ Revision ID: 054_drop_redundant_console_lines_index
 Revises:     052_add_plugin_console_lines_index
 Create Date: 2026-08-31
 """
+
 import sqlalchemy as sa
 from alembic import op
 

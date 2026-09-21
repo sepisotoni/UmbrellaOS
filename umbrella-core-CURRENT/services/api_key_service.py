@@ -8,6 +8,7 @@ superuser/wildcard grant — see `create_api_key`'s validation. If something
 needs full access, it should be a session-authenticated staff account, not
 an API key with every permission listed on it.
 """
+
 import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -46,7 +47,9 @@ class ApiKeyService:
         operator immediately and never log it.
         """
         if "*" in permissions:
-            raise ApiKeyError("API keys cannot carry a wildcard permission — grant explicit keys only")
+            raise ApiKeyError(
+                "API keys cannot carry a wildcard permission — grant explicit keys only"
+            )
 
         plaintext = API_KEY_PREFIX + secrets.token_urlsafe(32)
         expires_at = (

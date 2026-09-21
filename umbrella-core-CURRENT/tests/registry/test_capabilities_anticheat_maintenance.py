@@ -3,6 +3,7 @@ tests/registry/test_capabilities_anticheat_maintenance.py — REST
 integration tests for the anticheat_violations retention purge
 capability.
 """
+
 import datetime as dt
 
 import pytest
@@ -23,10 +24,16 @@ async def test_anticheat_maintenance_capability_is_listed(client):
 async def test_purge_old_invoke_removes_expired_rows(client, db_session):
     async with db_session() as db:
         old = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=365)
-        db.add(AnticheatViolation(
-            player_uuid=None, player_name="AncientOffender", check_name="Fly",
-            verbose="test", vl=5, timestamp=old,
-        ))
+        db.add(
+            AnticheatViolation(
+                player_uuid=None,
+                player_name="AncientOffender",
+                check_name="Fly",
+                verbose="test",
+                vl=5,
+                timestamp=old,
+            )
+        )
         await db.commit()
 
     response = await client.post(

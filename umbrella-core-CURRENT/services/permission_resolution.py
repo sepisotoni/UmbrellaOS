@@ -19,6 +19,7 @@ This is the only place a user's effective permission set is computed. If the
 rule ever changes (e.g. permission inheritance, deny-overrides, group-based
 grants), it changes here and both call sites pick it up automatically.
 """
+
 from __future__ import annotations
 
 from sqlalchemy import select

@@ -3,6 +3,7 @@ tests/test_event_bus.py — Tests for services/events/bus.py: EventBus.publish
 writes a real row in the caller's transaction, and subscribe/subscribers_for
 behave as a genuine process-wide registry.
 """
+
 import json
 
 import pytest
@@ -21,7 +22,9 @@ def _reset_event_bus():
 @pytest.mark.asyncio
 async def test_publish_writes_event_row_with_encoded_payload(db_session):
     async with db_session() as db:
-        event = await EventBus.publish(db, topic="test.topic", payload={"a": 1, "b": "two"})
+        event = await EventBus.publish(
+            db, topic="test.topic", payload={"a": 1, "b": "two"}
+        )
         await db.commit()
 
         assert event.id is not None

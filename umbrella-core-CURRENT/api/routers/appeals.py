@@ -22,6 +22,7 @@ any punishment_id with zero traceability. Every other endpoint here requires
 a staff permission (appeals.view / appeals.manage). See create_appeal's
 docstring for the full history of this decision.
 """
+
 import json
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -78,6 +79,7 @@ VALID_APPEAL_STATUSES = {
 # Schemas
 # ---------------------------------------------------------------------------
 
+
 class AppealCreateRequest(BaseModel):
     punishment_id: str
     player_uuid: str
@@ -89,7 +91,7 @@ class AppealUpdateRequest(BaseModel):
 
 
 class AppealCloseRequest(BaseModel):
-    action: str           # ACCEPT | REDUCE_SENTENCE | REJECT | ESCALATE | SCHEDULE_REVIEW
+    action: str  # ACCEPT | REDUCE_SENTENCE | REJECT | ESCALATE | SCHEDULE_REVIEW
     staff_note: str | None = None
     new_expiry: datetime | None = None  # required when action == REDUCE_SENTENCE
 
@@ -114,6 +116,7 @@ class AppealSchema(BaseModel):
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
 
 @router.get("", response_model=list[AppealSchema])
 async def list_appeals(
@@ -194,7 +197,9 @@ async def create_appeal(
     player = player_result.scalar_one_or_none()
 
     if player is None:
-        raise HTTPException(status_code=404, detail=f"Player '{body.player_uuid}' not found")
+        raise HTTPException(
+            status_code=404, detail=f"Player '{body.player_uuid}' not found"
+        )
 
     # Verify punishment exists and belongs to player
     punishment_result = await db.execute(
@@ -203,7 +208,9 @@ async def create_appeal(
     punishment = punishment_result.scalar_one_or_none()
 
     if punishment is None:
-        raise HTTPException(status_code=404, detail=f"Punishment '{body.punishment_id}' not found")
+        raise HTTPException(
+            status_code=404, detail=f"Punishment '{body.punishment_id}' not found"
+        )
 
     if punishment.player_uuid != body.player_uuid:
         raise HTTPException(
@@ -240,9 +247,7 @@ async def update_appeal(
     _auth: str = Depends(require_permission("appeals.manage")),
 ) -> AppealSchema:
     """Update an appeal status."""
-    result = await db.execute(
-        select(Appeal).where(Appeal.id == appeal_id)
-    )
+    result = await db.execute(select(Appeal).where(Appeal.id == appeal_id))
     appeal = result.scalar_one_or_none()
 
     if appeal is None:
@@ -299,9 +304,7 @@ async def close_appeal(
         )
 
     # Fetch appeal
-    appeal_result = await db.execute(
-        select(Appeal).where(Appeal.id == appeal_id)
-    )
+    appeal_result = await db.execute(select(Appeal).where(Appeal.id == appeal_id))
     appeal = appeal_result.scalar_one_or_none()
     if appeal is None:
         raise HTTPException(status_code=404, detail=f"Appeal '{appeal_id}' not found")
@@ -387,14 +390,16 @@ async def close_appeal(
     appeal.closed_at = now
 
     # Audit log
-    audit_details = json.dumps({
-        "appeal_id": appeal_id,
-        "action": action,
-        "punishment_id": appeal.punishment_id,
-        "player_uuid": appeal.player_uuid,
-        "staff_note": body.staff_note,
-        "new_expiry": body.new_expiry.isoformat() if body.new_expiry else None,
-    })
+    audit_details = json.dumps(
+        {
+            "appeal_id": appeal_id,
+            "action": action,
+            "punishment_id": appeal.punishment_id,
+            "player_uuid": appeal.player_uuid,
+            "staff_note": body.staff_note,
+            "new_expiry": body.new_expiry.isoformat() if body.new_expiry else None,
+        }
+    )
     audit = AuditLog(
         actor=staff_username,
         actor_type="staff",

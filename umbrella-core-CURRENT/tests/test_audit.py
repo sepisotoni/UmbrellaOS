@@ -6,6 +6,7 @@ GET /api/v1/audit/{action}
 
 Key concern: total must reflect full matching row count, not page size (TD-05).
 """
+
 import pytest
 from tests.conftest import ADMIN_HEADERS
 
@@ -41,8 +42,8 @@ async def test_audit_total_reflects_real_count_not_page_size(client):
     await _seed_audit_entries(client, count=10)
     response = await client.get("/api/v1/audit?limit=3&offset=0", headers=ADMIN_HEADERS)
     data = response.json()
-    assert len(data["entries"]) == 3       # page has 3 items
-    assert data["total"] >= 10             # but total is the real count
+    assert len(data["entries"]) == 3  # page has 3 items
+    assert data["total"] >= 10  # but total is the real count
 
 
 @pytest.mark.asyncio
@@ -59,7 +60,15 @@ async def test_audit_entry_shape(client):
     await _seed_audit_entries(client, count=1)
     response = await client.get("/api/v1/audit", headers=ADMIN_HEADERS)
     entry = response.json()["entries"][0]
-    for field in ("id", "actor", "actor_type", "action", "target", "details", "created_at"):
+    for field in (
+        "id",
+        "actor",
+        "actor_type",
+        "action",
+        "target",
+        "details",
+        "created_at",
+    ):
         assert field in entry
 
 
@@ -109,7 +118,9 @@ async def test_audit_by_action_filters_correctly(client):
 
 @pytest.mark.asyncio
 async def test_audit_by_action_unknown_action_returns_empty(client):
-    response = await client.get("/api/v1/audit/nonexistent.action", headers=ADMIN_HEADERS)
+    response = await client.get(
+        "/api/v1/audit/nonexistent.action", headers=ADMIN_HEADERS
+    )
     assert response.status_code == 200
     data = response.json()
     assert data["total"] == 0

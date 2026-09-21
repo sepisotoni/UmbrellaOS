@@ -32,7 +32,9 @@ async def test_decrypt_fails_with_wrong_key(monkeypatch):
 
     ciphertext = encrypt_secret("secret-value")
 
-    monkeypatch.setattr(settings, "secrets_encryption_key", Fernet.generate_key().decode())
+    monkeypatch.setattr(
+        settings, "secrets_encryption_key", Fernet.generate_key().decode()
+    )
     with pytest.raises(SecretsError):
         decrypt_secret(ciphertext)
 

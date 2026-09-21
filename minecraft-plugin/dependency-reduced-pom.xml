@@ -43,6 +43,7 @@
               <goal>shade</goal>
             </goals>
             <configuration>
+              <minimizeJar>true</minimizeJar>
               <relocations>
                 <relocation>
                   <pattern>org.json</pattern>
@@ -69,7 +70,7 @@
     <dependency>
       <groupId>io.papermc.paper</groupId>
       <artifactId>paper-api</artifactId>
-      <version>1.20.4-R0.1-SNAPSHOT</version>
+      <version>1.21.4-R0.1-SNAPSHOT</version>
       <scope>provided</scope>
     </dependency>
     <dependency>
@@ -139,6 +140,6 @@
     <maven.compiler.target>21</maven.compiler.target>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <junit.version>5.10.2</junit.version>
-    <paper.api.version>1.20.4-R0.1-SNAPSHOT</paper.api.version>
+    <paper.api.version>1.21.4-R0.1-SNAPSHOT</paper.api.version>
   </properties>
 </project>

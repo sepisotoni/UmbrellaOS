@@ -20,6 +20,7 @@ channel_id is missing or not a channel this bot can see, log and drop
 (same "can't do anything useful" guard as notifications_cog.py's
 channel-missing case).
 """
+
 from __future__ import annotations
 
 import logging
@@ -51,7 +52,8 @@ class BridgeCog(commands.Cog):
         except (TypeError, ValueError):
             logger.warning(
                 "Push: dashboard broadcast (message_id=%s) has a non-numeric channel_id=%r.",
-                payload.get("message_id"), channel_id_raw,
+                payload.get("message_id"),
+                channel_id_raw,
             )
             return
 
@@ -68,7 +70,8 @@ class BridgeCog(commands.Cog):
         except discord.HTTPException:
             logger.exception(
                 "Failed to post dashboard broadcast (message_id=%s) to channel %s.",
-                payload.get("message_id"), channel_id,
+                payload.get("message_id"),
+                channel_id,
             )
 
     @staticmethod

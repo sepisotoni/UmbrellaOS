@@ -22,12 +22,13 @@ alembic_version table (from a run that got this far before 032's later,
 separate duplicate-column break) needs this revision id to keep existing
 in the chain. Only the upgrade()/downgrade() bodies are neutered.
 """
+
 from alembic import op
 import sqlalchemy as sa
 
 
-revision = '011_add_suspicion_score'
-down_revision = '010_mc_commands_translation'
+revision = "011_add_suspicion_score"
+down_revision = "010_mc_commands_translation"
 branch_labels = None
 depends_on = None
 

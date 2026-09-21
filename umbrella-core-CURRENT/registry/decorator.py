@@ -27,6 +27,7 @@ That single declaration is what the REST adapter lists at
 (Phase 5) what becomes an AI tool — with no separate registration step for
 any of those.
 """
+
 from __future__ import annotations
 
 from typing import Awaitable, Callable, Type, TypeVar

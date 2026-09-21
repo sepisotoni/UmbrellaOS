@@ -8,6 +8,7 @@ module docstring for why the actual slash-command handlers - and the
 button callbacks themselves, which call real discord.py response methods
 - aren't tested here.
 """
+
 from types import SimpleNamespace
 
 import discord
@@ -22,7 +23,11 @@ async def _noop_coro():
 
 
 def test_format_error_permission_denied():
-    exc = UmbrellaCoreError("Missing permission: hosting.server.view", status_code=403, code="PERMISSION_DENIED")
+    exc = UmbrellaCoreError(
+        "Missing permission: hosting.server.view",
+        status_code=403,
+        code="PERMISSION_DENIED",
+    )
     message = HostingCog._format_error(exc)
     assert "don't have permission" in message
 
@@ -42,8 +47,26 @@ def test_format_error_generic():
 
 def test_format_server_list_with_servers():
     servers = [
-        {"id": "s1", "name": "Survival", "node_id": "n1", "template_id": "t1", "template_version": 1, "status": "running", "memory_bytes": 0, "cpu_cores": 1.0},
-        {"id": "s2", "name": "Creative", "node_id": "n1", "template_id": "t1", "template_version": 1, "status": "stopped", "memory_bytes": 0, "cpu_cores": 1.0},
+        {
+            "id": "s1",
+            "name": "Survival",
+            "node_id": "n1",
+            "template_id": "t1",
+            "template_version": 1,
+            "status": "running",
+            "memory_bytes": 0,
+            "cpu_cores": 1.0,
+        },
+        {
+            "id": "s2",
+            "name": "Creative",
+            "node_id": "n1",
+            "template_id": "t1",
+            "template_version": 1,
+            "status": "stopped",
+            "memory_bytes": 0,
+            "cpu_cores": 1.0,
+        },
     ]
     embed = HostingCog._format_server_list(servers)
     assert isinstance(embed, discord.Embed)
@@ -58,7 +81,16 @@ def test_format_server_list_empty():
 
 
 def test_format_server_status():
-    server = {"id": "s1", "name": "Survival", "node_id": "n1", "template_id": "t1", "template_version": 1, "status": "running", "memory_bytes": 2147483648, "cpu_cores": 2.0}
+    server = {
+        "id": "s1",
+        "name": "Survival",
+        "node_id": "n1",
+        "template_id": "t1",
+        "template_version": 1,
+        "status": "running",
+        "memory_bytes": 2147483648,
+        "cpu_cores": 2.0,
+    }
     embed = HostingCog._format_server_status(server)
     assert embed.title == "Survival"
     assert embed.color == discord.Color.green()
@@ -69,7 +101,14 @@ def test_format_server_status():
 
 
 def test_format_server_status_unknown_status_uses_default_color():
-    server = {"id": "s1", "name": "Weird", "status": "provisioning", "node_id": "n1", "memory_bytes": 0, "cpu_cores": 1.0}
+    server = {
+        "id": "s1",
+        "name": "Weird",
+        "status": "provisioning",
+        "node_id": "n1",
+        "memory_bytes": 0,
+        "cpu_cores": 1.0,
+    }
     embed = HostingCog._format_server_status(server)
     assert embed.color == discord.Color.light_grey()
 
@@ -126,7 +165,9 @@ async def test_confirm_view_interaction_check_denies_other_users():
     sent = []
     fake_interaction = SimpleNamespace(
         user=SimpleNamespace(id=456),
-        response=SimpleNamespace(send_message=lambda *a, **k: sent.append((a, k)) or _noop_coro()),
+        response=SimpleNamespace(
+            send_message=lambda *a, **k: sent.append((a, k)) or _noop_coro()
+        ),
     )
     result = await view.interaction_check(fake_interaction)
     assert result is False

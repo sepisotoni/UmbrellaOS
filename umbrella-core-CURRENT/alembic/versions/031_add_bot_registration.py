@@ -8,6 +8,7 @@ Revision ID: 031_add_bot_registration
 Revises:     030_appeal_close_fields
 Create Date: 2026-08-23
 """
+
 import sqlalchemy as sa
 from alembic import op
 

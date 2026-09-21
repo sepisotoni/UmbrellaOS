@@ -6,6 +6,7 @@ via POST /api/v1/anticheat/flag.  The old approach shoehorned flags into
 AITask rows; this model gives violations their own first-class table so
 server_id filtering, per-check aggregation, and VL timelines all work cleanly.
 """
+
 import uuid
 from datetime import datetime
 
@@ -24,12 +25,16 @@ class AnticheatViolation(Base):
     # FK to players.uuid — SET NULL on delete preserves violation
     # history even if the player row is removed.
     player_uuid: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("players.uuid", ondelete="SET NULL"),
-        nullable=True, index=True
+        String(36),
+        ForeignKey("players.uuid", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     player_name: Mapped[str] = mapped_column(String(64), nullable=False)
     # server_id is nullable — old plugin versions do not send it.
-    server_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    server_id: Mapped[str | None] = mapped_column(
+        String(128), nullable=True, index=True
+    )
     check_name: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     verbose: Mapped[str] = mapped_column(Text, nullable=False, default="")
     vl: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

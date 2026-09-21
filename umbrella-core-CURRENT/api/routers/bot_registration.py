@@ -12,6 +12,7 @@ GET  /api/v1/bot/roles      — Dashboard reads role list for role-mention dropd
 
 Auth: require_admin_hmac_or_session (only the bot or a dashboard session).
 """
+
 from __future__ import annotations
 
 import json
@@ -33,6 +34,7 @@ router = APIRouter(prefix="/api/v1/bot", tags=["bot"])
 
 
 # ─── Bot Registration ──────────────────────────────────────────────────────────
+
 
 class BotRegisterRequest(BaseModel):
     callback_url: str
@@ -56,7 +58,9 @@ async def register_bot(
     with the (potentially new) HeavenCloud address.
     """
     if not body.callback_url.startswith(("http://", "https://")):
-        raise HTTPException(status_code=422, detail="callback_url must be an http(s) URL")
+        raise HTTPException(
+            status_code=422, detail="callback_url must be an http(s) URL"
+        )
 
     now = datetime.now(timezone.utc)
     existing = await db.get(BotRegistration, 1)
@@ -97,11 +101,12 @@ async def get_bot_registration(
 
 # ─── Bot Command Manifest ──────────────────────────────────────────────────────
 
+
 class CommandSchema(BaseModel):
     name: str
     description: str
-    args: str          # e.g. "<server_id>" or "[player]" or ""
-    owner_only: bool   # True if require_owner_role() is applied
+    args: str  # e.g. "<server_id>" or "[player]" or ""
+    owner_only: bool  # True if require_owner_role() is applied
 
 
 class CommandManifestRequest(BaseModel):
@@ -146,9 +151,10 @@ async def get_command_manifest(
 
 # ─── Guild Channels ────────────────────────────────────────────────────────────
 
+
 class ChannelSchema(BaseModel):
-    id: str            # Discord snowflake as string
-    name: str          # channel name without #
+    id: str  # Discord snowflake as string
+    name: str  # channel name without #
     category: str | None = None  # parent category name, if any
 
 
@@ -194,8 +200,9 @@ async def get_guild_channels(
 
 # ─── Guild Roles ───────────────────────────────────────────────────────────────
 
+
 class RoleSchema(BaseModel):
-    id: str    # Discord snowflake as string
+    id: str  # Discord snowflake as string
     name: str  # role name (e.g. "Staff", "@everyone")
     color: int = 0  # Discord role color as int (0 = no color)
 

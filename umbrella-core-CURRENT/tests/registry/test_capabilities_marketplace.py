@@ -11,6 +11,7 @@ a plugin therefore uses a plugin_id unique to that test (or uninstalls
 what it installed before returning) so tests in this file don't collide
 with each other via that shared global state.
 """
+
 import base64
 import io
 import json
@@ -25,11 +26,15 @@ from tests.registry.conftest import session_headers_for_role
 
 @pytest.fixture(autouse=True)
 def _plugin_storage_root(tmp_path, monkeypatch):
-    monkeypatch.setattr(get_settings(), "plugin_storage_root", str(tmp_path / "plugins"))
+    monkeypatch.setattr(
+        get_settings(), "plugin_storage_root", str(tmp_path / "plugins")
+    )
     yield
 
 
-def _manifest(plugin_id: str, version: str = "1.0.0", local_name: str = "queue_status") -> dict:
+def _manifest(
+    plugin_id: str, version: str = "1.0.0", local_name: str = "queue_status"
+) -> dict:
     return {
         "schema_version": 1,
         "plugin_id": plugin_id,
@@ -48,7 +53,11 @@ def _manifest(plugin_id: str, version: str = "1.0.0", local_name: str = "queue_s
             }
         ],
         "discord_commands": [
-            {"name": "queue", "description": "Show queue status", "capability": local_name}
+            {
+                "name": "queue",
+                "description": "Show queue status",
+                "capability": local_name,
+            }
         ],
         "dashboard_ui_slots": [
             {"slot": "sidebar.tools", "label": "Queue Status", "capability": local_name}
@@ -60,11 +69,15 @@ def _zip_base64(manifest: dict) -> str:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
         zf.writestr("plugin.json", json.dumps(manifest))
-        zf.writestr("handlers.py", "def queue_status(params):\n    return {'queue_depth': 3}\n")
+        zf.writestr(
+            "handlers.py", "def queue_status(params):\n    return {'queue_depth': 3}\n"
+        )
     return base64.b64encode(buf.getvalue()).decode()
 
 
-async def _publish(client, plugin_id: str, version: str = "1.0.0", local_name: str = "queue_status"):
+async def _publish(
+    client, plugin_id: str, version: str = "1.0.0", local_name: str = "queue_status"
+):
     return await client.post(
         "/api/v1/capabilities/marketplace.listing.publish/invoke",
         json={"zip_base64": _zip_base64(_manifest(plugin_id, version, local_name))},
@@ -113,7 +126,9 @@ async def test_publish_invalid_base64_returns_422(client):
 async def test_list_listings_includes_published_plugin(client):
     await _publish(client, "rest-list-demo")
     response = await client.post(
-        "/api/v1/capabilities/marketplace.listing.list/invoke", json={}, headers=ADMIN_HEADERS
+        "/api/v1/capabilities/marketplace.listing.list/invoke",
+        json={},
+        headers=ADMIN_HEADERS,
     )
     assert response.status_code == 200
     plugin_ids = [listing["plugin_id"] for listing in response.json()]
@@ -155,10 +170,14 @@ async def test_install_then_list_installed(client):
     assert install_response.status_code == 200
     body = install_response.json()
     assert body["installed_version"] == "1.0.0"
-    assert body["registered_capability_names"] == ["plugin.rest-install-demo.queue_status"]
+    assert body["registered_capability_names"] == [
+        "plugin.rest-install-demo.queue_status"
+    ]
 
     list_response = await client.post(
-        "/api/v1/capabilities/marketplace.install.list/invoke", json={}, headers=ADMIN_HEADERS
+        "/api/v1/capabilities/marketplace.install.list/invoke",
+        json={},
+        headers=ADMIN_HEADERS,
     )
     installed_ids = [i["plugin_id"] for i in list_response.json()]
     assert "rest-install-demo" in installed_ids
@@ -224,10 +243,14 @@ async def test_install_new_version_updates_in_place(client):
     assert response.status_code == 200
     body = response.json()
     assert body["installed_version"] == "1.1.0"
-    assert body["registered_capability_names"] == [f"plugin.{plugin_id}.queue_status_v2"]
+    assert body["registered_capability_names"] == [
+        f"plugin.{plugin_id}.queue_status_v2"
+    ]
 
     list_response = await client.post(
-        "/api/v1/capabilities/marketplace.install.list/invoke", json={}, headers=ADMIN_HEADERS
+        "/api/v1/capabilities/marketplace.install.list/invoke",
+        json={},
+        headers=ADMIN_HEADERS,
     )
     matching = [i for i in list_response.json() if i["plugin_id"] == plugin_id]
     assert len(matching) == 1  # updated in place, not a second install row
@@ -258,7 +281,9 @@ async def test_uninstall_removes_from_installed_list(client):
     assert response.json()["uninstalled"] is True
 
     list_response = await client.post(
-        "/api/v1/capabilities/marketplace.install.list/invoke", json={}, headers=ADMIN_HEADERS
+        "/api/v1/capabilities/marketplace.install.list/invoke",
+        json={},
+        headers=ADMIN_HEADERS,
     )
     installed_ids = [i["plugin_id"] for i in list_response.json()]
     assert plugin_id not in installed_ids
@@ -285,10 +310,14 @@ async def test_discord_commands_and_dashboard_slots_reflect_installed_plugin(cli
     )
 
     commands_response = await client.post(
-        "/api/v1/capabilities/marketplace.install.discord_commands/invoke", json={}, headers=ADMIN_HEADERS
+        "/api/v1/capabilities/marketplace.install.discord_commands/invoke",
+        json={},
+        headers=ADMIN_HEADERS,
     )
     assert commands_response.status_code == 200
-    matching_commands = [c for c in commands_response.json() if c["plugin_id"] == plugin_id]
+    matching_commands = [
+        c for c in commands_response.json() if c["plugin_id"] == plugin_id
+    ]
     assert len(matching_commands) == 1
     assert matching_commands[0]["capability_name"] == f"plugin.{plugin_id}.queue_status"
 
@@ -349,20 +378,30 @@ async def test_marketplace_view_permission_denied_for_moderator(client, db_sessi
 # --------------------------------------------------------------------------
 
 
-def _manifest_with_page(plugin_id: str, version: str = "1.0.0", local_name: str = "queue_status") -> dict:
+def _manifest_with_page(
+    plugin_id: str, version: str = "1.0.0", local_name: str = "queue_status"
+) -> dict:
     raw = _manifest(plugin_id, version, local_name)
     raw["page"] = {
         "nav_label": "Queue Tools",
         "nav_icon": "list",
-        "widgets": [{"label": "Queue depth", "capability": local_name, "render_as": "stat_pair"}],
+        "widgets": [
+            {"label": "Queue depth", "capability": local_name, "render_as": "stat_pair"}
+        ],
     }
     return raw
 
 
-async def _publish_with_page(client, plugin_id: str, version: str = "1.0.0", local_name: str = "queue_status"):
+async def _publish_with_page(
+    client, plugin_id: str, version: str = "1.0.0", local_name: str = "queue_status"
+):
     return await client.post(
         "/api/v1/capabilities/marketplace.listing.publish/invoke",
-        json={"zip_base64": _zip_base64(_manifest_with_page(plugin_id, version, local_name))},
+        json={
+            "zip_base64": _zip_base64(
+                _manifest_with_page(plugin_id, version, local_name)
+            )
+        },
         headers=ADMIN_HEADERS,
     )
 
@@ -378,7 +417,9 @@ async def test_pages_and_page_layout_reflect_installed_plugin(client):
     )
 
     pages_response = await client.post(
-        "/api/v1/capabilities/marketplace.install.pages/invoke", json={}, headers=ADMIN_HEADERS
+        "/api/v1/capabilities/marketplace.install.pages/invoke",
+        json={},
+        headers=ADMIN_HEADERS,
     )
     assert pages_response.status_code == 200
     matching_pages = [p for p in pages_response.json() if p["plugin_id"] == plugin_id]
@@ -395,7 +436,10 @@ async def test_pages_and_page_layout_reflect_installed_plugin(client):
     layout_body = layout_response.json()
     assert layout_body["plugin_id"] == plugin_id
     assert len(layout_body["widgets"]) == 1
-    assert layout_body["widgets"][0]["capability_name"] == f"plugin.{plugin_id}.queue_status"
+    assert (
+        layout_body["widgets"][0]["capability_name"]
+        == f"plugin.{plugin_id}.queue_status"
+    )
     assert layout_body["widgets"][0]["render_as"] == "stat_pair"
 
     await client.post(
@@ -419,7 +463,9 @@ async def test_pages_excludes_installed_plugin_with_no_declared_page(client):
     )
 
     pages_response = await client.post(
-        "/api/v1/capabilities/marketplace.install.pages/invoke", json={}, headers=ADMIN_HEADERS
+        "/api/v1/capabilities/marketplace.install.pages/invoke",
+        json={},
+        headers=ADMIN_HEADERS,
     )
     assert all(p["plugin_id"] != plugin_id for p in pages_response.json())
 
@@ -453,7 +499,9 @@ async def test_pages_and_page_layout_denied_for_moderator(client, db_session):
     discovery capability — moderator doesn't get marketplace access."""
     headers = await session_headers_for_role(db_session, "moderator")
     pages_response = await client.post(
-        "/api/v1/capabilities/marketplace.install.pages/invoke", json={}, headers=headers
+        "/api/v1/capabilities/marketplace.install.pages/invoke",
+        json={},
+        headers=headers,
     )
     assert pages_response.status_code == 403
 
@@ -471,7 +519,12 @@ async def test_pages_and_page_layout_denied_for_moderator(client, db_session):
 def _manifest_with_config(plugin_id: str, version: str = "1.0.0") -> dict:
     manifest = _manifest(plugin_id, version)
     manifest["config_fields"] = [
-        {"key": "auto_purge", "type": "boolean", "label": "Auto-purge stale entries", "default_value": False}
+        {
+            "key": "auto_purge",
+            "type": "boolean",
+            "label": "Auto-purge stale entries",
+            "default_value": False,
+        }
     ]
     return manifest
 
@@ -598,10 +651,14 @@ async def test_config_get_allowed_for_member_but_config_set_denied(client, db_se
 
     async with db_session() as db:
         role = await db.scalar(
-            select(Role).where(Role.name == "member").options(selectinload(Role.permissions))
+            select(Role)
+            .where(Role.name == "member")
+            .options(selectinload(Role.permissions))
         )
         perm = await db.scalar(
-            select(Permission).where(Permission.permission_key == "marketplace.install.view")
+            select(Permission).where(
+                Permission.permission_key == "marketplace.install.view"
+            )
         )
         role.permissions.append(perm)
         await db.commit()

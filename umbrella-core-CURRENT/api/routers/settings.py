@@ -1,6 +1,7 @@
 """
 api/routers/settings.py — Settings registry endpoints (owner only).
 """
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
@@ -73,7 +74,9 @@ async def create_or_update_setting(
     """
     actor = auth.username if isinstance(auth, User) else "dashboard"
     if body.value == "***":
-        raise HTTPException(status_code=400, detail="Cannot save masked secret placeholder")
+        raise HTTPException(
+            status_code=400, detail="Cannot save masked secret placeholder"
+        )
     updated = await SettingsService.update(
         db=db,
         key=key,
@@ -94,9 +97,15 @@ async def update_setting(
 ) -> dict:
     actor = auth.username if isinstance(auth, User) else "dashboard"
     if body.value == "***":
-        raise HTTPException(status_code=400, detail="Cannot save masked secret placeholder")
+        raise HTTPException(
+            status_code=400, detail="Cannot save masked secret placeholder"
+        )
     updated = await SettingsService.update(
-        db=db, key=key, new_value=body.value, actor=actor, actor_type="staff",
+        db=db,
+        key=key,
+        new_value=body.value,
+        actor=actor,
+        actor_type="staff",
     )
     if updated is None:
         raise HTTPException(status_code=404, detail=f"Setting '{key}' not found")

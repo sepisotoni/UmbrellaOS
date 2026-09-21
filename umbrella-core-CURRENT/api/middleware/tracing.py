@@ -4,6 +4,7 @@ request (Phase 9, item 2). See services/tracing_service.py for the real
 OpenTelemetry SDK integration and the wire-format-compatibility
 verification writeup.
 """
+
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 

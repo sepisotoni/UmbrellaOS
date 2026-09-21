@@ -2,6 +2,7 @@
 tests/registry/test_capabilities_operational_intelligence.py — REST
 integration tests for crash-risk assessment and NL operational queries.
 """
+
 import pytest
 
 from tests.conftest import ADMIN_HEADERS

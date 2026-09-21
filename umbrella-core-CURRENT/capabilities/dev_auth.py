@@ -51,6 +51,7 @@ granted to a role and audited, real work with no real payoff for a
 capability that's a hard no-op in every environment that check matters
 for.
 """
+
 from __future__ import annotations
 
 import secrets
@@ -123,7 +124,9 @@ class MintTestSessionResult(BaseModel):
     audited=True,
     audit_category="identity",
 )
-async def mint_test_session(ctx: CallContext, params: MintTestSessionParams) -> MintTestSessionResult:
+async def mint_test_session(
+    ctx: CallContext, params: MintTestSessionParams
+) -> MintTestSessionResult:
     settings = get_settings()
     if not settings.debug:
         # See module docstring — 404, not 403, so this looks like a
@@ -148,7 +151,9 @@ async def mint_test_session(ctx: CallContext, params: MintTestSessionParams) -> 
             raise ValidationException(f"Unknown permission key(s): {sorted(unknown)}")
 
     discord_id = f"{_DEV_DISCORD_ID_PREFIX}{params.label}"
-    user_result = await ctx.db.execute(select(User).where(User.discord_id == discord_id))
+    user_result = await ctx.db.execute(
+        select(User).where(User.discord_id == discord_id)
+    )
     user = user_result.scalar_one_or_none()
     if user is None:
         user = User(

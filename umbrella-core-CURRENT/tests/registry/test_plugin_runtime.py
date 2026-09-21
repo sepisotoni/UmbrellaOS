@@ -3,6 +3,7 @@ restoring already-installed plugins' capabilities into a fresh
 CapabilityRegistry/ProcessSandbox at process startup, from PluginInstall
 rows alone.
 """
+
 import io
 import json
 import zipfile
@@ -19,7 +20,9 @@ from services.plugins.source_store import compute_sha256, store_zip
 
 @pytest.fixture(autouse=True)
 def _plugin_storage_root(tmp_path, monkeypatch):
-    monkeypatch.setattr(get_settings(), "plugin_storage_root", str(tmp_path / "plugins"))
+    monkeypatch.setattr(
+        get_settings(), "plugin_storage_root", str(tmp_path / "plugins")
+    )
     yield
 
 
@@ -47,7 +50,9 @@ def _zip_for(manifest: dict) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
         zf.writestr("plugin.json", json.dumps(manifest))
-        zf.writestr("handlers.py", "def queue_status(params):\n    return {'queue_depth': 3}\n")
+        zf.writestr(
+            "handlers.py", "def queue_status(params):\n    return {'queue_depth': 3}\n"
+        )
     return buf.getvalue()
 
 
@@ -76,7 +81,9 @@ async def test_reload_registers_installed_plugin_capability(db_session):
     sandbox = ProcessSandbox(sources={})
 
     async with db_session() as db:
-        registered = await reload_installed_plugins(db, sandbox=sandbox, registry=registry)
+        registered = await reload_installed_plugins(
+            db, sandbox=sandbox, registry=registry
+        )
 
     assert registered == ["plugin.queue-tools.queue_status"]
     assert registry.get("plugin.queue-tools.queue_status") is not None
@@ -88,7 +95,9 @@ async def test_reload_with_no_installs_returns_empty_list(db_session):
     registry = CapabilityRegistry()
     sandbox = ProcessSandbox(sources={})
     async with db_session() as db:
-        registered = await reload_installed_plugins(db, sandbox=sandbox, registry=registry)
+        registered = await reload_installed_plugins(
+            db, sandbox=sandbox, registry=registry
+        )
     assert registered == []
 
 
@@ -101,7 +110,9 @@ async def test_reload_skips_install_with_tampered_hash_but_continues(db_session)
 
     async with db_session() as db:
         result = await db.execute(
-            __import__("sqlalchemy").select(PluginInstall).where(PluginInstall.plugin_id == "broken-plugin")
+            __import__("sqlalchemy")
+            .select(PluginInstall)
+            .where(PluginInstall.plugin_id == "broken-plugin")
         )
         install = result.scalar_one()
         install.sha256_hash = "0" * 64
@@ -110,7 +121,9 @@ async def test_reload_skips_install_with_tampered_hash_but_continues(db_session)
     registry = CapabilityRegistry()
     sandbox = ProcessSandbox(sources={})
     async with db_session() as db:
-        registered = await reload_installed_plugins(db, sandbox=sandbox, registry=registry)
+        registered = await reload_installed_plugins(
+            db, sandbox=sandbox, registry=registry
+        )
 
     assert registered == ["plugin.queue-tools.queue_status"]
     with pytest.raises(Exception):
@@ -127,7 +140,9 @@ async def test_reload_skips_install_with_missing_zip_file(db_session, tmp_path):
     registry = CapabilityRegistry()
     sandbox = ProcessSandbox(sources={})
     async with db_session() as db:
-        registered = await reload_installed_plugins(db, sandbox=sandbox, registry=registry)
+        registered = await reload_installed_plugins(
+            db, sandbox=sandbox, registry=registry
+        )
 
     assert registered == []
 
@@ -140,7 +155,9 @@ async def test_reload_restores_multiple_installed_plugins(db_session):
     registry = CapabilityRegistry()
     sandbox = ProcessSandbox(sources={})
     async with db_session() as db:
-        registered = await reload_installed_plugins(db, sandbox=sandbox, registry=registry)
+        registered = await reload_installed_plugins(
+            db, sandbox=sandbox, registry=registry
+        )
 
     assert set(registered) == {
         "plugin.queue-tools.queue_status",
@@ -150,9 +167,13 @@ async def test_reload_restores_multiple_installed_plugins(db_session):
     assert "another-plugin" in sandbox._sources
 
 
-def _manifest_with_unknown_permission(plugin_id="stale-perm-plugin", version="1.0.0") -> dict:
+def _manifest_with_unknown_permission(
+    plugin_id="stale-perm-plugin", version="1.0.0"
+) -> dict:
     manifest = _manifest_dict(plugin_id, version)
-    manifest["capabilities"][0]["required_permission"] = "this.permission.does.not.exist"
+    manifest["capabilities"][0]["required_permission"] = (
+        "this.permission.does.not.exist"
+    )
     return manifest
 
 
@@ -179,7 +200,9 @@ async def _seed_install_with_manifest(db_session, manifest: dict) -> None:
 
 
 @pytest.mark.asyncio
-async def test_reload_skips_install_referencing_a_permission_that_no_longer_exists(db_session):
+async def test_reload_skips_install_referencing_a_permission_that_no_longer_exists(
+    db_session,
+):
     """FIX ([PLUGIN] subsystem audit): register_plugin_capabilities raises
     PluginRegistrationError (not ManifestValidationError/PluginPackageError)
     when an installed plugin's manifest references a required_permission
@@ -198,7 +221,9 @@ async def test_reload_skips_install_referencing_a_permission_that_no_longer_exis
     sandbox = ProcessSandbox(sources={})
     async with db_session() as db:
         # Must not raise — the whole point of this fix.
-        registered = await reload_installed_plugins(db, sandbox=sandbox, registry=registry)
+        registered = await reload_installed_plugins(
+            db, sandbox=sandbox, registry=registry
+        )
 
     # The valid plugin still loads; the stale one is skipped, not crashed on.
     assert registered == ["plugin.queue-tools.queue_status"]

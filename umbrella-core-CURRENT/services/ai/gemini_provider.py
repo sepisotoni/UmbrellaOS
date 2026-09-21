@@ -1,4 +1,5 @@
 """services/ai/gemini_provider.py — Google Gemini's generateContent API."""
+
 from services.ai.base import HTTPProvider
 
 
@@ -13,7 +14,9 @@ class GeminiProvider(HTTPProvider):
     def _request_headers(self) -> dict:
         return {"x-goog-api-key": self._api_key}
 
-    def _request_body(self, model, system_prompt, user_prompt, max_tokens, temperature) -> dict:
+    def _request_body(
+        self, model, system_prompt, user_prompt, max_tokens, temperature
+    ) -> dict:
         return {
             "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
             "systemInstruction": {"parts": [{"text": system_prompt}]},

@@ -15,6 +15,7 @@ routing to the provider.
 This is deliberately the simplest cog in the project — one command, one
 core call, one embed. No pagination, no confirmation, no role check.
 """
+
 from __future__ import annotations
 
 import logging
@@ -32,7 +33,10 @@ class AskCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    @app_commands.command(name="ask", description="Ask the UmbrellaOS AI a question about the server or community.")
+    @app_commands.command(
+        name="ask",
+        description="Ask the UmbrellaOS AI a question about the server or community.",
+    )
     @app_commands.describe(
         question="What do you want to know?",
         context="Optional background info to help the AI answer better (e.g. 'player was banned last week')",
@@ -48,7 +52,9 @@ class AskCog(commands.Cog):
         try:
             result = await self.bot.core.ask_ai(question, context=context)
         except UmbrellaCoreError as exc:
-            await interaction.followup.send(self._format_error(exc), ephemeral=True, wait=True)
+            await interaction.followup.send(
+                self._format_error(exc), ephemeral=True, wait=True
+            )
             return
 
         await interaction.followup.send(

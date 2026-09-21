@@ -9,6 +9,7 @@ services/ai/provider_factory.py. What lives here is the *routing* layer on
 top of those credentials: which (provider, model) pairs are candidates for
 which task types, and each candidate's independently-tracked health.
 """
+
 import enum
 import uuid
 from datetime import datetime, timezone
@@ -55,23 +56,42 @@ class AIModelConfig(Base):
     # "there is no unique or exclusion constraint matching the ON CONFLICT
     # specification".  The corresponding migration is 043_ai_model_configs_unique.
     __table_args__ = (
-        UniqueConstraint("provider", "model_name", "task_type", name="uq_ai_model_configs_provider_model_task"),
+        UniqueConstraint(
+            "provider",
+            "model_name",
+            "task_type",
+            name="uq_ai_model_configs_provider_model_task",
+        ),
     )
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    provider: Mapped[str] = mapped_column(String(32), nullable=False)  # "openrouter" | "anthropic" | "gemini"
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    provider: Mapped[str] = mapped_column(
+        String(32), nullable=False
+    )  # "openrouter" | "anthropic" | "gemini"
     model_name: Mapped[str] = mapped_column(String(128), nullable=False)
     task_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
-    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
 
     # Health tracking — updated by ModelRouter on every real call, not a
     # separate background health-check process; the router learns a
     # model's health from actually using it.
-    is_healthy: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
-    consecutive_failures: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
-    last_failure_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_healthy: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
+    consecutive_failures: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    last_failure_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_success_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     last_latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
@@ -79,7 +99,9 @@ class AIModelConfig(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<AIModelConfig {self.provider}/{self.model_name} task={self.task_type!r}>"
+        return (
+            f"<AIModelConfig {self.provider}/{self.model_name} task={self.task_type!r}>"
+        )
 
 
 class ConstitutionRule(Base):
@@ -93,12 +115,20 @@ class ConstitutionRule(Base):
 
     __tablename__ = "constitution_rules"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    tier: Mapped[ConstitutionTier] = mapped_column(Enum(ConstitutionTier), nullable=False)
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    tier: Mapped[ConstitutionTier] = mapped_column(
+        Enum(ConstitutionTier), nullable=False
+    )
     title: Mapped[str] = mapped_column(String(128), nullable=False)
     rule_text: Mapped[str] = mapped_column(Text, nullable=False)
-    is_seed_rule: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
-    is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    is_seed_rule: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    is_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
     created_by: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
@@ -119,9 +149,13 @@ class AIDecisionLog(Base):
 
     __tablename__ = "ai_decision_logs"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
     task_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
-    requested_by: Mapped[str | None] = mapped_column(String(64), nullable=True)  # CallContext.actor_id
+    requested_by: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )  # CallContext.actor_id
 
     input_summary: Mapped[str] = mapped_column(Text, nullable=False)
     output_summary: Mapped[str] = mapped_column(Text, nullable=False)
@@ -136,14 +170,18 @@ class AIDecisionLog(Base):
     secondary_model: Mapped[str | None] = mapped_column(String(128), nullable=True)
     dual_review_agreement: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
-    escalated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    escalated: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
 
     # Python-side default, not server_default=func.now() — same
     # microsecond-precision-ordering reasoning as Backup.created_at
     # (ADR-0005); decision logs can plausibly be written in rapid
     # succession by the orchestrator too.
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
     )
 
     def __repr__(self) -> str:

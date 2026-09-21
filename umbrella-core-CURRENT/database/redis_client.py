@@ -5,6 +5,7 @@ Mirrors database/engine.py's get_db pattern. Constructed from the same
 settings.redis_url the rest of the app already uses (see main.py's
 rate-limiter wiring and services/rate_limit_service.py).
 """
+
 from redis.asyncio import Redis, from_url
 
 from config.settings import get_settings

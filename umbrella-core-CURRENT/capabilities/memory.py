@@ -2,6 +2,7 @@
 capabilities/memory.py — Memory domain capabilities (Phase 5), ported from
 Moo-assistant's bot/services/memory_service.py.
 """
+
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
@@ -47,8 +48,12 @@ class SetServerFactParams(BaseModel):
     reversible=True,
 )
 async def set_server_fact(ctx: CallContext, params: SetServerFactParams) -> EntryResult:
-    await MemoryService.set_server_fact(ctx.db, fact_key=params.fact_key, value=params.value)
-    entry = await MemoryRepository.get(ctx.db, MemoryScope.SERVER, f"fact:{params.fact_key}")
+    await MemoryService.set_server_fact(
+        ctx.db, fact_key=params.fact_key, value=params.value
+    )
+    entry = await MemoryRepository.get(
+        ctx.db, MemoryScope.SERVER, f"fact:{params.fact_key}"
+    )
     return _entry_to_result(entry)
 
 
@@ -70,11 +75,11 @@ class GetServerFactResult(BaseModel):
     reversible=True,
     audited=False,
 )
-async def get_server_fact(ctx: CallContext, params: GetServerFactParams) -> GetServerFactResult:
+async def get_server_fact(
+    ctx: CallContext, params: GetServerFactParams
+) -> GetServerFactResult:
     value = await MemoryService.get_server_fact(ctx.db, fact_key=params.fact_key)
     return GetServerFactResult(value=value)
-
-
 
 
 class ListServerFactsResult(BaseModel):
@@ -91,7 +96,9 @@ class ListServerFactsResult(BaseModel):
     reversible=True,
     audited=False,
 )
-async def list_server_facts(ctx: CallContext, params: NoParams) -> ListServerFactsResult:
+async def list_server_facts(
+    ctx: CallContext, params: NoParams
+) -> ListServerFactsResult:
     entries = await MemoryService.list_server_facts(ctx.db)
     return ListServerFactsResult(facts=[_entry_to_result(e) for e in entries])
 
@@ -118,9 +125,15 @@ class RecordRecurringParams(BaseModel):
     destructive=False,
     reversible=True,
 )
-async def record_recurring(ctx: CallContext, params: RecordRecurringParams) -> EntryResult:
-    await MemoryService.record_recurring(ctx.db, topic_key=params.topic_key, resolution=params.resolution)
-    entry = await MemoryRepository.get(ctx.db, MemoryScope.OPERATIONAL, f"recurring:{params.topic_key}")
+async def record_recurring(
+    ctx: CallContext, params: RecordRecurringParams
+) -> EntryResult:
+    await MemoryService.record_recurring(
+        ctx.db, topic_key=params.topic_key, resolution=params.resolution
+    )
+    entry = await MemoryRepository.get(
+        ctx.db, MemoryScope.OPERATIONAL, f"recurring:{params.topic_key}"
+    )
     return _entry_to_result(entry)
 
 
@@ -142,7 +155,9 @@ class TopRecurringResult(BaseModel):
     reversible=True,
     audited=False,
 )
-async def top_recurring(ctx: CallContext, params: TopRecurringParams) -> TopRecurringResult:
+async def top_recurring(
+    ctx: CallContext, params: TopRecurringParams
+) -> TopRecurringResult:
     entries = await MemoryService.top_recurring(ctx.db, limit=params.limit)
     return TopRecurringResult(entries=[_entry_to_result(e) for e in entries])
 

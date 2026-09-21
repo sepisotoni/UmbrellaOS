@@ -3,6 +3,7 @@ capabilities/knowledge.py — Knowledge base capabilities (Phase 5), ported
 from Moo-assistant's bot/knowledge/*.py. See services/knowledge/service.py's
 module docstring for the merge/idempotency-fix rationale.
 """
+
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
@@ -84,7 +85,10 @@ async def index_entry(ctx: CallContext, params: IndexEntryParams) -> IndexEntryR
 
 
 class SearchParams(BaseModel):
-    query: str = Field(default="", description="Keyword to search for; empty returns most recent entries")
+    query: str = Field(
+        default="",
+        description="Keyword to search for; empty returns most recent entries",
+    )
     limit: int = Field(default=5, ge=1, le=20)
 
 
@@ -134,7 +138,9 @@ class ProposeCorrectionParams(BaseModel):
     destructive=False,
     reversible=True,
 )
-async def propose_correction(ctx: CallContext, params: ProposeCorrectionParams) -> EntryResult:
+async def propose_correction(
+    ctx: CallContext, params: ProposeCorrectionParams
+) -> EntryResult:
     entry = await KnowledgeService.propose_correction(
         ctx.db,
         original_entry_id=params.original_entry_id,
@@ -151,8 +157,6 @@ async def propose_correction(ctx: CallContext, params: ProposeCorrectionParams) 
 # --------------------------------------------------------------------------
 # knowledge.correction.list_pending
 # --------------------------------------------------------------------------
-
-
 
 
 class ListPendingResult(BaseModel):
@@ -196,7 +200,9 @@ class ReviewCorrectionParams(BaseModel):
     reversible=True,
 )
 async def approve(ctx: CallContext, params: ReviewCorrectionParams) -> EntryResult:
-    entry = await KnowledgeService.approve(ctx.db, params.entry_id, reviewed_by=ctx.actor_id)
+    entry = await KnowledgeService.approve(
+        ctx.db, params.entry_id, reviewed_by=ctx.actor_id
+    )
     if entry is None:
         raise ResourceNotFoundException("Knowledge entry", params.entry_id)
     return _entry_to_result(entry)
@@ -212,7 +218,9 @@ async def approve(ctx: CallContext, params: ReviewCorrectionParams) -> EntryResu
     reversible=True,
 )
 async def reject(ctx: CallContext, params: ReviewCorrectionParams) -> EntryResult:
-    entry = await KnowledgeService.reject(ctx.db, params.entry_id, reviewed_by=ctx.actor_id)
+    entry = await KnowledgeService.reject(
+        ctx.db, params.entry_id, reviewed_by=ctx.actor_id
+    )
     if entry is None:
         raise ResourceNotFoundException("Knowledge entry", params.entry_id)
     return _entry_to_result(entry)

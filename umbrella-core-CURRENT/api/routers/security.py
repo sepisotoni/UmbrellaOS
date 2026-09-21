@@ -4,6 +4,7 @@ events and threat-detection signal history (Phase 9, item 4). Thin
 delegate to `platform.security.list_events`, same pattern as
 api/routers/audit.py.
 """
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 

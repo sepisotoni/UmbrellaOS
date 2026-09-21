@@ -25,6 +25,7 @@ of the same topic get re-POSTed too if even one subscriber's delivery
 fails - documented as a deliberate at-least-once trade-off in the design
 doc referenced above, not an oversight.
 """
+
 from __future__ import annotations
 
 import logging
@@ -32,7 +33,11 @@ import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.events.bus import EventBus
-from services.webhooks.service import WebhookDeliveryService, WebhookDeliveryError, WebhookService
+from services.webhooks.service import (
+    WebhookDeliveryService,
+    WebhookDeliveryError,
+    WebhookService,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -40,11 +45,15 @@ logger = logging.getLogger(__name__)
 async def _log_staff_escalation_created(payload: dict, db: AsyncSession) -> None:
     logger.info(
         "event bus: staff escalation created (source=%s, escalation_id=%s, confidence=%s)",
-        payload.get("source"), payload.get("escalation_id"), payload.get("confidence"),
+        payload.get("source"),
+        payload.get("escalation_id"),
+        payload.get("confidence"),
     )
 
 
-async def _deliver_webhooks(payload: dict, db: AsyncSession, topic: str, event_id: str) -> None:
+async def _deliver_webhooks(
+    payload: dict, db: AsyncSession, topic: str, event_id: str
+) -> None:
     subscriptions = await WebhookService.list_active_for_topic(db, topic)
     if not subscriptions:
         return

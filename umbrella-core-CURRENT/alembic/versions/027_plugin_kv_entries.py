@@ -7,6 +7,7 @@ Revision ID: 027_plugin_kv_entries
 Revises: 026_dashboard_layouts
 Create Date: 2026-08-12
 """
+
 import sqlalchemy as sa
 from alembic import op
 
@@ -38,7 +39,9 @@ def upgrade() -> None:
         ),
         sa.UniqueConstraint("plugin_id", "key", name="uq_plugin_kv_entries_plugin_key"),
     )
-    op.create_index("ix_plugin_kv_entries_plugin_id", "plugin_kv_entries", ["plugin_id"])
+    op.create_index(
+        "ix_plugin_kv_entries_plugin_id", "plugin_kv_entries", ["plugin_id"]
+    )
 
 
 def downgrade() -> None:

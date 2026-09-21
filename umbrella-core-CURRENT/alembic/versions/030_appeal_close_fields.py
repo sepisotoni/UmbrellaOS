@@ -15,6 +15,7 @@ Revision ID: 030_appeal_close_fields
 Revises:     029_feature_flags
 Create Date: 2026-08-22
 """
+
 import sqlalchemy as sa
 from alembic import op
 

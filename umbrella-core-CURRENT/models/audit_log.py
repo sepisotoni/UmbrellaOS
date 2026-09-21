@@ -12,6 +12,7 @@ Design decisions:
 - details_json stores arbitrary context as a JSON string so
   we never lose information, even for future action types.
 """
+
 import uuid
 from datetime import datetime
 from sqlalchemy import String, Text, DateTime, func

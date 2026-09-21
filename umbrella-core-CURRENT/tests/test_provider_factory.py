@@ -3,6 +3,7 @@ tests/test_provider_factory.py - Tests for services/ai/provider_factory.py:
 proves providers are actually toggled on/off and keyed from the DB-backed
 Setting model, which is what makes them dashboard-configurable at runtime.
 """
+
 import pytest
 
 import services.settings_service as settings_service_module
@@ -38,7 +39,9 @@ async def test_build_fails_for_unknown_provider(db_session):
 async def test_build_fails_when_disabled(db_session):
     async with db_session() as db:
         await SettingsService.update(db, "ai.anthropic_enabled", "false", actor="test")
-        await SettingsService.update(db, "ai.anthropic_api_key", "sk-test-key", actor="test")
+        await SettingsService.update(
+            db, "ai.anthropic_api_key", "sk-test-key", actor="test"
+        )
         with pytest.raises(ProviderError, match="disabled"):
             await ProviderFactory.build(db, "anthropic")
 
@@ -56,7 +59,9 @@ async def test_build_fails_when_no_key_configured(db_session):
 async def test_build_succeeds_when_enabled_and_keyed(db_session):
     async with db_session() as db:
         await SettingsService.update(db, "ai.anthropic_enabled", "true", actor="test")
-        await SettingsService.update(db, "ai.anthropic_api_key", "sk-real-looking-key", actor="test")
+        await SettingsService.update(
+            db, "ai.anthropic_api_key", "sk-real-looking-key", actor="test"
+        )
         provider = await ProviderFactory.build(db, "anthropic")
         assert isinstance(provider, AnthropicProvider)
 
@@ -79,7 +84,9 @@ async def test_available_providers_reflects_toggles(db_session):
 
 
 @pytest.mark.asyncio
-async def test_toggling_a_provider_off_removes_it_from_available_immediately(db_session):
+async def test_toggling_a_provider_off_removes_it_from_available_immediately(
+    db_session,
+):
     async with db_session() as db:
         await SettingsService.update(db, "ai.anthropic_api_key", "sk-key", actor="test")
         assert "anthropic" in await ProviderFactory.available_providers(db)

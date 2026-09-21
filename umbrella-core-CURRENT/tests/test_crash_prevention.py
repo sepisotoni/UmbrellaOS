@@ -2,13 +2,17 @@
 tests/test_crash_prevention.py — Tests for
 services/operational_intelligence/crash_prevention.py.
 """
+
 import datetime as dt
 
 import pytest
 
 from config import get_settings
 from models.server_metrics import ServerMetricSnapshot
-from services.operational_intelligence.crash_prevention import CrashRiskLevel, assess_crash_risk
+from services.operational_intelligence.crash_prevention import (
+    CrashRiskLevel,
+    assess_crash_risk,
+)
 
 
 async def _add_snapshots(db, server_id: str, tps_values: list[float]):
@@ -16,7 +20,11 @@ async def _add_snapshots(db, server_id: str, tps_values: list[float]):
     for i, tps in enumerate(tps_values):
         # oldest first, spaced one minute apart, all within the lookback window
         recorded_at = now - dt.timedelta(minutes=(len(tps_values) - i))
-        db.add(ServerMetricSnapshot(server_id=server_id, tps=tps, online_count=5, recorded_at=recorded_at))
+        db.add(
+            ServerMetricSnapshot(
+                server_id=server_id, tps=tps, online_count=5, recorded_at=recorded_at
+            )
+        )
     await db.flush()
 
 
@@ -37,7 +45,9 @@ async def test_no_risk_for_stable_healthy_tps(db_session):
 
 
 @pytest.mark.asyncio
-async def test_critical_when_current_tps_below_critical_threshold(db_session, monkeypatch):
+async def test_critical_when_current_tps_below_critical_threshold(
+    db_session, monkeypatch
+):
     monkeypatch.setattr(get_settings(), "crash_prevention_critical_tps", 10.0)
     async with db_session() as db:
         await _add_snapshots(db, "srv-3", [19.0, 15.0, 12.0, 8.0, 5.0])
@@ -47,7 +57,9 @@ async def test_critical_when_current_tps_below_critical_threshold(db_session, mo
 
 
 @pytest.mark.asyncio
-async def test_watch_when_trending_down_and_below_watch_threshold(db_session, monkeypatch):
+async def test_watch_when_trending_down_and_below_watch_threshold(
+    db_session, monkeypatch
+):
     monkeypatch.setattr(get_settings(), "crash_prevention_watch_tps", 18.0)
     monkeypatch.setattr(get_settings(), "crash_prevention_critical_tps", 10.0)
     monkeypatch.setattr(get_settings(), "crash_prevention_trend_drop_threshold", 2.0)
@@ -59,7 +71,9 @@ async def test_watch_when_trending_down_and_below_watch_threshold(db_session, mo
 
 
 @pytest.mark.asyncio
-async def test_no_watch_if_trending_down_but_still_above_watch_threshold(db_session, monkeypatch):
+async def test_no_watch_if_trending_down_but_still_above_watch_threshold(
+    db_session, monkeypatch
+):
     """A mild dip that's still comfortably above the watch threshold
     shouldn't alarm anyone - trending down alone isn't sufficient."""
     monkeypatch.setattr(get_settings(), "crash_prevention_watch_tps", 15.0)

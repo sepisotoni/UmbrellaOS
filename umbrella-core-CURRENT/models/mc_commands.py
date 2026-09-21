@@ -1,6 +1,7 @@
 """
 models/mc_commands.py — Minecraft command execution model.
 """
+
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, Integer, String, Text, func
@@ -11,6 +12,7 @@ from database.engine import Base
 
 class MCCommand(Base):
     """Queued Minecraft commands from Discord."""
+
     __tablename__ = "mc_commands"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -32,7 +34,11 @@ class MCCommand(Base):
     # unchanged — anyone not yet passing a real server_id keeps working
     # exactly as before, scoped to one implicit "default" queue.
     server_id: Mapped[str] = mapped_column(
-        String(64), nullable=False, default="default", server_default="default", index=True
+        String(64),
+        nullable=False,
+        default="default",
+        server_default="default",
+        index=True,
     )
     requested_by_discord_id: Mapped[str] = mapped_column(String(64), nullable=False)
     requested_by_username: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -44,7 +50,9 @@ class MCCommand(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     def __repr__(self) -> str:
         return f"<MCCommand id={self.id!r} command={self.command!r} status={self.status!r}>"

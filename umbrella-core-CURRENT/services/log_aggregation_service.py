@@ -17,6 +17,7 @@ lines). `run_log_flush_loop()` is the actual async consumer, wired into
 main.py's lifespan with the same stop_event pattern as the scheduler,
 sampler, and event-dispatcher loops already there.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -92,13 +93,17 @@ async def flush_pending(db: AsyncSession, *, max_batch: int = 200) -> int:
     return flushed
 
 
-async def run_log_flush_loop(stop_event: asyncio.Event, *, interval_seconds: float = 2.0) -> None:
+async def run_log_flush_loop(
+    stop_event: asyncio.Event, *, interval_seconds: float = 2.0
+) -> None:
     while not stop_event.is_set():
         try:
             async with AsyncSessionLocal() as db:
                 await flush_pending(db)
         except Exception:
-            logger.exception("log flush loop: error flushing queued log records, will retry next interval")
+            logger.exception(
+                "log flush loop: error flushing queued log records, will retry next interval"
+            )
 
         try:
             await asyncio.wait_for(stop_event.wait(), timeout=interval_seconds)
@@ -126,7 +131,12 @@ async def search(
     why this isn't a dedicated FTS index)."""
     stmt = select(LogEntry).order_by(LogEntry.created_at.desc()).limit(min(limit, 500))
     if query:
-        stmt = stmt.where(or_(LogEntry.message.ilike(f"%{query}%"), LogEntry.logger_name.ilike(f"%{query}%")))
+        stmt = stmt.where(
+            or_(
+                LogEntry.message.ilike(f"%{query}%"),
+                LogEntry.logger_name.ilike(f"%{query}%"),
+            )
+        )
     if level:
         stmt = stmt.where(LogEntry.level == level.upper())
     if source:

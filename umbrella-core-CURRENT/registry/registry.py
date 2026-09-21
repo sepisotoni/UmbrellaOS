@@ -16,6 +16,7 @@ convention, that:
 
 regardless of which of REST/CLI/Discord/AI initiated the call.
 """
+
 from __future__ import annotations
 
 import logging

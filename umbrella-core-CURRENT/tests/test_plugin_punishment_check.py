@@ -7,6 +7,7 @@ Phase 13 Step 2. New endpoint — see api/routers/plugin.py for why it
 exists (the plugin has no RBAC identity to present against the real
 punishments.view-gated endpoint).
 """
+
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -46,7 +47,9 @@ async def test_active_ban_check_no_punishments_returns_not_banned(client, test_p
 
 
 @pytest.mark.asyncio
-async def test_active_ban_check_permanent_ban_returns_banned(client, db_session, test_player):
+async def test_active_ban_check_permanent_ban_returns_banned(
+    client, db_session, test_player
+):
     async with db_session() as db:
         db.add(
             Punishment(
@@ -71,7 +74,9 @@ async def test_active_ban_check_permanent_ban_returns_banned(client, db_session,
 
 
 @pytest.mark.asyncio
-async def test_active_ban_check_active_tempban_returns_banned(client, db_session, test_player):
+async def test_active_ban_check_active_tempban_returns_banned(
+    client, db_session, test_player
+):
     async with db_session() as db:
         db.add(
             Punishment(
@@ -95,7 +100,9 @@ async def test_active_ban_check_active_tempban_returns_banned(client, db_session
 
 
 @pytest.mark.asyncio
-async def test_active_ban_check_expired_tempban_returns_not_banned(client, db_session, test_player):
+async def test_active_ban_check_expired_tempban_returns_not_banned(
+    client, db_session, test_player
+):
     async with db_session() as db:
         db.add(
             Punishment(
@@ -118,7 +125,9 @@ async def test_active_ban_check_expired_tempban_returns_not_banned(client, db_se
 
 
 @pytest.mark.asyncio
-async def test_active_ban_check_revoked_ban_returns_not_banned(client, db_session, test_player):
+async def test_active_ban_check_revoked_ban_returns_not_banned(
+    client, db_session, test_player
+):
     async with db_session() as db:
         db.add(
             Punishment(
@@ -140,7 +149,9 @@ async def test_active_ban_check_revoked_ban_returns_not_banned(client, db_sessio
 
 
 @pytest.mark.asyncio
-async def test_active_ban_check_mute_does_not_count_as_ban(client, db_session, test_player):
+async def test_active_ban_check_mute_does_not_count_as_ban(
+    client, db_session, test_player
+):
     """A mute or warn should never block a join — only ban/tempban do."""
     async with db_session() as db:
         db.add(
@@ -163,7 +174,9 @@ async def test_active_ban_check_mute_does_not_count_as_ban(client, db_session, t
 
 
 @pytest.mark.asyncio
-async def test_active_ban_check_only_matches_requested_player(client, db_session, test_player):
+async def test_active_ban_check_only_matches_requested_player(
+    client, db_session, test_player
+):
     async with db_session() as db:
         db.add(
             Punishment(
@@ -223,4 +236,3 @@ async def test_active_ban_check_permanent_ban_takes_priority_over_tempban(
     data = response.json()
     assert data["banned"] is True
     assert data["punishment"]["expires_at"] is None
-

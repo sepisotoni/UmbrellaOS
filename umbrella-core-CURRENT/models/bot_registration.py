@@ -4,6 +4,7 @@ webhook callback URL. Core reads this when pushing events to the bot
 (Phase 16B Task B). Always id=1; upserted via POST /api/v1/bot/register
 on bot startup so restarts overwrite stale URLs automatically.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone

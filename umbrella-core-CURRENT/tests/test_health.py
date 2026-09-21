@@ -3,6 +3,7 @@ tests/test_health.py — Tests for GET /health
 
 Health is public (no auth required).
 """
+
 from unittest.mock import AsyncMock
 
 import fakeredis.aioredis

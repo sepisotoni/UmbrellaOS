@@ -8,6 +8,7 @@ self.poll_escalations.start(), which requires one - see the cog's own
 module docstring for why that's the correct, standard discord.py
 pattern), so only the static method is exercised here.
 """
+
 import discord
 import pytest
 
@@ -35,13 +36,27 @@ def test_format_escalation_known_source_label():
 
 
 def test_format_escalation_unknown_source_falls_back_to_raw_value():
-    escalation = {"id": "esc-2", "source": "some_new_domain", "summary": "x", "confidence": None, "resolved": False, "related_report_id": None}
+    escalation = {
+        "id": "esc-2",
+        "source": "some_new_domain",
+        "summary": "x",
+        "confidence": None,
+        "resolved": False,
+        "related_report_id": None,
+    }
     embed = NotificationsCog._format_escalation(escalation)
     assert "some_new_domain" in embed.title
 
 
 def test_format_escalation_omits_optional_fields_when_absent():
-    escalation = {"id": "esc-3", "source": "investigation", "summary": "y", "confidence": None, "resolved": False, "related_report_id": None}
+    escalation = {
+        "id": "esc-3",
+        "source": "investigation",
+        "summary": "y",
+        "confidence": None,
+        "resolved": False,
+        "related_report_id": None,
+    }
     embed = NotificationsCog._format_escalation(escalation)
     field_names = {f.name for f in embed.fields}
     assert "AI confidence" not in field_names

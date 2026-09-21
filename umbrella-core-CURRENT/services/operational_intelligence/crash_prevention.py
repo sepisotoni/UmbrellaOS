@@ -16,6 +16,7 @@ last 15 minutes") is more useful for an operational alert than a more
 sophisticated model whose reasoning is opaque, especially with the
 relatively small, noisy sample sizes a single Minecraft server produces.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -41,14 +42,18 @@ class CrashRiskAssessment:
     server_id: str
     risk_level: CrashRiskLevel
     current_tps: float | None
-    trend_delta: float | None  # negative means declining (2nd-half avg minus 1st-half avg)
+    trend_delta: (
+        float | None
+    )  # negative means declining (2nd-half avg minus 1st-half avg)
     samples_analyzed: int
     reasoning: str
 
 
 async def assess_crash_risk(db: AsyncSession, server_id: str) -> CrashRiskAssessment:
     settings = get_settings()
-    since = dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=settings.crash_prevention_lookback_minutes)
+    since = dt.datetime.now(dt.timezone.utc) - dt.timedelta(
+        minutes=settings.crash_prevention_lookback_minutes
+    )
     snapshots = await recent_snapshots(db, server_id, since=since)
 
     if len(snapshots) < settings.crash_prevention_min_samples:

@@ -21,6 +21,7 @@ multi-server fleet's plugin instances each only see and execute commands
 meant for their own server — see models/mc_commands.py's column docstring
 for the bug this fixes ([PLUGIN] subsystem audit).
 """
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -80,7 +81,7 @@ async def create_mc_command(
     """
     if not body.command or not body.command.strip():
         raise HTTPException(status_code=400, detail="Command cannot be empty")
-    
+
     # Create MC command record
     mc_command = MCCommand(
         command=body.command.strip(),
@@ -92,7 +93,7 @@ async def create_mc_command(
     )
     db.add(mc_command)
     await db.flush()
-    
+
     # Create audit log entry
     await create_audit_log(
         db=db,
@@ -106,10 +107,10 @@ async def create_mc_command(
             "requested_by": body.requested_by_username,
         },
     )
-    
+
     await db.commit()
     await db.refresh(mc_command)
-    
+
     return MCCommandResponse.model_validate(mc_command)
 
 
@@ -147,7 +148,7 @@ async def get_pending_mc_commands(
         )
     )
     commands = result.scalars().all()
-    
+
     return [MCCommandResponse.model_validate(cmd) for cmd in commands]
 
 
@@ -166,26 +167,24 @@ async def complete_mc_command(
     Auth: X-Plugin-Key — see get_pending_mc_commands docstring above for
     why this changed from require_admin_key (Phase 13 Step 2).
     """
-    result = await db.execute(
-        select(MCCommand).where(MCCommand.id == command_id)
-    )
+    result = await db.execute(select(MCCommand).where(MCCommand.id == command_id))
     mc_command = result.scalar_one_or_none()
-    
+
     if not mc_command:
         raise HTTPException(status_code=404, detail="MC command not found")
-    
+
     if mc_command.status != "pending":
         raise HTTPException(
             status_code=400,
             detail=f"Command already has status: {mc_command.status}",
         )
-    
+
     # Update command status
     mc_command.status = "completed" if body.success else "failed"
     mc_command.output = body.output
     mc_command.success = body.success
     mc_command.completed_at = datetime.now(timezone.utc)
-    
+
     # Create audit log entry
     await create_audit_log(
         db=db,
@@ -199,7 +198,7 @@ async def complete_mc_command(
             "output": body.output,
         },
     )
-    
+
     await db.commit()
-    
+
     return {"status": "ok", "message": "Command marked as completed"}

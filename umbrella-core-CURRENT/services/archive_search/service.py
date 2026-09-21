@@ -26,6 +26,7 @@ false sense of security, and a stubbed "never visible" check would make
 the capability pointless. Wire it in once a live guild/channel-permission
 mirror exists.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass

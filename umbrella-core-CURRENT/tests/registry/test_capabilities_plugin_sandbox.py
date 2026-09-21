@@ -10,6 +10,7 @@ capabilities' own query/permission/pagination logic, not sandbox
 execution semantics (that's tests/registry/test_plugin_execution_telemetry.py's
 job, which exercises real forked-process telemetry end to end).
 """
+
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -153,9 +154,28 @@ async def test_execution_detail_unknown_id_returns_404(client, db_session):
 @pytest.mark.asyncio
 async def test_profile_aggregates_per_plugin(client, db_session):
     headers = await session_headers_for_role(db_session, "owner")
-    await _seed(db_session, plugin_id="plugin-a", wall_time_ms=10.0, peak_memory_bytes=1_000_000, outcome="success")
-    await _seed(db_session, plugin_id="plugin-a", wall_time_ms=20.0, peak_memory_bytes=3_000_000, outcome="error", error_detail="x")
-    await _seed(db_session, plugin_id="plugin-b", wall_time_ms=5.0, peak_memory_bytes=2_000_000, outcome="success")
+    await _seed(
+        db_session,
+        plugin_id="plugin-a",
+        wall_time_ms=10.0,
+        peak_memory_bytes=1_000_000,
+        outcome="success",
+    )
+    await _seed(
+        db_session,
+        plugin_id="plugin-a",
+        wall_time_ms=20.0,
+        peak_memory_bytes=3_000_000,
+        outcome="error",
+        error_detail="x",
+    )
+    await _seed(
+        db_session,
+        plugin_id="plugin-b",
+        wall_time_ms=5.0,
+        peak_memory_bytes=2_000_000,
+        outcome="success",
+    )
 
     response = await client.post(
         "/api/v1/capabilities/plugin.sandbox.profile/invoke",

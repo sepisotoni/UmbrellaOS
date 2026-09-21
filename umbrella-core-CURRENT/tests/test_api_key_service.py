@@ -6,7 +6,9 @@ from services.api_key_service import ApiKeyError, ApiKeyService
 @pytest.mark.asyncio
 async def test_create_api_key_returns_plaintext_once(db_session):
     async with db_session() as db:
-        key, plaintext = await ApiKeyService.create_api_key(db, "bot-key", ["hosting.server.view"])
+        key, plaintext = await ApiKeyService.create_api_key(
+            db, "bot-key", ["hosting.server.view"]
+        )
         await db.commit()
         assert plaintext.startswith("umbr_")
         assert key.key_prefix == plaintext[:12]
@@ -23,7 +25,9 @@ async def test_create_api_key_rejects_wildcard_permission(db_session):
 @pytest.mark.asyncio
 async def test_verify_api_key_round_trip(db_session):
     async with db_session() as db:
-        _, plaintext = await ApiKeyService.create_api_key(db, "bot-key", ["hosting.server.view"])
+        _, plaintext = await ApiKeyService.create_api_key(
+            db, "bot-key", ["hosting.server.view"]
+        )
         await db.commit()
 
     async with db_session() as db:
@@ -43,7 +47,9 @@ async def test_verify_rejects_unknown_key(db_session):
 @pytest.mark.asyncio
 async def test_verify_rejects_revoked_key(db_session):
     async with db_session() as db:
-        key, plaintext = await ApiKeyService.create_api_key(db, "bot-key", ["hosting.server.view"])
+        key, plaintext = await ApiKeyService.create_api_key(
+            db, "bot-key", ["hosting.server.view"]
+        )
         await db.commit()
         key_id = key.id
 
@@ -73,7 +79,9 @@ async def test_verify_rejects_expired_key(db_session):
 async def test_revoke_unknown_key_raises_404(db_session):
     async with db_session() as db:
         with pytest.raises(ApiKeyError):
-            await ApiKeyService.revoke_api_key(db, "00000000-0000-0000-0000-000000000000")
+            await ApiKeyService.revoke_api_key(
+                db, "00000000-0000-0000-0000-000000000000"
+            )
 
 
 @pytest.mark.asyncio

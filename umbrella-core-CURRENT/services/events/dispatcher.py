@@ -31,6 +31,7 @@ Dispatch semantics, stated plainly:
   `next_attempt_at` — see models/events.py's docstring for why that
   column exists beyond the locked decision's original field list.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -44,7 +45,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import AsyncSessionLocal
 from models.events import Event
 from services.events.bus import EventBus
-from services.metrics_service import events_dispatched_total, events_dispatch_failed_total
+from services.metrics_service import (
+    events_dispatched_total,
+    events_dispatch_failed_total,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -56,13 +60,16 @@ _BACKOFF_MAX_SECONDS = 300
 
 
 def _backoff_seconds(attempts: int) -> int:
-    return min(_BACKOFF_BASE_SECONDS * (2 ** attempts), _BACKOFF_MAX_SECONDS)
+    return min(_BACKOFF_BASE_SECONDS * (2**attempts), _BACKOFF_MAX_SECONDS)
 
 
 class EventDispatcher:
     @staticmethod
     async def dispatch_pending(
-        db: AsyncSession, *, batch_size: int = DEFAULT_BATCH_SIZE, now: datetime | None = None
+        db: AsyncSession,
+        *,
+        batch_size: int = DEFAULT_BATCH_SIZE,
+        now: datetime | None = None,
     ) -> list[str]:
         """Dispatches up to `batch_size` eligible undispatched events.
         Returns the ids of events successfully dispatched this call (not
@@ -102,10 +109,15 @@ class EventDispatcher:
             except Exception as exc:  # noqa: BLE001 - a handler's failure must not take the dispatcher down
                 event.attempts += 1
                 event.last_error = str(exc)[:2000]
-                event.next_attempt_at = now + timedelta(seconds=_backoff_seconds(event.attempts))
+                event.next_attempt_at = now + timedelta(
+                    seconds=_backoff_seconds(event.attempts)
+                )
                 logger.exception(
                     "event dispatcher: handler failed for event %s (topic=%s), attempt %d, retrying in %ds",
-                    event.id, event.topic, event.attempts, _backoff_seconds(event.attempts),
+                    event.id,
+                    event.topic,
+                    event.attempts,
+                    _backoff_seconds(event.attempts),
                 )
                 events_dispatch_failed_total.inc(topic=event.topic)
                 continue
@@ -118,7 +130,8 @@ class EventDispatcher:
 
 
 async def run_event_dispatcher_loop(
-    stop_event: asyncio.Event, poll_interval_seconds: int = DEFAULT_POLL_INTERVAL_SECONDS
+    stop_event: asyncio.Event,
+    poll_interval_seconds: int = DEFAULT_POLL_INTERVAL_SECONDS,
 ) -> None:
     """Runs until stop_event is set. Each iteration opens its own DB
     session (not one held across the whole loop's lifetime), same
@@ -129,12 +142,18 @@ async def run_event_dispatcher_loop(
                 dispatched = await EventDispatcher.dispatch_pending(db)
                 await db.commit()
                 if dispatched:
-                    logger.info("event dispatcher: dispatched %d event(s): %s", len(dispatched), dispatched)
+                    logger.info(
+                        "event dispatcher: dispatched %d event(s): %s",
+                        len(dispatched),
+                        dispatched,
+                    )
         except Exception:
             # Same outer guard as run_scheduler_loop: a failure in the
             # polling infrastructure itself (e.g. a DB connectivity blip)
             # must not kill the background task permanently.
-            logger.exception("event dispatcher: error dispatching pending events, will retry next interval")
+            logger.exception(
+                "event dispatcher: error dispatching pending events, will retry next interval"
+            )
 
         try:
             await asyncio.wait_for(stop_event.wait(), timeout=poll_interval_seconds)

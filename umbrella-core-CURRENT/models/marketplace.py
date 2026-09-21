@@ -25,6 +25,7 @@ because they answer three different questions:
   returned, so uninstall/update can unregister precisely what was
   registered — see services/plugins/marketplace_service.py.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -43,7 +44,9 @@ class PluginListing(Base):
     plugin_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     author: Mapped[str] = mapped_column(String(200), nullable=False)
-    description: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    description: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
 
     # Denormalized convenience pointer to the newest published version —
     # PluginVersion remains the source of truth for the full history;
@@ -54,7 +57,10 @@ class PluginListing(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
     )
 
     versions: Mapped[list["PluginVersion"]] = relationship(
@@ -68,12 +74,19 @@ class PluginListing(Base):
 class PluginVersion(Base):
     __tablename__ = "plugin_versions"
     __table_args__ = (
-        UniqueConstraint("plugin_id", "version", name="uq_plugin_versions_plugin_id_version"),
+        UniqueConstraint(
+            "plugin_id", "version", name="uq_plugin_versions_plugin_id_version"
+        ),
     )
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
     plugin_id: Mapped[str] = mapped_column(
-        String(64), ForeignKey("plugin_listings.plugin_id", ondelete="CASCADE"), nullable=False, index=True
+        String(64),
+        ForeignKey("plugin_listings.plugin_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     version: Mapped[str] = mapped_column(String(64), nullable=False)
 
@@ -103,7 +116,9 @@ class PluginVersion(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
-    listing: Mapped["PluginListing"] = relationship("PluginListing", back_populates="versions")
+    listing: Mapped["PluginListing"] = relationship(
+        "PluginListing", back_populates="versions"
+    )
     publisher: Mapped["User | None"] = relationship("User")
 
     def __repr__(self) -> str:
@@ -114,7 +129,9 @@ class PluginInstall(Base):
     __tablename__ = "plugin_installs"
 
     plugin_id: Mapped[str] = mapped_column(
-        String(64), ForeignKey("plugin_listings.plugin_id", ondelete="CASCADE"), primary_key=True
+        String(64),
+        ForeignKey("plugin_listings.plugin_id", ondelete="CASCADE"),
+        primary_key=True,
     )
     installed_version: Mapped[str] = mapped_column(String(64), nullable=False)
 
@@ -137,7 +154,9 @@ class PluginInstall(Base):
     # that register_plugin_capabilities returned for this install. Read
     # back on uninstall/update to unregister exactly this set — see
     # services/plugins/marketplace_service.py.
-    registered_capability_names: Mapped[list] = mapped_column(JSON, nullable=False, default=list, server_default="[]")
+    registered_capability_names: Mapped[list] = mapped_column(
+        JSON, nullable=False, default=list, server_default="[]"
+    )
 
     installed_by: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
@@ -146,7 +165,10 @@ class PluginInstall(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
     )
 
     installer: Mapped["User | None"] = relationship("User")

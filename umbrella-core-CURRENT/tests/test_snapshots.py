@@ -3,6 +3,7 @@ tests/test_snapshots.py — Snapshot API tests.
 
 Tests for the snapshot system endpoints.
 """
+
 import pytest
 from datetime import datetime, timezone, timedelta
 from httpx import AsyncClient
@@ -54,7 +55,9 @@ async def test_post_snapshots_with_full_payload_returns_201(client: AsyncClient)
 
 
 @pytest.mark.asyncio
-async def test_post_snapshots_with_only_required_fields_returns_201(client: AsyncClient):
+async def test_post_snapshots_with_only_required_fields_returns_201(
+    client: AsyncClient,
+):
     """POST /snapshots with only required fields (minecraft_uuid) returns 201."""
     payload = {"minecraft_uuid": "550e8400-e29b-41d4-a716-446655440000"}
     response = await client.post(
@@ -93,10 +96,12 @@ async def test_post_snapshots_without_admin_key_returns_401(client: AsyncClient)
 
 
 @pytest.mark.asyncio
-async def test_get_snapshots_players_uuid_returns_list_newest_first(client: AsyncClient):
+async def test_get_snapshots_players_uuid_returns_list_newest_first(
+    client: AsyncClient,
+):
     """GET /snapshots/players/{uuid} returns list of snapshots newest first."""
     uuid = "550e8400-e29b-41d4-a716-446655440000"
-    
+
     # Create three snapshots with different timestamps
     now = datetime.now(timezone.utc)
     for i in range(3):
@@ -110,7 +115,7 @@ async def test_get_snapshots_players_uuid_returns_list_newest_first(client: Asyn
             json=payload,
             headers={"X-Admin-Key": "test-secret-key"},
         )
-    
+
     response = await client.get(
         f"/api/v1/snapshots/players/{uuid}",
         headers={"X-Admin-Key": "test-secret-key"},
@@ -124,10 +129,12 @@ async def test_get_snapshots_players_uuid_returns_list_newest_first(client: Asyn
 
 
 @pytest.mark.asyncio
-async def test_get_snapshots_players_uuid_with_trigger_filter_filters_correctly(client: AsyncClient):
+async def test_get_snapshots_players_uuid_with_trigger_filter_filters_correctly(
+    client: AsyncClient,
+):
     """GET /snapshots/players/{uuid}?trigger=incident filters correctly."""
     uuid = "550e8400-e29b-41d4-a716-446655440000"
-    
+
     # Create snapshots with different triggers
     for trigger in ["scheduled", "incident", "quit"]:
         payload = {"minecraft_uuid": uuid, "trigger": trigger}
@@ -136,7 +143,7 @@ async def test_get_snapshots_players_uuid_with_trigger_filter_filters_correctly(
             json=payload,
             headers={"X-Admin-Key": "test-secret-key"},
         )
-    
+
     response = await client.get(
         f"/api/v1/snapshots/players/{uuid}?trigger=incident",
         headers={"X-Admin-Key": "test-secret-key"},
@@ -148,10 +155,12 @@ async def test_get_snapshots_players_uuid_with_trigger_filter_filters_correctly(
 
 
 @pytest.mark.asyncio
-async def test_get_snapshots_players_uuid_latest_returns_most_recent(client: AsyncClient):
+async def test_get_snapshots_players_uuid_latest_returns_most_recent(
+    client: AsyncClient,
+):
     """GET /snapshots/players/{uuid}/latest returns the most recent snapshot."""
     uuid = "550e8400-e29b-41d4-a716-446655440000"
-    
+
     # Create two snapshots
     now = datetime.now(timezone.utc)
     payload1 = {
@@ -174,7 +183,7 @@ async def test_get_snapshots_players_uuid_latest_returns_most_recent(client: Asy
         json=payload2,
         headers={"X-Admin-Key": "test-secret-key"},
     )
-    
+
     response = await client.get(
         f"/api/v1/snapshots/players/{uuid}/latest",
         headers={"X-Admin-Key": "test-secret-key"},
@@ -185,7 +194,9 @@ async def test_get_snapshots_players_uuid_latest_returns_most_recent(client: Asy
 
 
 @pytest.mark.asyncio
-async def test_get_snapshots_players_unknown_uuid_latest_returns_404(client: AsyncClient):
+async def test_get_snapshots_players_unknown_uuid_latest_returns_404(
+    client: AsyncClient,
+):
     """GET /snapshots/players/{unknown_uuid}/latest returns 404."""
     response = await client.get(
         "/api/v1/snapshots/players/00000000-0000-0000-0000-000000000000/latest",
@@ -208,7 +219,7 @@ async def test_get_snapshots_id_returns_snapshot_dict(client: AsyncClient):
         headers={"X-Admin-Key": "test-secret-key"},
     )
     snapshot_id = create_response.json()["id"]
-    
+
     response = await client.get(
         f"/api/v1/snapshots/{snapshot_id}",
         headers={"X-Admin-Key": "test-secret-key"},
@@ -231,7 +242,9 @@ async def test_get_snapshots_nonexistent_id_returns_404(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_get_snapshots_replay_replay_id_returns_snapshots_within_window(client: AsyncClient, db_session):
+async def test_get_snapshots_replay_replay_id_returns_snapshots_within_window(
+    client: AsyncClient, db_session
+):
     """GET /snapshots/replay/{replay_id} returns snapshots within time window."""
     async with db_session() as db:
         # Create a replay session
@@ -246,7 +259,7 @@ async def test_get_snapshots_replay_replay_id_returns_snapshots_within_window(cl
         db.add(replay)
         await db.commit()
         await db.refresh(replay)
-        
+
         # Create snapshots within the window
         for offset in [-5, 0, 5]:  # minutes from incident_at
             snapshot = PlayerSnapshot(
@@ -255,7 +268,7 @@ async def test_get_snapshots_replay_replay_id_returns_snapshots_within_window(cl
                 trigger="scheduled",
             )
             db.add(snapshot)
-        
+
         # Create snapshot outside the window
         snapshot_outside = PlayerSnapshot(
             minecraft_uuid="550e8400-e29b-41d4-a716-446655440000",
@@ -264,7 +277,7 @@ async def test_get_snapshots_replay_replay_id_returns_snapshots_within_window(cl
         )
         db.add(snapshot_outside)
         await db.commit()
-    
+
     response = await client.get(
         f"/api/v1/snapshots/replay/{replay.id}",
         headers={"X-Admin-Key": "test-secret-key"},
@@ -275,7 +288,9 @@ async def test_get_snapshots_replay_replay_id_returns_snapshots_within_window(cl
 
 
 @pytest.mark.asyncio
-async def test_post_snapshots_with_replay_id_links_to_replay_session(client: AsyncClient, db_session):
+async def test_post_snapshots_with_replay_id_links_to_replay_session(
+    client: AsyncClient, db_session
+):
     """POST /snapshots with replay_id links snapshot to that replay session."""
     async with db_session() as db:
         # Create a replay session
@@ -289,7 +304,7 @@ async def test_post_snapshots_with_replay_id_links_to_replay_session(client: Asy
         db.add(replay)
         await db.commit()
         await db.refresh(replay)
-    
+
     payload = {
         "minecraft_uuid": "550e8400-e29b-41d4-a716-446655440000",
         "replay_id": replay.id,
@@ -302,7 +317,7 @@ async def test_post_snapshots_with_replay_id_links_to_replay_session(client: Asy
     assert response.status_code == 201
     data = response.json()
     assert data["replay_id"] == replay.id
-    
+
     # Verify in database
     async with db_session() as db:
         result = await db.execute(
@@ -313,10 +328,12 @@ async def test_post_snapshots_with_replay_id_links_to_replay_session(client: Asy
 
 
 @pytest.mark.asyncio
-async def test_multiple_snapshots_for_same_player_returned_newest_first(client: AsyncClient):
+async def test_multiple_snapshots_for_same_player_returned_newest_first(
+    client: AsyncClient,
+):
     """Multiple snapshots for same player are returned newest first."""
     uuid = "550e8400-e29b-41d4-a716-446655440000"
-    
+
     # Create multiple snapshots
     now = datetime.now(timezone.utc)
     for i in range(5):
@@ -330,7 +347,7 @@ async def test_multiple_snapshots_for_same_player_returned_newest_first(client: 
             json=payload,
             headers={"X-Admin-Key": "test-secret-key"},
         )
-    
+
     response = await client.get(
         f"/api/v1/snapshots/players/{uuid}",
         headers={"X-Admin-Key": "test-secret-key"},

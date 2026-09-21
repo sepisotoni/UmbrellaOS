@@ -10,6 +10,7 @@ Design decisions:
 - No caching here; FeatureFlagService.get_flag does a direct DB read
   every call. Simple, correct, and easy to reason about.
 """
+
 import uuid
 from datetime import datetime, timezone
 from sqlalchemy import String, Boolean, Text, DateTime
@@ -23,7 +24,9 @@ class FeatureFlag(Base):
     id: Mapped[str] = mapped_column(
         String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
-    name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(
+        String(128), unique=True, nullable=False, index=True
+    )
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(

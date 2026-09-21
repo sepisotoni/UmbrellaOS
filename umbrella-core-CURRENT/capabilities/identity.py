@@ -2,6 +2,7 @@
 capabilities/identity.py — Phase 3's identity domain: API key management
 and MFA enrollment, exposed through the Capability Registry.
 """
+
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
@@ -30,13 +31,19 @@ class ApiKeyResult(BaseModel):
     key_prefix: str
     permissions: list[str]
     revoked: bool
-    plaintext_key: str | None = None  # only populated on creation — see create_api_key's docstring
+    plaintext_key: str | None = (
+        None  # only populated on creation — see create_api_key's docstring
+    )
 
     @classmethod
     def from_model(cls, key, plaintext: str | None = None) -> "ApiKeyResult":
         return cls(
-            id=key.id, name=key.name, key_prefix=key.key_prefix,
-            permissions=key.permissions, revoked=key.revoked, plaintext_key=plaintext,
+            id=key.id,
+            name=key.name,
+            key_prefix=key.key_prefix,
+            permissions=key.permissions,
+            revoked=key.revoked,
+            plaintext_key=plaintext,
         )
 
 
@@ -54,12 +61,18 @@ async def create_api_key(ctx: CallContext, params: CreateApiKeyParams) -> ApiKey
     recoverable afterward. `identity.apikey.list` never includes it."""
     created_by = None
     if ctx.actor_type == "staff":
-        result = await ctx.db.execute(select(User).where(User.discord_id == ctx.actor_id))
+        result = await ctx.db.execute(
+            select(User).where(User.discord_id == ctx.actor_id)
+        )
         user = result.scalar_one_or_none()
         created_by = user.id if user else None
 
     key, plaintext = await ApiKeyService.create_api_key(
-        ctx.db, params.name, params.permissions, created_by=created_by, expires_in_days=params.expires_in_days
+        ctx.db,
+        params.name,
+        params.permissions,
+        created_by=created_by,
+        expires_in_days=params.expires_in_days,
     )
     return ApiKeyResult.from_model(key, plaintext=plaintext)
 
@@ -77,7 +90,9 @@ class ListApiKeysParams(BaseModel):
     destructive=False,
     audited=False,
 )
-async def list_api_keys(ctx: CallContext, params: ListApiKeysParams) -> list[ApiKeyResult]:
+async def list_api_keys(
+    ctx: CallContext, params: ListApiKeysParams
+) -> list[ApiKeyResult]:
     keys = await ApiKeyService.list_api_keys(ctx.db)
     return [ApiKeyResult.from_model(k) for k in keys]
 
@@ -103,7 +118,9 @@ class RevokeApiKeyResult(BaseModel):
     reversible=False,
     audit_category="identity",
 )
-async def revoke_api_key(ctx: CallContext, params: RevokeApiKeyParams) -> RevokeApiKeyResult:
+async def revoke_api_key(
+    ctx: CallContext, params: RevokeApiKeyParams
+) -> RevokeApiKeyResult:
     await ApiKeyService.revoke_api_key(ctx.db, params.api_key_id)
     return RevokeApiKeyResult(revoked=True)
 
@@ -143,7 +160,9 @@ class BeginMFAEnrollmentResult(BaseModel):
     destructive=False,
     audit_category="identity",
 )
-async def begin_mfa_enrollment(ctx: CallContext, params: BeginMFAEnrollmentParams) -> BeginMFAEnrollmentResult:
+async def begin_mfa_enrollment(
+    ctx: CallContext, params: BeginMFAEnrollmentParams
+) -> BeginMFAEnrollmentResult:
     user = await _current_staff_user(ctx)
     secret, uri = await MFAService.begin_enrollment(ctx.db, user)
     return BeginMFAEnrollmentResult(secret=secret, provisioning_uri=uri)
@@ -171,7 +190,9 @@ class ConfirmMFAEnrollmentResult(BaseModel):
     destructive=False,
     audit_category="identity",
 )
-async def confirm_mfa_enrollment(ctx: CallContext, params: ConfirmMFAEnrollmentParams) -> ConfirmMFAEnrollmentResult:
+async def confirm_mfa_enrollment(
+    ctx: CallContext, params: ConfirmMFAEnrollmentParams
+) -> ConfirmMFAEnrollmentResult:
     user = await _current_staff_user(ctx)
     await MFAService.confirm_enrollment(ctx.db, user, params.code)
     return ConfirmMFAEnrollmentResult(enabled=True)
@@ -191,7 +212,9 @@ class DisableMFAParams(BaseModel):
     # valid code for this reason; this parallel Capability Registry path
     # did not, and was reachable via the generic REST adapter at
     # POST /api/v1/capabilities/identity.mfa.disable/invoke.
-    code: str = Field(..., exclude=True)  # excluded from audit dump — see ConfirmMFAEnrollmentParams
+    code: str = Field(
+        ..., exclude=True
+    )  # excluded from audit dump — see ConfirmMFAEnrollmentParams
 
 
 class DisableMFAResult(BaseModel):

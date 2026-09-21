@@ -7,6 +7,7 @@ into that daemon's environment out-of-band — matching the "exchanged once,
 never transmitted per-request" contract documented in umbrella-daemon's
 ADR-0002.
 """
+
 import secrets
 from datetime import datetime, timezone
 
@@ -44,7 +45,9 @@ class NodeService:
         if existing is not None:
             raise NodeError(f"a node named {name!r} is already registered", 409)
 
-        plaintext_secret = secrets.token_urlsafe(48)  # well over the 32-byte minimum both sides enforce
+        plaintext_secret = secrets.token_urlsafe(
+            48
+        )  # well over the 32-byte minimum both sides enforce
         node = Node(
             name=name,
             daemon_url=daemon_url,

@@ -8,6 +8,7 @@ POST /api/v1/punishments/{id}/revoke — revoke a punishment
 
 All responses require admin key authentication.
 """
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -62,6 +63,7 @@ async def list_punishments(
 ) -> list[PunishmentSchema]:
     """List all punishments with optional filtering."""
     from models.player import Player as PlayerModel
+
     query = select(Punishment, PlayerModel.username).outerjoin(
         PlayerModel, Punishment.player_uuid == PlayerModel.uuid
     )
@@ -72,7 +74,8 @@ async def list_punishments(
     if active_only:
         query = query.where(Punishment.active == True)
         query = query.where(
-            (Punishment.expires_at == None) | (Punishment.expires_at > datetime.now(timezone.utc))
+            (Punishment.expires_at == None)
+            | (Punishment.expires_at > datetime.now(timezone.utc))
         )
 
     query = query.offset(skip).limit(limit)
@@ -107,7 +110,9 @@ async def create_punishment(
     player = player_result.scalar_one_or_none()
 
     if player is None:
-        raise HTTPException(status_code=404, detail=f"Player '{body.player_uuid}' not found")
+        raise HTTPException(
+            status_code=404, detail=f"Player '{body.player_uuid}' not found"
+        )
 
     # Create punishment. Use the resolved player.uuid (not body.player_uuid
     # directly) since body.player_uuid may actually be a username per the
@@ -141,13 +146,13 @@ async def update_punishment(
     _auth: str = Depends(require_permission("punishments.create")),
 ) -> PunishmentSchema:
     """Update a punishment (type, reason, or expiry)."""
-    result = await db.execute(
-        select(Punishment).where(Punishment.id == punishment_id)
-    )
+    result = await db.execute(select(Punishment).where(Punishment.id == punishment_id))
     punishment = result.scalar_one_or_none()
 
     if punishment is None:
-        raise HTTPException(status_code=404, detail=f"Punishment '{punishment_id}' not found")
+        raise HTTPException(
+            status_code=404, detail=f"Punishment '{punishment_id}' not found"
+        )
 
     # Update fields if provided
     if body.type is not None:
@@ -169,13 +174,13 @@ async def revoke_punishment(
     _auth: str = Depends(require_permission("punishments.revoke")),
 ) -> PunishmentSchema:
     """Revoke (deactivate) a punishment."""
-    result = await db.execute(
-        select(Punishment).where(Punishment.id == punishment_id)
-    )
+    result = await db.execute(select(Punishment).where(Punishment.id == punishment_id))
     punishment = result.scalar_one_or_none()
 
     if punishment is None:
-        raise HTTPException(status_code=404, detail=f"Punishment '{punishment_id}' not found")
+        raise HTTPException(
+            status_code=404, detail=f"Punishment '{punishment_id}' not found"
+        )
 
     punishment.active = False
     punishment.status = "REVOKED"  # BUG-2 fix: status was left as "ACTIVE" after revoke

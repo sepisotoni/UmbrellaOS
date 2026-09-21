@@ -1,4 +1,5 @@
 """tests/registry/test_plugin_manifest.py — PluginManifest structural validation."""
+
 import pytest
 
 from services.plugins.manifest import ManifestValidationError, parse_manifest
@@ -24,10 +25,18 @@ def _base_manifest(**overrides) -> dict:
             }
         ],
         "discord_commands": [
-            {"name": "queue-status", "description": "Show queue depth.", "capability": "queue_status"}
+            {
+                "name": "queue-status",
+                "description": "Show queue depth.",
+                "capability": "queue_status",
+            }
         ],
         "dashboard_ui_slots": [
-            {"slot": "sidebar.tools", "label": "Queue Tools", "capability": "queue_status"}
+            {
+                "slot": "sidebar.tools",
+                "label": "Queue Tools",
+                "capability": "queue_status",
+            }
         ],
     }
     manifest.update(overrides)
@@ -53,7 +62,9 @@ def test_sqlite_storage_accepted():
     assert manifest.storage == "sqlite"
 
 
-@pytest.mark.parametrize("bad_id", ["Queue-Tools", "qt", "-queuetools", "queue tools", "queue.tools"])
+@pytest.mark.parametrize(
+    "bad_id", ["Queue-Tools", "qt", "-queuetools", "queue tools", "queue.tools"]
+)
 def test_invalid_plugin_id_rejected(bad_id):
     with pytest.raises(ManifestValidationError):
         parse_manifest(_base_manifest(plugin_id=bad_id))
@@ -186,7 +197,11 @@ def _with_page(**page_overrides) -> dict:
         "nav_label": "Queue Tools",
         "nav_icon": "list",
         "widgets": [
-            {"label": "Queue depth", "capability": "queue_status", "render_as": "stat_pair"}
+            {
+                "label": "Queue depth",
+                "capability": "queue_status",
+                "render_as": "stat_pair",
+            }
         ],
     }
     raw["page"].update(page_overrides)
@@ -290,7 +305,12 @@ def test_manifest_with_no_config_fields_is_valid():
 def test_config_field_boolean_accepted():
     raw = _base_manifest()
     raw["config_fields"] = [
-        {"key": "auto_purge", "type": "boolean", "label": "Auto-purge stale entries", "default_value": False},
+        {
+            "key": "auto_purge",
+            "type": "boolean",
+            "label": "Auto-purge stale entries",
+            "default_value": False,
+        },
     ]
     manifest = parse_manifest(raw)
     assert manifest.config_fields[0].key == "auto_purge"
@@ -302,7 +322,12 @@ def test_config_field_unsupported_type_rejected():
     deliberate non-goal until real plugin demand exists."""
     raw = _base_manifest()
     raw["config_fields"] = [
-        {"key": "max_items", "type": "integer", "label": "Max items", "default_value": True},
+        {
+            "key": "max_items",
+            "type": "integer",
+            "label": "Max items",
+            "default_value": True,
+        },
     ]
     with pytest.raises(ManifestValidationError):
         parse_manifest(raw)
@@ -311,7 +336,12 @@ def test_config_field_unsupported_type_rejected():
 def test_config_field_bad_key_shape_rejected():
     raw = _base_manifest()
     raw["config_fields"] = [
-        {"key": "Not-A-Valid-Key!", "type": "boolean", "label": "x", "default_value": False},
+        {
+            "key": "Not-A-Valid-Key!",
+            "type": "boolean",
+            "label": "x",
+            "default_value": False,
+        },
     ]
     with pytest.raises(ManifestValidationError):
         parse_manifest(raw)
@@ -334,7 +364,12 @@ def test_config_field_key_does_not_need_to_reference_a_capability():
     if it were treated the same as the other declaration lists)."""
     raw = _base_manifest()
     raw["config_fields"] = [
-        {"key": "totally_unrelated_to_any_capability", "type": "boolean", "label": "x", "default_value": False},
+        {
+            "key": "totally_unrelated_to_any_capability",
+            "type": "boolean",
+            "label": "x",
+            "default_value": False,
+        },
     ]
     manifest = parse_manifest(raw)
     assert manifest.config_fields[0].key == "totally_unrelated_to_any_capability"

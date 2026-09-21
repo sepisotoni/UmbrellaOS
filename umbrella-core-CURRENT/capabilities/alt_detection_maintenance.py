@@ -11,6 +11,7 @@ a plain capability staff wire up via a normal Schedule
 (capabilities/automation.py's schedule CRUD), reusing the existing
 scheduler infrastructure instead of a bespoke background loop.
 """
+
 from __future__ import annotations
 
 from pydantic import BaseModel
@@ -36,6 +37,8 @@ class DecayStaleSuspicionScoresResult(BaseModel):
     audited=True,
     audit_category="alt_detection",
 )
-async def decay_stale(ctx: CallContext, params: NoParams) -> DecayStaleSuspicionScoresResult:
+async def decay_stale(
+    ctx: CallContext, params: NoParams
+) -> DecayStaleSuspicionScoresResult:
     decayed_count = await decay_stale_suspicion_scores(ctx.db)
     return DecayStaleSuspicionScoresResult(decayed_count=decayed_count)

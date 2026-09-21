@@ -7,6 +7,7 @@ A new domain only ever produces one of these (via the `@capability` decorator
 in registry/decorator.py) — everything downstream (routing, CLI command,
 permission check, audit category) is derived from it.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass

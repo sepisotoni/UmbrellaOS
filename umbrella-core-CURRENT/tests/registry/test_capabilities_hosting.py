@@ -18,6 +18,7 @@ either a live daemon or daemon-URL-level HTTP mocking the capability layer
 doesn't currently expose a seam for; noted as a reasonable follow-up rather
 than built speculatively now.
 """
+
 import pytest
 
 from tests.conftest import ADMIN_HEADERS
@@ -116,7 +117,9 @@ async def test_create_and_list_templates(client):
     assert create_response.json()["version"] == 1
 
     list_response = await client.post(
-        "/api/v1/capabilities/hosting.template.list/invoke", json={}, headers=ADMIN_HEADERS
+        "/api/v1/capabilities/hosting.template.list/invoke",
+        json={},
+        headers=ADMIN_HEADERS,
     )
     assert list_response.status_code == 200
     names = {t["name"] for t in list_response.json()}

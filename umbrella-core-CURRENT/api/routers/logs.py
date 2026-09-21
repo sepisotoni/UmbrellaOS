@@ -3,6 +3,7 @@ api/routers/logs.py — GET /api/v1/logs, aggregated log search (Phase 9,
 item 3). Thin delegate to `platform.observability.search_logs`, same
 pattern as api/routers/audit.py.
 """
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,6 +29,12 @@ async def search_logs(
     result = await registry.call(
         "platform.observability.search_logs",
         ctx,
-        {"query": query, "level": level, "source": source, "trace_id": trace_id, "limit": limit},
+        {
+            "query": query,
+            "level": level,
+            "source": source,
+            "trace_id": trace_id,
+            "limit": limit,
+        },
     )
     return result.model_dump(mode="json")

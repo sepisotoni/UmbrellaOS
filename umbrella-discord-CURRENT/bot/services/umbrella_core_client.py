@@ -24,6 +24,7 @@ Core verifies by re-deriving the MAC with the same KDF and comparing with
 hmac.compare_digest(). Requests older than 30 seconds are rejected to
 prevent replay attacks.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -41,14 +42,23 @@ class UmbrellaCoreError(Exception):
     into a user-facing Discord message, rather than needing to know every
     possible underlying cause."""
 
-    def __init__(self, message: str, *, status_code: int | None = None, code: str | None = None):
+    def __init__(
+        self, message: str, *, status_code: int | None = None, code: str | None = None
+    ):
         self.status_code = status_code
         self.code = code
         super().__init__(message)
 
 
 class UmbrellaCoreClient:
-    def __init__(self, base_url: str, api_key: str, *, timeout: float = 30.0, transport: httpx.BaseTransport | None = None):
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str,
+        *,
+        timeout: float = 30.0,
+        transport: httpx.BaseTransport | None = None,
+    ):
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
         self._timeout = timeout
@@ -94,7 +104,11 @@ class UmbrellaCoreClient:
         return message, code
 
     async def invoke(
-        self, capability_name: str, params: dict[str, Any], *, discord_user_id: str | None = None
+        self,
+        capability_name: str,
+        params: dict[str, Any],
+        *,
+        discord_user_id: str | None = None,
     ) -> dict[str, Any]:
         """
         Calls a capability by name, returning its result as a plain dict.
@@ -123,19 +137,25 @@ class UmbrellaCoreClient:
             headers["X-Discord-User-Id"] = discord_user_id
 
         try:
-            async with httpx.AsyncClient(timeout=self._timeout, transport=self._transport) as client:
+            async with httpx.AsyncClient(
+                timeout=self._timeout, transport=self._transport
+            ) as client:
                 response = await client.post(url, headers=headers, json=params)
         except httpx.RequestError as exc:
             raise UmbrellaCoreError(f"Could not reach umbrella-core: {exc}") from exc
 
         if response.status_code >= 400:
             message, code = UmbrellaCoreClient._parse_error(response)
-            raise UmbrellaCoreError(message, status_code=response.status_code, code=code)
+            raise UmbrellaCoreError(
+                message, status_code=response.status_code, code=code
+            )
 
         try:
             return response.json()
         except ValueError as exc:
-            raise UmbrellaCoreError(f"umbrella-core returned a non-JSON response: {exc}") from exc
+            raise UmbrellaCoreError(
+                f"umbrella-core returned a non-JSON response: {exc}"
+            ) from exc
 
     async def list_capabilities(self) -> list[dict[str, Any]]:
         """Lists every capability this API key is permitted to see -
@@ -145,13 +165,18 @@ class UmbrellaCoreClient:
         headers = await self._make_auth_headers_async()
 
         try:
-            async with httpx.AsyncClient(timeout=self._timeout, transport=self._transport) as client:
+            async with httpx.AsyncClient(
+                timeout=self._timeout, transport=self._transport
+            ) as client:
                 response = await client.get(url, headers=headers)
         except httpx.RequestError as exc:
             raise UmbrellaCoreError(f"Could not reach umbrella-core: {exc}") from exc
 
         if response.status_code >= 400:
-            raise UmbrellaCoreError(f"umbrella-core returned {response.status_code}", status_code=response.status_code)
+            raise UmbrellaCoreError(
+                f"umbrella-core returned {response.status_code}",
+                status_code=response.status_code,
+            )
 
         return response.json()
 
@@ -162,14 +187,19 @@ class UmbrellaCoreClient:
         headers = await self._make_auth_headers_async()
 
         try:
-            async with httpx.AsyncClient(timeout=self._timeout, transport=self._transport) as client:
-                response = await client.post(url, headers=headers, json={"callback_url": callback_url})
+            async with httpx.AsyncClient(
+                timeout=self._timeout, transport=self._transport
+            ) as client:
+                response = await client.post(
+                    url, headers=headers, json={"callback_url": callback_url}
+                )
         except httpx.RequestError as exc:
             raise UmbrellaCoreError(f"Could not reach umbrella-core: {exc}") from exc
 
         if response.status_code >= 400:
             raise UmbrellaCoreError(
-                f"Bot registration failed: {response.status_code}", status_code=response.status_code
+                f"Bot registration failed: {response.status_code}",
+                status_code=response.status_code,
             )
 
     async def push_command_manifest(self, commands: list[dict]) -> None:
@@ -180,14 +210,19 @@ class UmbrellaCoreClient:
         headers = await self._make_auth_headers_async()
 
         try:
-            async with httpx.AsyncClient(timeout=self._timeout, transport=self._transport) as client:
-                response = await client.post(url, headers=headers, json={"commands": commands})
+            async with httpx.AsyncClient(
+                timeout=self._timeout, transport=self._transport
+            ) as client:
+                response = await client.post(
+                    url, headers=headers, json={"commands": commands}
+                )
         except httpx.RequestError as exc:
             raise UmbrellaCoreError(f"Could not reach umbrella-core: {exc}") from exc
 
         if response.status_code >= 400:
             raise UmbrellaCoreError(
-                f"Command manifest push failed: {response.status_code}", status_code=response.status_code
+                f"Command manifest push failed: {response.status_code}",
+                status_code=response.status_code,
             )
 
     async def get(self, path: str) -> dict[str, Any]:
@@ -199,19 +234,25 @@ class UmbrellaCoreClient:
         headers = await self._make_auth_headers_async()
 
         try:
-            async with httpx.AsyncClient(timeout=self._timeout, transport=self._transport) as client:
+            async with httpx.AsyncClient(
+                timeout=self._timeout, transport=self._transport
+            ) as client:
                 response = await client.get(url, headers=headers)
         except httpx.RequestError as exc:
             raise UmbrellaCoreError(f"Could not reach umbrella-core: {exc}") from exc
 
         if response.status_code >= 400:
             message, code = UmbrellaCoreClient._parse_error(response)
-            raise UmbrellaCoreError(message, status_code=response.status_code, code=code)
+            raise UmbrellaCoreError(
+                message, status_code=response.status_code, code=code
+            )
 
         try:
             return response.json()
         except ValueError as exc:
-            raise UmbrellaCoreError(f"umbrella-core returned a non-JSON response: {exc}") from exc
+            raise UmbrellaCoreError(
+                f"umbrella-core returned a non-JSON response: {exc}"
+            ) from exc
 
     async def ask_ai(self, message: str, context: str | None = None) -> dict[str, Any]:
         """POST /api/v1/ai/copilot — send a natural-language question to the
@@ -225,19 +266,25 @@ class UmbrellaCoreClient:
             payload["context"] = context
 
         try:
-            async with httpx.AsyncClient(timeout=self._timeout, transport=self._transport) as client:
+            async with httpx.AsyncClient(
+                timeout=self._timeout, transport=self._transport
+            ) as client:
                 response = await client.post(url, headers=headers, json=payload)
         except httpx.RequestError as exc:
             raise UmbrellaCoreError(f"Could not reach umbrella-core: {exc}") from exc
 
         if response.status_code >= 400:
             message, code = UmbrellaCoreClient._parse_error(response)
-            raise UmbrellaCoreError(message, status_code=response.status_code, code=code)
+            raise UmbrellaCoreError(
+                message, status_code=response.status_code, code=code
+            )
 
         try:
             return response.json()
         except ValueError as exc:
-            raise UmbrellaCoreError(f"umbrella-core returned a non-JSON response: {exc}") from exc
+            raise UmbrellaCoreError(
+                f"umbrella-core returned a non-JSON response: {exc}"
+            ) from exc
 
     async def search_knowledge(self, query: str, limit: int = 5) -> dict[str, Any]:
         """GET /api/v1/knowledge?query=<q>&limit=<n>
@@ -251,19 +298,27 @@ class UmbrellaCoreClient:
         headers = await self._make_auth_headers_async()
 
         try:
-            async with httpx.AsyncClient(timeout=self._timeout, transport=self._transport) as client:
-                response = await client.get(url, params={"query": query, "limit": limit}, headers=headers)
+            async with httpx.AsyncClient(
+                timeout=self._timeout, transport=self._transport
+            ) as client:
+                response = await client.get(
+                    url, params={"query": query, "limit": limit}, headers=headers
+                )
         except httpx.RequestError as exc:
             raise UmbrellaCoreError(f"Could not reach umbrella-core: {exc}") from exc
 
         if response.status_code >= 400:
             message, code = UmbrellaCoreClient._parse_error(response)
-            raise UmbrellaCoreError(message, status_code=response.status_code, code=code)
+            raise UmbrellaCoreError(
+                message, status_code=response.status_code, code=code
+            )
 
         try:
             return response.json()
         except ValueError as exc:
-            raise UmbrellaCoreError(f"umbrella-core returned a non-JSON response: {exc}") from exc
+            raise UmbrellaCoreError(
+                f"umbrella-core returned a non-JSON response: {exc}"
+            ) from exc
 
     async def push_guild_channels(self, channels: list[dict]) -> None:
         """POST /api/v1/bot/channels — push guild text channel list to core.
@@ -274,14 +329,19 @@ class UmbrellaCoreClient:
         headers = await self._make_auth_headers_async()
 
         try:
-            async with httpx.AsyncClient(timeout=self._timeout, transport=self._transport) as client:
-                response = await client.post(url, headers=headers, json={"channels": channels})
+            async with httpx.AsyncClient(
+                timeout=self._timeout, transport=self._transport
+            ) as client:
+                response = await client.post(
+                    url, headers=headers, json={"channels": channels}
+                )
         except httpx.RequestError as exc:
             raise UmbrellaCoreError(f"Could not reach umbrella-core: {exc}") from exc
 
         if response.status_code >= 400:
             raise UmbrellaCoreError(
-                f"Guild channels push failed: {response.status_code}", status_code=response.status_code
+                f"Guild channels push failed: {response.status_code}",
+                status_code=response.status_code,
             )
 
     async def push_guild_roles(self, roles: list[dict]) -> None:
@@ -293,12 +353,17 @@ class UmbrellaCoreClient:
         headers = await self._make_auth_headers_async()
 
         try:
-            async with httpx.AsyncClient(timeout=self._timeout, transport=self._transport) as client:
-                response = await client.post(url, headers=headers, json={"roles": roles})
+            async with httpx.AsyncClient(
+                timeout=self._timeout, transport=self._transport
+            ) as client:
+                response = await client.post(
+                    url, headers=headers, json={"roles": roles}
+                )
         except httpx.RequestError as exc:
             raise UmbrellaCoreError(f"Could not reach umbrella-core: {exc}") from exc
 
         if response.status_code >= 400:
             raise UmbrellaCoreError(
-                f"Guild roles push failed: {response.status_code}", status_code=response.status_code
+                f"Guild roles push failed: {response.status_code}",
+                status_code=response.status_code,
             )

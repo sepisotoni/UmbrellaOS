@@ -14,6 +14,7 @@ fails partway, nothing is left half-committed.
 `count_recent_reports` was fetching every matching row just to len() it;
 ported here as a real COUNT(*) query instead.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -58,16 +59,24 @@ class ModerationIntelRepository:
         return report
 
     @staticmethod
-    async def set_report_status(db: AsyncSession, report_id: str, status: ReportStatus) -> None:
+    async def set_report_status(
+        db: AsyncSession, report_id: str, status: ReportStatus
+    ) -> None:
         report = await db.get(ModerationReport, report_id)
         if report is not None:
             report.status = status
 
     @staticmethod
-    async def count_recent_reports(db: AsyncSession, reported_user_id: str, *, since: datetime) -> int:
-        stmt = select(func.count()).select_from(ModerationReport).where(
-            ModerationReport.reported_user_id == reported_user_id,
-            ModerationReport.created_at >= since,
+    async def count_recent_reports(
+        db: AsyncSession, reported_user_id: str, *, since: datetime
+    ) -> int:
+        stmt = (
+            select(func.count())
+            .select_from(ModerationReport)
+            .where(
+                ModerationReport.reported_user_id == reported_user_id,
+                ModerationReport.created_at >= since,
+            )
         )
         return (await db.execute(stmt)).scalar_one()
 
@@ -101,11 +110,17 @@ class ModerationIntelRepository:
         return analysis
 
     @staticmethod
-    async def count_recent_warnings(db: AsyncSession, user_id: str, *, since: datetime) -> int:
-        stmt = select(func.count()).select_from(ModerationAction).where(
-            ModerationAction.user_id == user_id,
-            ModerationAction.action_type == ModerationActionType.WARN,
-            ModerationAction.created_at >= since,
+    async def count_recent_warnings(
+        db: AsyncSession, user_id: str, *, since: datetime
+    ) -> int:
+        stmt = (
+            select(func.count())
+            .select_from(ModerationAction)
+            .where(
+                ModerationAction.user_id == user_id,
+                ModerationAction.action_type == ModerationActionType.WARN,
+                ModerationAction.created_at >= since,
+            )
         )
         return (await db.execute(stmt)).scalar_one()
 
@@ -131,7 +146,9 @@ class ModerationIntelRepository:
         return escalation
 
     @staticmethod
-    async def list_open_escalations(db: AsyncSession, limit: int = 20) -> list[StaffEscalation]:
+    async def list_open_escalations(
+        db: AsyncSession, limit: int = 20
+    ) -> list[StaffEscalation]:
         stmt = (
             select(StaffEscalation)
             .where(StaffEscalation.resolved.is_(False))
@@ -142,7 +159,9 @@ class ModerationIntelRepository:
         return list(result.scalars().all())
 
     @staticmethod
-    async def mark_notified(db: AsyncSession, escalation_id: str) -> StaffEscalation | None:
+    async def mark_notified(
+        db: AsyncSession, escalation_id: str
+    ) -> StaffEscalation | None:
         """See models/moderation_intelligence.py's notified_at docstring
         for why this is tracked here rather than in umbrella-discord."""
         escalation = await db.get(StaffEscalation, escalation_id)

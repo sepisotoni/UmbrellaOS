@@ -5,12 +5,18 @@ Uses httpx's MockTransport (httpx's own supported testing mechanism, not a
 project-specific fake) to verify request construction, auth header
 presence, and response parsing without a running daemon.
 """
+
 import json
 
 import httpx
 import pytest
 
-from services.daemon_client import ContainerState, DaemonClient, DaemonError, StatsSnapshot
+from services.daemon_client import (
+    ContainerState,
+    DaemonClient,
+    DaemonError,
+    StatsSnapshot,
+)
 
 SECRET = "a-shared-secret-at-least-32-bytes-long-ok"
 
@@ -42,7 +48,12 @@ async def test_start_sends_authenticated_request_and_parses_response():
         captured["auth_header"] = request.headers.get("Authorization")
         return httpx.Response(
             200,
-            json={"ServerID": "srv-1", "RuntimeID": "docker-abc", "Status": "running", "OOMKilled": False},
+            json={
+                "ServerID": "srv-1",
+                "RuntimeID": "docker-abc",
+                "Status": "running",
+                "OOMKilled": False,
+            },
         )
 
     client = _client_with_transport(httpx.MockTransport(handler))
@@ -129,6 +140,7 @@ async def test_malformed_json_response_raises_daemon_error():
     json.JSONDecodeError escape on a 2xx response with malformed content,
     breaking DaemonError's documented "any failure" contract. First test
     for this path."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, content=b"not valid json{{{")
 

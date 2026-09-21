@@ -7,6 +7,7 @@ does it - these tests exercise the moderation analysis pipeline's own
 logic (evidence gathering, escalation decisions, the two bug fixes below),
 not the orchestrator/router themselves.
 """
+
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -23,36 +24,58 @@ import services.bot_push_service as bot_push_service
 from services.ai.base import GenerationResult
 from services.ai.model_router import ModelRouter, RoutedGeneration
 from services.moderation_intelligence.repository import ModerationIntelRepository
-from services.moderation_intelligence.service import ModerationIntelligenceService, _moderation_agreement, _safe_parse
+from services.moderation_intelligence.service import (
+    ModerationIntelligenceService,
+    _moderation_agreement,
+    _safe_parse,
+)
 
 
 def _routed(provider: str, text: str) -> RoutedGeneration:
     return RoutedGeneration(
-        result=GenerationResult(text=text, model_name=f"{provider}-model", latency_ms=10),
+        result=GenerationResult(
+            text=text, model_name=f"{provider}-model", latency_ms=10
+        ),
         provider=provider,
         model_name=f"{provider}-model",
     )
 
 
 def _patch_generate(monkeypatch, *texts):
-    responses = iter([_routed("anthropic", texts[0])] + [_routed("openrouter", t) for t in texts[1:]])
+    responses = iter(
+        [_routed("anthropic", texts[0])] + [_routed("openrouter", t) for t in texts[1:]]
+    )
 
-    async def fake_generate(db, task_type, system_prompt, user_prompt, max_tokens=1024, temperature=0.7, exclude_providers=None):
+    async def fake_generate(
+        db,
+        task_type,
+        system_prompt,
+        user_prompt,
+        max_tokens=1024,
+        temperature=0.7,
+        exclude_providers=None,
+    ):
         return next(responses)
 
     monkeypatch.setattr(ModelRouter, "generate", fake_generate)
 
 
 @pytest.mark.asyncio
-async def test_analyze_report_auto_resolves_on_high_confidence_agreement(db_session, monkeypatch):
+async def test_analyze_report_auto_resolves_on_high_confidence_agreement(
+    db_session, monkeypatch
+):
     monkeypatch.setattr(get_settings(), "dual_review_enabled", True)
     text = '{"risk_score": 0.1, "recommended_action": "none", "evidence_summary": "Nothing concerning found."}'
     _patch_generate(monkeypatch, text, text)
 
     async with db_session() as db:
         report = await ModerationIntelRepository.create_report(
-            db, reported_user_id="user-1", reporter_id="reporter-1", channel_id="chan-1",
-            reported_message_id=None, reason="Being rude",
+            db,
+            reported_user_id="user-1",
+            reporter_id="reporter-1",
+            channel_id="chan-1",
+            reported_message_id=None,
+            reason="Being rude",
         )
         result = await ModerationIntelligenceService.analyze_report(db, report)
         await db.commit()
@@ -90,8 +113,12 @@ async def test_analyze_report_escalates_on_disagreement(db_session, monkeypatch)
 
     async with db_session() as db:
         report = await ModerationIntelRepository.create_report(
-            db, reported_user_id="user-2", reporter_id="reporter-1", channel_id="chan-1",
-            reported_message_id=None, reason="Reported for spam",
+            db,
+            reported_user_id="user-2",
+            reporter_id="reporter-1",
+            channel_id="chan-1",
+            reported_message_id=None,
+            reason="Reported for spam",
         )
         result = await ModerationIntelligenceService.analyze_report(db, report)
         await db.commit()
@@ -102,13 +129,16 @@ async def test_analyze_report_escalates_on_disagreement(db_session, monkeypatch)
 
 
 @pytest.mark.asyncio
-async def test_analyze_report_falls_back_to_escalate_on_invalid_recommended_action(db_session, monkeypatch):
+async def test_analyze_report_falls_back_to_escalate_on_invalid_recommended_action(
+    db_session, monkeypatch
+):
     """Bug B, fixed: the source crashed with an uncaught ValueError when
     the model returned an action outside the five allowed values. This
     must instead fall back to ESCALATE, not raise."""
     monkeypatch.setattr(get_settings(), "dual_review_enabled", False)
     text = '{"risk_score": 0.9, "recommended_action": "ban", "evidence_summary": "Model ignored instructions."}'
     _patch_generate(monkeypatch, text)
+
     # AUDIT-2026-08-29 fix: same hermeticity gap as
     # test_analyze_report_escalates_on_disagreement above — this path also
     # escalates (falls back to ESCALATE on the invalid "ban" action), which
@@ -121,8 +151,12 @@ async def test_analyze_report_falls_back_to_escalate_on_invalid_recommended_acti
 
     async with db_session() as db:
         report = await ModerationIntelRepository.create_report(
-            db, reported_user_id="user-3", reporter_id="reporter-1", channel_id="chan-1",
-            reported_message_id=None, reason="Severe report",
+            db,
+            reported_user_id="user-3",
+            reporter_id="reporter-1",
+            channel_id="chan-1",
+            reported_message_id=None,
+            reason="Severe report",
         )
         # Must not raise:
         result = await ModerationIntelligenceService.analyze_report(db, report)
@@ -156,7 +190,9 @@ async def test_check_repeat_offender_creates_report_once_threshold_crossed(db_se
         for _ in range(settings.repeat_offender_warning_count):
             db.add(
                 ModerationAction(
-                    user_id="user-4", moderator_id="staff-1", action_type=ModerationActionType.WARN,
+                    user_id="user-4",
+                    moderator_id="staff-1",
+                    action_type=ModerationActionType.WARN,
                     created_at=now,
                 )
             )
@@ -175,7 +211,9 @@ async def test_check_repeat_offender_returns_none_below_threshold(db_session):
     async with db_session() as db:
         db.add(
             ModerationAction(
-                user_id="user-5", moderator_id="staff-1", action_type=ModerationActionType.WARN,
+                user_id="user-5",
+                moderator_id="staff-1",
+                action_type=ModerationActionType.WARN,
                 created_at=datetime.now(timezone.utc),
             )
         )
@@ -186,14 +224,20 @@ async def test_check_repeat_offender_returns_none_below_threshold(db_session):
 
 
 @pytest.mark.asyncio
-async def test_check_repeat_offender_ignores_warnings_outside_lookback_window(db_session):
+async def test_check_repeat_offender_ignores_warnings_outside_lookback_window(
+    db_session,
+):
     settings = get_settings()
     async with db_session() as db:
-        old = datetime.now(timezone.utc) - timedelta(hours=settings.repeat_offender_lookback_hours + 1)
+        old = datetime.now(timezone.utc) - timedelta(
+            hours=settings.repeat_offender_lookback_hours + 1
+        )
         for _ in range(settings.repeat_offender_warning_count):
             db.add(
                 ModerationAction(
-                    user_id="user-6", moderator_id="staff-1", action_type=ModerationActionType.WARN,
+                    user_id="user-6",
+                    moderator_id="staff-1",
+                    action_type=ModerationActionType.WARN,
                     created_at=old,
                 )
             )
@@ -206,7 +250,15 @@ async def test_check_repeat_offender_ignores_warnings_outside_lookback_window(db
 @pytest.mark.asyncio
 async def test_gather_evidence_includes_recent_messages(db_session):
     async with db_session() as db:
-        db.add(ChatMessage(source="discord", discord_id="user-7", discord_channel_id="chan-1", message="hello there", timestamp=datetime.now(timezone.utc)))
+        db.add(
+            ChatMessage(
+                source="discord",
+                discord_id="user-7",
+                discord_channel_id="chan-1",
+                message="hello there",
+                timestamp=datetime.now(timezone.utc),
+            )
+        )
         await db.flush()
 
         evidence = await ModerationIntelligenceService._gather_evidence(db, "user-7")

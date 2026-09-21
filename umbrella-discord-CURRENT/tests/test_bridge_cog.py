@@ -6,6 +6,7 @@ bot/channel (dpytest would be the normal tool for that; not available
 in this sandbox). See test_investigation_cog.py's module docstring for
 the general rule this project follows.
 """
+
 import discord
 import pytest
 

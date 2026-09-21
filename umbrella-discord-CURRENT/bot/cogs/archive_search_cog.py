@@ -39,6 +39,7 @@ integration settings, which is expected and fine - it's a floor, not a
 substitute for the real fix). This is not a replacement for real
 permission mapping, just a narrower blast radius until that work happens.
 """
+
 from __future__ import annotations
 
 import logging
@@ -57,8 +58,14 @@ class ArchiveSearchCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    @app_commands.command(name="archive_search", description="[Staff] Search archived chat history (Minecraft and Discord, unfiltered).")
-    @app_commands.describe(query="Text to search for", source="Restrict to 'minecraft' or 'discord' (optional)")
+    @app_commands.command(
+        name="archive_search",
+        description="[Staff] Search archived chat history (Minecraft and Discord, unfiltered).",
+    )
+    @app_commands.describe(
+        query="Text to search for",
+        source="Restrict to 'minecraft' or 'discord' (optional)",
+    )
     @app_commands.default_permissions(manage_messages=True)
     @require_owner_role()
     async def archive_search(
@@ -68,13 +75,17 @@ class ArchiveSearchCog(commands.Cog):
 
         try:
             result = await self.bot.core.invoke(
-                "archive.search", {"query": query, "source": source}, discord_user_id=str(interaction.user.id)
+                "archive.search",
+                {"query": query, "source": source},
+                discord_user_id=str(interaction.user.id),
             )
         except UmbrellaCoreError as exc:
             await interaction.followup.send(self._format_error(exc), ephemeral=True)
             return
 
-        await interaction.followup.send(embed=self._format_result(query, result), ephemeral=True)
+        await interaction.followup.send(
+            embed=self._format_result(query, result), ephemeral=True
+        )
 
     @staticmethod
     def _format_error(exc: UmbrellaCoreError) -> str:
@@ -88,17 +99,25 @@ class ArchiveSearchCog(commands.Cog):
     def _format_result(query: str, result: dict) -> discord.Embed:
         """Pure function, testable without discord.py's interaction/gateway
         machinery - same reasoning as every other _format_* in this project."""
-        embed = discord.Embed(title="Archive search", description=f'Results for "{query}"', color=discord.Color.blurple())
+        embed = discord.Embed(
+            title="Archive search",
+            description=f'Results for "{query}"',
+            color=discord.Color.blurple(),
+        )
         messages = result.get("messages", [])
         if not messages:
-            embed.add_field(name="No results", value="Nothing matched that query.", inline=False)
+            embed.add_field(
+                name="No results", value="Nothing matched that query.", inline=False
+            )
             return embed
 
         for msg in messages[:10]:
             content = msg["content"]
             snippet = content if len(content) <= 300 else content[:300] + "…"
             author = msg.get("author_name") or "unknown"
-            embed.add_field(name=f"[{msg['source']}] {author}", value=snippet, inline=False)
+            embed.add_field(
+                name=f"[{msg['source']}] {author}", value=snippet, inline=False
+            )
         if len(messages) > 10:
             embed.set_footer(text=f"Showing 10 of {len(messages)} results")
         return embed

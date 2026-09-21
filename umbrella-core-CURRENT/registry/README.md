@@ -25,17 +25,18 @@ class ServerState(BaseModel):
 
 
 @capability(
-    name="hosting.server.restart",          # dot-separated, globally unique
-    summary="Restart a server.",             # shown in GET /capabilities, umbrella --help
+    name="hosting.server.restart",  # dot-separated, globally unique
+    summary="Restart a server.",  # shown in GET /capabilities, umbrella --help
     params_model=RestartServerParams,
-    result_model=ServerState,                # optional
-    required_permission="server.control",    # None = any authenticated actor
-    destructive=True,                        # read by the Phase 5 AI orchestrator
-    reversible=False,                        # a restart can't be "undone"
-    audited=True,                            # default; set False only for pure introspection
+    result_model=ServerState,  # optional
+    required_permission="server.control",  # None = any authenticated actor
+    destructive=True,  # read by the Phase 5 AI orchestrator
+    reversible=False,  # a restart can't be "undone"
+    audited=True,  # default; set False only for pure introspection
 )
-async def restart_server(ctx: CallContext, params: RestartServerParams) -> ServerState:
-    ...
+async def restart_server(
+    ctx: CallContext, params: RestartServerParams
+) -> ServerState: ...
 ```
 
 Rules that make this safe to build on:

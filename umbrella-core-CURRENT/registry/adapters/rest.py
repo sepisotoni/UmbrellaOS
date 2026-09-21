@@ -15,6 +15,7 @@ ergonomic layer is intentionally deferred rather than built speculatively
 before there's a second adapter (Phase 5's AI Tool Registry) to validate the
 schema-driven approach against.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -132,5 +133,8 @@ async def invoke_capability(
     if isinstance(result, BaseModel):
         return result.model_dump(mode="json")
     if isinstance(result, list):
-        return [item.model_dump(mode="json") if isinstance(item, BaseModel) else item for item in result]
+        return [
+            item.model_dump(mode="json") if isinstance(item, BaseModel) else item
+            for item in result
+        ]
     return result

@@ -20,6 +20,7 @@ programming errors, and unexpected WebhookError were all silently reported as
 'not found'. Now only ResourceNotFoundException maps to 404; everything else
 re-raises (FastAPI's error handler returns 500).
 """
+
 from typing import Optional
 from datetime import datetime, timezone
 
@@ -31,7 +32,11 @@ from database import get_db
 from api.dependencies.permissions import require_permission
 from api.middleware.errors import ResourceNotFoundException
 from models import User
-from services.webhooks.service import WebhookService, WebhookDeliveryService, WebhookDeliveryError
+from services.webhooks.service import (
+    WebhookService,
+    WebhookDeliveryService,
+    WebhookDeliveryError,
+)
 
 router = APIRouter(prefix="/api/v1/webhooks", tags=["webhooks"])
 
@@ -75,7 +80,10 @@ async def list_webhooks(
 ) -> list[WebhookSubscriptionSchema]:
     """List webhook subscriptions (never includes the signing secret)."""
     subs = await WebhookService.list_all(db, topic=topic)
-    return [WebhookSubscriptionSchema(id=s.id, topic=s.topic, url=s.url, active=s.active) for s in subs]
+    return [
+        WebhookSubscriptionSchema(id=s.id, topic=s.topic, url=s.url, active=s.active)
+        for s in subs
+    ]
 
 
 @router.post("", response_model=WebhookSubscriptionSchema, status_code=201)
@@ -97,8 +105,11 @@ async def create_webhook(
     )
     await db.commit()
     return WebhookSubscriptionSchema(
-        id=subscription.id, topic=subscription.topic, url=subscription.url,
-        active=subscription.active, secret=secret,
+        id=subscription.id,
+        topic=subscription.topic,
+        url=subscription.url,
+        active=subscription.active,
+        secret=secret,
     )
 
 
@@ -123,8 +134,10 @@ async def update_webhook(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     await db.commit()
     return WebhookSubscriptionSchema(
-        id=subscription.id, topic=subscription.topic,
-        url=subscription.url, active=subscription.active,
+        id=subscription.id,
+        topic=subscription.topic,
+        url=subscription.url,
+        active=subscription.active,
     )
 
 

@@ -13,6 +13,7 @@ daemon, the same dependency-injection pattern used throughout this project
 (umbrella-daemon's DockerClient interface, the Capability Registry's
 CallContext).
 """
+
 import uuid
 from datetime import datetime, timezone
 
@@ -98,10 +99,16 @@ class ServerService:
             allocation.container_port = allocation.port
         await db.flush()
 
-        client = daemon_client or DaemonClient(node.daemon_url, node.id, NodeService.decrypted_signing_secret(node))
+        client = daemon_client or DaemonClient(
+            node.daemon_url, node.id, NodeService.decrypted_signing_secret(node)
+        )
         merged_env = {**template.default_env, **(env_overrides or {})}
         port_bindings = [
-            {"container_port": a.container_port, "host_port": a.port, "protocol": a.protocol}
+            {
+                "container_port": a.container_port,
+                "host_port": a.port,
+                "protocol": a.protocol,
+            }
             for a in allocations
         ]
 
@@ -122,7 +129,9 @@ class ServerService:
             # per-request session usage) — the caller's transaction
             # rollback on this exception undoes the reservation too, so a
             # failed daemon call doesn't leave a half-created Server behind.
-            raise ServerError(f"failed to create container on node {node.name!r}: {exc}", 502) from exc
+            raise ServerError(
+                f"failed to create container on node {node.name!r}: {exc}", 502
+            ) from exc
 
         server.status = state.status
         await db.flush()
@@ -136,7 +145,9 @@ class ServerService:
         return server
 
     @staticmethod
-    async def list_servers(db: AsyncSession, node_id: str | None = None) -> list[Server]:
+    async def list_servers(
+        db: AsyncSession, node_id: str | None = None
+    ) -> list[Server]:
         query = select(Server).order_by(Server.name)
         if node_id:
             query = query.where(Server.node_id == node_id)
@@ -144,7 +155,9 @@ class ServerService:
         return list(result.scalars().all())
 
     @staticmethod
-    async def client_for(db: AsyncSession, server: Server, daemon_client: DaemonClient | None) -> DaemonClient:
+    async def client_for(
+        db: AsyncSession, server: Server, daemon_client: DaemonClient | None
+    ) -> DaemonClient:
         """
         Public (not module-private) because services/backup_service.py
         needs the exact same "use the injected client if given, otherwise
@@ -154,10 +167,14 @@ class ServerService:
         if daemon_client is not None:
             return daemon_client
         node = await NodeService.get_node(db, server.node_id)
-        return DaemonClient(node.daemon_url, node.id, NodeService.decrypted_signing_secret(node))
+        return DaemonClient(
+            node.daemon_url, node.id, NodeService.decrypted_signing_secret(node)
+        )
 
     @staticmethod
-    async def start_server(db: AsyncSession, server_id: str, daemon_client: DaemonClient | None = None) -> Server:
+    async def start_server(
+        db: AsyncSession, server_id: str, daemon_client: DaemonClient | None = None
+    ) -> Server:
         server = await ServerService.get_server(db, server_id)
         client = await ServerService.client_for(db, server, daemon_client)
         try:
@@ -184,7 +201,9 @@ class ServerService:
         server = await ServerService.get_server(db, server_id)
         client = await ServerService.client_for(db, server, daemon_client)
         try:
-            state = await client.stop(server_id, grace_period_seconds=grace_period_seconds)
+            state = await client.stop(
+                server_id, grace_period_seconds=grace_period_seconds
+            )
         except DaemonError as exc:
             raise ServerError(f"failed to stop server: {exc}", 502) from exc
         server.status = state.status
@@ -192,7 +211,9 @@ class ServerService:
         return server
 
     @staticmethod
-    async def restart_server(db: AsyncSession, server_id: str, daemon_client: DaemonClient | None = None) -> Server:
+    async def restart_server(
+        db: AsyncSession, server_id: str, daemon_client: DaemonClient | None = None
+    ) -> Server:
         server = await ServerService.get_server(db, server_id)
         client = await ServerService.client_for(db, server, daemon_client)
         try:
@@ -206,7 +227,9 @@ class ServerService:
         return server
 
     @staticmethod
-    async def kill_server(db: AsyncSession, server_id: str, daemon_client: DaemonClient | None = None) -> Server:
+    async def kill_server(
+        db: AsyncSession, server_id: str, daemon_client: DaemonClient | None = None
+    ) -> Server:
         server = await ServerService.get_server(db, server_id)
         client = await ServerService.client_for(db, server, daemon_client)
         try:
@@ -218,7 +241,9 @@ class ServerService:
         return server
 
     @staticmethod
-    async def get_stats(db: AsyncSession, server_id: str, daemon_client: DaemonClient | None = None):
+    async def get_stats(
+        db: AsyncSession, server_id: str, daemon_client: DaemonClient | None = None
+    ):
         server = await ServerService.get_server(db, server_id)
         client = await ServerService.client_for(db, server, daemon_client)
         try:
@@ -227,7 +252,9 @@ class ServerService:
             raise ServerError(f"failed to fetch stats: {exc}", 502) from exc
 
     @staticmethod
-    async def delete_server(db: AsyncSession, server_id: str, daemon_client: DaemonClient | None = None) -> None:
+    async def delete_server(
+        db: AsyncSession, server_id: str, daemon_client: DaemonClient | None = None
+    ) -> None:
         server = await ServerService.get_server(db, server_id)
         client = await ServerService.client_for(db, server, daemon_client)
         try:
@@ -235,7 +262,9 @@ class ServerService:
         except DaemonError as exc:
             raise ServerError(f"failed to remove container: {exc}", 502) from exc
 
-        result = await db.execute(select(Allocation).where(Allocation.server_id == server_id))
+        result = await db.execute(
+            select(Allocation).where(Allocation.server_id == server_id)
+        )
         for allocation in result.scalars().all():
             allocation.server_id = None
             allocation.container_port = None
@@ -320,7 +349,9 @@ class ServerService:
         return server, True
 
     @staticmethod
-    async def reconcile_fleet(db: AsyncSession, daemon_client: DaemonClient | None = None) -> list[str]:
+    async def reconcile_fleet(
+        db: AsyncSession, daemon_client: DaemonClient | None = None
+    ) -> list[str]:
         """Reconcile every non-suspended server. Returns the IDs of
         servers found freshly crashed *in this call* (whether or not the
         restart attempt succeeded) — one server's daemon being
@@ -331,7 +362,9 @@ class ServerService:
         for server in servers:
             if server.is_suspended:
                 continue
-            _, crash_detected = await ServerService.reconcile_server(db, server.id, daemon_client=daemon_client)
+            _, crash_detected = await ServerService.reconcile_server(
+                db, server.id, daemon_client=daemon_client
+            )
             if crash_detected:
                 crashed.append(server.id)
         return crashed

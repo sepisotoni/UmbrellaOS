@@ -7,6 +7,7 @@ umbrella-daemon's internal/backup package on the server's actual node —
 this service's job is sequencing those calls and keeping the Backup row's
 status honest, never touching archive bytes directly.
 """
+
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -56,7 +57,9 @@ class BackupService:
     @staticmethod
     async def list_backups(db: AsyncSession, server_id: str) -> list[Backup]:
         result = await db.execute(
-            select(Backup).where(Backup.server_id == server_id).order_by(Backup.created_at.desc())
+            select(Backup)
+            .where(Backup.server_id == server_id)
+            .order_by(Backup.created_at.desc())
         )
         return list(result.scalars().all())
 

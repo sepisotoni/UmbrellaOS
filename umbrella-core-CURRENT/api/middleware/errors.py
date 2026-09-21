@@ -6,6 +6,7 @@ Provides:
 - Error response schemas
 - Exception handlers for FastAPI
 """
+
 import logging
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
@@ -20,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 class ErrorResponse(BaseModel):
     """Standardized error response format."""
+
     success: bool = False
     error: str
     code: str
@@ -31,7 +33,10 @@ class ErrorResponse(BaseModel):
 
 class AppException(Exception):
     """Base application exception."""
-    def __init__(self, message: str, code: str, status_code: int = 400, details: Any = None):
+
+    def __init__(
+        self, message: str, code: str, status_code: int = 400, details: Any = None
+    ):
         self.message = message
         self.code = code
         self.status_code = status_code
@@ -41,12 +46,14 @@ class AppException(Exception):
 
 class PermissionDeniedException(AppException):
     """User lacks required permission."""
+
     def __init__(self, message: str = "Insufficient permissions", details: Any = None):
         super().__init__(message, "PERMISSION_DENIED", 403, details)
 
 
 class ResourceNotFoundException(AppException):
     """Requested resource not found."""
+
     def __init__(self, resource: str, identifier: Any = None):
         message = f"{resource} not found"
         if identifier:
@@ -56,33 +63,39 @@ class ResourceNotFoundException(AppException):
 
 class ValidationException(AppException):
     """Input validation failed."""
+
     def __init__(self, message: str, details: Any = None):
         super().__init__(message, "VALIDATION_ERROR", 422, details)
 
 
 class UnauthorizedException(AppException):
     """Authentication failed."""
+
     def __init__(self, message: str = "Unauthorized"):
         super().__init__(message, "UNAUTHORIZED", 401)
 
 
 class ConflictException(AppException):
     """Resource conflict (duplicate, state mismatch, etc)."""
+
     def __init__(self, message: str, details: Any = None):
         super().__init__(message, "CONFLICT", 409, details)
 
 
 class RateLimitException(AppException):
     """Rate limit exceeded."""
+
     def __init__(self, message: str = "Rate limit exceeded", retry_after: int = 60):
         super().__init__(message, "RATE_LIMIT", 429, {"retry_after": retry_after})
 
 
 def register_error_handlers(app: FastAPI) -> None:
     """Register global error handlers for FastAPI."""
-    
+
     @app.exception_handler(AppException)
-    async def app_exception_handler(request: Request, exc: AppException) -> JSONResponse:
+    async def app_exception_handler(
+        request: Request, exc: AppException
+    ) -> JSONResponse:
         """Handle custom application exceptions."""
         error_response = ErrorResponse(
             success=False,
@@ -91,17 +104,20 @@ def register_error_handlers(app: FastAPI) -> None:
             status=exc.status_code,
             timestamp=datetime.now(timezone.utc).isoformat(),
             path=str(request.url.path),
-            details=exc.details
+            details=exc.details,
         )
         return JSONResponse(
-            status_code=exc.status_code,
-            content=jsonable_encoder(error_response)
+            status_code=exc.status_code, content=jsonable_encoder(error_response)
         )
-    
+
     @app.exception_handler(Exception)
-    async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    async def generic_exception_handler(
+        request: Request, exc: Exception
+    ) -> JSONResponse:
         """Handle unexpected exceptions."""
-        logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
+        logger.exception(
+            "Unhandled exception on %s %s", request.method, request.url.path
+        )
         error_response = ErrorResponse(
             success=False,
             error="Internal server error",
@@ -109,16 +125,14 @@ def register_error_handlers(app: FastAPI) -> None:
             status=500,
             timestamp=datetime.now(timezone.utc).isoformat(),
             path=str(request.url.path),
-            details=None  # never expose raw exception detail to clients
+            details=None,  # never expose raw exception detail to clients
         )
-        return JSONResponse(
-            status_code=500,
-            content=jsonable_encoder(error_response)
-        )
+        return JSONResponse(status_code=500, content=jsonable_encoder(error_response))
 
 
 class SuccessResponse(BaseModel):
     """Standardized success response format."""
+
     success: bool = True
     data: Optional[Any] = None
     message: Optional[str] = None

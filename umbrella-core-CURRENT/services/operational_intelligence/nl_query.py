@@ -26,6 +26,7 @@ a StaffEscalation row (source="operational") and publishes a
 "staff_escalation.created" event in the same transaction, instead of only
 being returned in the response dict and going nowhere.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -49,7 +50,9 @@ async def _gather_window_evidence(
     snapshots = await recent_snapshots(db, server_id, since=window_start, limit=500)
 
     def _aware(value: dt.datetime) -> dt.datetime:
-        return value if value.tzinfo is not None else value.replace(tzinfo=dt.timezone.utc)
+        return (
+            value if value.tzinfo is not None else value.replace(tzinfo=dt.timezone.utc)
+        )
 
     snapshots = [s for s in snapshots if _aware(s.recorded_at) <= window_end]
 
@@ -65,7 +68,9 @@ async def _gather_window_evidence(
     )
     activity = list((await db.execute(activity_stmt)).scalars().all())
 
-    lines = [f"Server metrics from {window_start.isoformat()} to {window_end.isoformat()}:"]
+    lines = [
+        f"Server metrics from {window_start.isoformat()} to {window_end.isoformat()}:"
+    ]
     if snapshots:
         tps_values = [s.tps for s in snapshots]
         online_values = [s.online_count for s in snapshots]
@@ -83,7 +88,9 @@ async def _gather_window_evidence(
     if activity:
         lines.append("Plugin/server activity in this window:")
         for entry in activity:
-            lines.append(f"- {entry.created_at.isoformat()}: {entry.action} (target: {entry.target or 'n/a'})")
+            lines.append(
+                f"- {entry.created_at.isoformat()}: {entry.action} (target: {entry.target or 'n/a'})"
+            )
     else:
         lines.append("No plugin/server activity was logged in this window.")
 
@@ -112,7 +119,9 @@ async def answer_operational_query(
     )
     task_prompt = f"Question: {question}\n\n{evidence}"
 
-    result = await Orchestrator.run(db, _TASK_TYPE, task_prompt, requested_by=requested_by)
+    result = await Orchestrator.run(
+        db, _TASK_TYPE, task_prompt, requested_by=requested_by
+    )
 
     if result.escalated:
         escalation = await ModerationIntelRepository.create_escalation(

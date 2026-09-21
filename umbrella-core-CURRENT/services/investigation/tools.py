@@ -18,6 +18,7 @@ Adaptations from the source:
 - LinkedAccountTool queries models.discord.DiscordAccount (umbrella-core's
   pre-existing account link table), not a separate LinkedAccount model.
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -63,12 +64,22 @@ class WhitelistStatusTool(InvestigationTool):
 
     async def run(self, db: AsyncSession, context: InvestigationContext) -> ToolFinding:
         if context.target_user_id is None:
-            return ToolFinding(self.key, "No target user was specified to check whitelist status for.", 0.2)
-        entry = await InvestigationRepository.whitelist_entry(db, discord_user_id=context.target_user_id)
+            return ToolFinding(
+                self.key,
+                "No target user was specified to check whitelist status for.",
+                0.2,
+            )
+        entry = await InvestigationRepository.whitelist_entry(
+            db, discord_user_id=context.target_user_id
+        )
         if entry is None:
-            return ToolFinding(self.key, "No whitelist record found for this user.", 0.5)
+            return ToolFinding(
+                self.key, "No whitelist record found for this user.", 0.5
+            )
         return ToolFinding(
-            self.key, f"Whitelist status for '{entry.ingame_username}': {entry.status.value}.", 0.9
+            self.key,
+            f"Whitelist status for '{entry.ingame_username}': {entry.status.value}.",
+            0.9,
         )
 
 
@@ -80,7 +91,11 @@ class KnownIssuesTool(InvestigationTool):
     async def run(self, db: AsyncSession, context: InvestigationContext) -> ToolFinding:
         issues = await InvestigationRepository.known_issues(db, only_open=True)
         if not issues:
-            return ToolFinding(self.key, "No open known issues are logged for this server right now.", 0.7)
+            return ToolFinding(
+                self.key,
+                "No open known issues are logged for this server right now.",
+                0.7,
+            )
         lines = "; ".join(f"{i.title}: {i.description}" for i in issues[:5])
         return ToolFinding(self.key, f"Open known issues: {lines}", 0.85)
 
@@ -92,7 +107,11 @@ class PunishmentHistoryTool(InvestigationTool):
 
     async def run(self, db: AsyncSession, context: InvestigationContext) -> ToolFinding:
         if context.target_user_id is None:
-            return ToolFinding(self.key, "No target user was specified to check punishment history for.", 0.2)
+            return ToolFinding(
+                self.key,
+                "No target user was specified to check punishment history for.",
+                0.2,
+            )
 
         stmt = (
             select(ModerationAction)
@@ -104,10 +123,13 @@ class PunishmentHistoryTool(InvestigationTool):
         rows = list(result.scalars().all())
 
         if not rows:
-            return ToolFinding(self.key, "No moderation actions on record for this user.", 0.6)
+            return ToolFinding(
+                self.key, "No moderation actions on record for this user.", 0.6
+            )
 
         lines = "; ".join(
-            f"{r.action_type.value} on {r.created_at:%Y-%m-%d} ({r.reason or 'no reason given'})" for r in rows
+            f"{r.action_type.value} on {r.created_at:%Y-%m-%d} ({r.reason or 'no reason given'})"
+            for r in rows
         )
         return ToolFinding(self.key, f"Recent moderation history: {lines}", 0.9)
 
@@ -117,10 +139,18 @@ class LinkedAccountTool(InvestigationTool):
 
     async def run(self, db: AsyncSession, context: InvestigationContext) -> ToolFinding:
         if context.target_user_id is None:
-            return ToolFinding(self.key, "No target user was specified to check account linking for.", 0.2)
+            return ToolFinding(
+                self.key,
+                "No target user was specified to check account linking for.",
+                0.2,
+            )
         link = await InvestigationRepository.linked_account(db, context.target_user_id)
         if link is None or link.player_uuid is None:
-            return ToolFinding(self.key, "This Discord account is not linked to a verified in-game account.", 0.7)
+            return ToolFinding(
+                self.key,
+                "This Discord account is not linked to a verified in-game account.",
+                0.7,
+            )
 
         player = await db.get(Player, link.player_uuid)
         username = player.username if player is not None else link.player_uuid
@@ -138,11 +168,17 @@ class MaintenanceStatusTool(InvestigationTool):
         issues = await InvestigationRepository.known_issues(db, only_open=True)
         maintenance_terms = ("maintenance", "outage", "downtime", "restart")
         hits = [
-            i for i in issues
-            if any(term in i.title.lower() or term in i.description.lower() for term in maintenance_terms)
+            i
+            for i in issues
+            if any(
+                term in i.title.lower() or term in i.description.lower()
+                for term in maintenance_terms
+            )
         ]
         if not hits:
-            return ToolFinding(self.key, "No active maintenance or outage is currently logged.", 0.6)
+            return ToolFinding(
+                self.key, "No active maintenance or outage is currently logged.", 0.6
+            )
         lines = "; ".join(f"{i.title}: {i.description}" for i in hits)
         return ToolFinding(self.key, f"Active maintenance/outage: {lines}", 0.9)
 
@@ -161,7 +197,9 @@ class RecentAnnouncementsTool(InvestigationTool):
     async def run(self, db: AsyncSession, context: InvestigationContext) -> ToolFinding:
         entries = await KnowledgeService.search(db, context.question, limit=3)
         if not entries:
-            return ToolFinding(self.key, "No relevant knowledge base entries found.", 0.4)
+            return ToolFinding(
+                self.key, "No relevant knowledge base entries found.", 0.4
+            )
         lines = "; ".join(e.content for e in entries)
         return ToolFinding(self.key, f"Relevant knowledge base entries: {lines}", 0.8)
 

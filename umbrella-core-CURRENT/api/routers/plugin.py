@@ -14,6 +14,7 @@ Phase 8 will expand with:
     POST /api/v1/events/player-join  — join check (verification, bans)
     POST /api/v1/events/batch        — bulk event ingestion for replay buffer
 """
+
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -103,7 +104,9 @@ async def plugin_heartbeat_post(
 ) -> dict:
     """Record plugin heartbeat for dashboard server/plugin views."""
     server_id = body.server_id or "default"
-    hb = await db.scalar(select(PluginHeartbeat).where(PluginHeartbeat.server_id == server_id))
+    hb = await db.scalar(
+        select(PluginHeartbeat).where(PluginHeartbeat.server_id == server_id)
+    )
     now = datetime.now(timezone.utc)
     if hb is None:
         hb = PluginHeartbeat(
@@ -179,7 +182,9 @@ async def plugin_config(
 @router.get("/punishments/{player_uuid}/active", response_model=ActiveBanCheckResponse)
 async def plugin_active_punishment_check(
     player_uuid: str,
-    ip: str | None = Query(default=None, description="Connecting player IP — used to check ipban records"),
+    ip: str | None = Query(
+        default=None, description="Connecting player IP — used to check ipban records"
+    ),
     db: AsyncSession = Depends(get_db),
     _auth: str = Depends(require_plugin_key),
 ) -> ActiveBanCheckResponse:

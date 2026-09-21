@@ -10,6 +10,7 @@ Only three values are kept as hard env vars (see Settings below);
 everything else is fetched from core's settings API at startup and
 stored in a RemoteConfig instance on the bot (self.remote).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -39,6 +40,7 @@ class RemoteConfig:
     startup. All fields that used to be read from .env now live here so
     they can be updated via the dashboard without a bot redeploy.
     """
+
     guild_id: int | None
     staff_alert_channel_id: int | None
     verified_role_id: int
@@ -94,7 +96,9 @@ async def fetch_bot_config(core: "UmbrellaCoreClient") -> RemoteConfig:
 
     return RemoteConfig(
         guild_id=_int_or_none(values.get("discord.guild_id", "")),
-        staff_alert_channel_id=_int_or_none(values.get("discord.staff_alert_channel_id", "")),
+        staff_alert_channel_id=_int_or_none(
+            values.get("discord.staff_alert_channel_id", "")
+        ),
         verified_role_id=_int_default(values.get("discord.verified_role_id", ""), 0),
         owner_role_id=_int_default(values.get("discord.owner_role_id", ""), 0),
         callback_url=values.get("discord.callback_url") or None,

@@ -9,6 +9,7 @@ method is exercised here. The actual sync-triggering behavior
 project's own logic to test - MarketplaceCommandSync.sync() itself is
 covered by tests/test_marketplace_sync.py.
 """
+
 from __future__ import annotations
 
 from bot.cogs.marketplace_cog import MarketplaceCog
@@ -17,7 +18,10 @@ from bot.services.marketplace_sync import SyncOutcome
 
 def test_format_outcome_no_changes():
     outcome = SyncOutcome(added=[], removed=[], warnings=[])
-    assert MarketplaceCog._format_outcome(outcome) == "No changes — plugin commands already match umbrella-core."
+    assert (
+        MarketplaceCog._format_outcome(outcome)
+        == "No changes — plugin commands already match umbrella-core."
+    )
 
 
 def test_format_outcome_added_only():
@@ -35,7 +39,9 @@ def test_format_outcome_removed_only():
 
 
 def test_format_outcome_warnings_only():
-    outcome = SyncOutcome(added=[], removed=[], warnings=["plugin 'foo' command 'bad' skipped: reason"])
+    outcome = SyncOutcome(
+        added=[], removed=[], warnings=["plugin 'foo' command 'bad' skipped: reason"]
+    )
     message = MarketplaceCog._format_outcome(outcome)
     assert "1 command(s) skipped" in message
 
@@ -60,4 +66,6 @@ def test_plugin_sync_command_defaults_to_administrator_only():
     import discord
 
     by_name = {cmd.name: cmd for cmd in MarketplaceCog.__cog_app_commands__}
-    assert by_name["plugin_sync"].default_permissions == discord.Permissions(administrator=True)
+    assert by_name["plugin_sync"].default_permissions == discord.Permissions(
+        administrator=True
+    )

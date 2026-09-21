@@ -18,6 +18,7 @@ Callback URL caching: the DB row is cached in memory for 60 seconds to avoid
 a DB hit on every event. A bot restart overwrites the row; the cache expires
 and the new URL is picked up within 60 s.
 """
+
 from __future__ import annotations
 
 import hashlib

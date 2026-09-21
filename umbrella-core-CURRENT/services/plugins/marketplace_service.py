@@ -47,6 +47,7 @@ it by dry-running the commit step against a registry snapshot that
 already contains every *other* installed plugin's capabilities, not just
 an empty scratch one.
 """
+
 from __future__ import annotations
 
 import json
@@ -56,17 +57,31 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.middleware.errors import ConflictException, ResourceNotFoundException, ValidationException
+from api.middleware.errors import (
+    ConflictException,
+    ResourceNotFoundException,
+    ValidationException,
+)
 from models.marketplace import PluginInstall, PluginListing, PluginVersion
 from registry.registry import CapabilityNotFoundError, CapabilityRegistry
-from services.plugins.manifest import ManifestValidationError, PluginManifest, parse_manifest
+from services.plugins.manifest import (
+    ManifestValidationError,
+    PluginManifest,
+    parse_manifest,
+)
 from services.plugins.registration import (
     PluginRegistrationError,
     register_plugin_capabilities,
     register_plugin_config_capabilities,
 )
 from services.plugins.sandbox import ProcessSandbox
-from services.plugins.source_store import PluginPackageError, extract_sources, load_verified_zip_bytes, read_manifest_dict, store_zip
+from services.plugins.source_store import (
+    PluginPackageError,
+    extract_sources,
+    load_verified_zip_bytes,
+    read_manifest_dict,
+    store_zip,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +91,9 @@ class DiscordCommandEntry:
     fully-qualified capability name a consumer (the Discord bot process)
     would invoke via the generic capability-invoke path."""
 
-    def __init__(self, plugin_id: str, name: str, description: str, capability_name: str):
+    def __init__(
+        self, plugin_id: str, name: str, description: str, capability_name: str
+    ):
         self.plugin_id = plugin_id
         self.name = name
         self.description = description
@@ -150,7 +167,11 @@ class PageLayoutEntry:
     order."""
 
     def __init__(
-        self, plugin_id: str, nav_label: str, nav_icon: str, widgets: list[PageWidgetEntry]
+        self,
+        plugin_id: str,
+        nav_label: str,
+        nav_icon: str,
+        widgets: list[PageWidgetEntry],
     ):
         self.plugin_id = plugin_id
         self.nav_label = nav_label
@@ -188,7 +209,9 @@ class MarketplaceService:
                 "published — versions are immutable once published; publish a new version instead."
             )
 
-        zip_path, sha256_hash = store_zip(manifest.plugin_id, manifest.version, zip_bytes)
+        zip_path, sha256_hash = store_zip(
+            manifest.plugin_id, manifest.version, zip_bytes
+        )
 
         listing = await db.get(PluginListing, manifest.plugin_id)
         now = datetime.now(timezone.utc)
@@ -222,7 +245,9 @@ class MarketplaceService:
 
     @staticmethod
     async def list_listings(db: AsyncSession) -> list[PluginListing]:
-        result = await db.execute(select(PluginListing).order_by(PluginListing.plugin_id))
+        result = await db.execute(
+            select(PluginListing).order_by(PluginListing.plugin_id)
+        )
         return list(result.scalars().all())
 
     @staticmethod
@@ -271,30 +296,45 @@ class MarketplaceService:
             raise ResourceNotFoundException("Plugin version", f"{plugin_id}@{version}")
 
         existing_install = await db.get(PluginInstall, plugin_id)
-        if existing_install is not None and existing_install.installed_version == version:
+        if (
+            existing_install is not None
+            and existing_install.installed_version == version
+        ):
             raise ConflictException(
                 f"Plugin {plugin_id!r} is already installed at version {version!r}."
             )
 
         try:
-            manifest: PluginManifest = parse_manifest(json.loads(version_row.manifest_json))
-            zip_bytes = load_verified_zip_bytes(version_row.zip_path, version_row.sha256_hash)
+            manifest: PluginManifest = parse_manifest(
+                json.loads(version_row.manifest_json)
+            )
+            zip_bytes = load_verified_zip_bytes(
+                version_row.zip_path, version_row.sha256_hash
+            )
             sources = extract_sources(zip_bytes)
         except (ManifestValidationError, PluginPackageError) as exc:
-            raise ValidationException(f"Cannot install {plugin_id}@{version}: {exc}") from exc
+            raise ValidationException(
+                f"Cannot install {plugin_id}@{version}: {exc}"
+            ) from exc
 
         dry_run_registry = CapabilityRegistry()
         try:
-            await register_plugin_capabilities(manifest, sandbox, db, registry=dry_run_registry)
+            await register_plugin_capabilities(
+                manifest, sandbox, db, registry=dry_run_registry
+            )
             # Phase 10, Tier 2 (Decision 2, Option A): registered into the
             # same dry_run_registry as the line above, so a manifest error
             # in either half aborts the whole install before anything
             # touches the live registry — see
             # register_plugin_config_capabilities's docstring. No-op for a
             # manifest with no config_fields (most plugins).
-            await register_plugin_config_capabilities(manifest, db, registry=dry_run_registry)
+            await register_plugin_config_capabilities(
+                manifest, db, registry=dry_run_registry
+            )
         except PluginRegistrationError as exc:
-            raise ValidationException(f"Cannot install {plugin_id}@{version}: {exc}") from exc
+            raise ValidationException(
+                f"Cannot install {plugin_id}@{version}: {exc}"
+            ) from exc
 
         # Validation passed — safe to commit. Unregister the previous
         # install's capabilities first (if any), then set the new source
@@ -308,7 +348,8 @@ class MarketplaceService:
                     logger.warning(
                         "Plugin %r's tracked capability %r was already missing from the "
                         "registry at update time — registering the new version anyway.",
-                        plugin_id, name,
+                        plugin_id,
+                        name,
                     )
 
         sandbox.set_plugin_sources(manifest.plugin_id, sources)
@@ -358,7 +399,9 @@ class MarketplaceService:
             except CapabilityNotFoundError:
                 logger.warning(
                     "Plugin %r's tracked capability %r was already missing from the "
-                    "registry at uninstall time.", plugin_id, name,
+                    "registry at uninstall time.",
+                    plugin_id,
+                    name,
                 )
         sandbox.remove_plugin_sources(plugin_id)
         await db.delete(install_row)
@@ -366,7 +409,9 @@ class MarketplaceService:
 
     @staticmethod
     async def list_installed(db: AsyncSession) -> list[PluginInstall]:
-        result = await db.execute(select(PluginInstall).order_by(PluginInstall.plugin_id))
+        result = await db.execute(
+            select(PluginInstall).order_by(PluginInstall.plugin_id)
+        )
         return list(result.scalars().all())
 
     # ----------------------------------------------------------------
@@ -393,7 +438,9 @@ class MarketplaceService:
         return entries
 
     @staticmethod
-    async def dashboard_slots(db: AsyncSession, *, slot: str | None = None) -> list[DashboardSlotEntry]:
+    async def dashboard_slots(
+        db: AsyncSession, *, slot: str | None = None
+    ) -> list[DashboardSlotEntry]:
         installs = await MarketplaceService.list_installed(db)
         entries: list[DashboardSlotEntry] = []
         for install in installs:

@@ -28,6 +28,7 @@ tooling with a different shape (Moo's !ai-knowledge in
 founder_admin_cog.py), not a "search" command, and is its own cog-sized
 piece of work.
 """
+
 from __future__ import annotations
 
 import logging
@@ -45,9 +46,13 @@ class KnowledgeCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    @app_commands.command(name="knowledge_search", description="Search the knowledge base for an answer.")
+    @app_commands.command(
+        name="knowledge_search", description="Search the knowledge base for an answer."
+    )
     @app_commands.describe(query="What you're looking for")
-    async def knowledge_search(self, interaction: discord.Interaction, query: str) -> None:
+    async def knowledge_search(
+        self, interaction: discord.Interaction, query: str
+    ) -> None:
         await interaction.response.defer(thinking=True, ephemeral=True)
 
         try:
@@ -56,7 +61,9 @@ class KnowledgeCog(commands.Cog):
             await interaction.followup.send(self._format_error(exc), ephemeral=True)
             return
 
-        await interaction.followup.send(embed=self._format_result(query, result), ephemeral=True)
+        await interaction.followup.send(
+            embed=self._format_result(query, result), ephemeral=True
+        )
 
     @staticmethod
     def _format_error(exc: UmbrellaCoreError) -> str:
@@ -73,16 +80,24 @@ class KnowledgeCog(commands.Cog):
         """Separated from the command body for the same reason as
         _format_error - pure function, testable without discord.py's
         interaction/gateway machinery."""
-        embed = discord.Embed(title="Knowledge search", description=f'Results for "{query}"', color=discord.Color.blurple())
+        embed = discord.Embed(
+            title="Knowledge search",
+            description=f'Results for "{query}"',
+            color=discord.Color.blurple(),
+        )
         entries = result.get("entries", [])
         if not entries:
-            embed.add_field(name="No results", value="Nothing matched that query.", inline=False)
+            embed.add_field(
+                name="No results", value="Nothing matched that query.", inline=False
+            )
             return embed
 
         for entry in entries:
             content = entry["content"]
             snippet = content if len(content) <= 500 else content[:500] + "…"
-            embed.add_field(name=f"#{entry['channel_name']}", value=snippet, inline=False)
+            embed.add_field(
+                name=f"#{entry['channel_name']}", value=snippet, inline=False
+            )
         return embed
 
 

@@ -1,5 +1,6 @@
 """services/ai/openrouter_provider.py — OpenRouter (aggregates many
 underlying model vendors behind one API, OpenAI-compatible request shape)."""
+
 from services.ai.base import HTTPProvider
 
 
@@ -14,7 +15,9 @@ class OpenRouterProvider(HTTPProvider):
     def _request_headers(self) -> dict:
         return {"Authorization": f"Bearer {self._api_key}"}
 
-    def _request_body(self, model, system_prompt, user_prompt, max_tokens, temperature) -> dict:
+    def _request_body(
+        self, model, system_prompt, user_prompt, max_tokens, temperature
+    ) -> dict:
         return {
             "model": model,
             "messages": [

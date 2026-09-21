@@ -2,6 +2,7 @@
 tests/registry/test_capabilities_player_risk.py — REST integration tests
 for the unified player risk score.
 """
+
 import pytest
 
 from tests.conftest import ADMIN_HEADERS

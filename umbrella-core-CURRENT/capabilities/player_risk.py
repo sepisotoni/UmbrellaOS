@@ -3,6 +3,7 @@ capabilities/player_risk.py — Unified player risk score (Phase 5's fourth
 novel capability). See services/player_risk/risk_score.py's module
 docstring for the full design.
 """
+
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
@@ -13,7 +14,9 @@ from services.player_risk.risk_score import compute_risk_score
 
 
 class RiskScoreParams(BaseModel):
-    player_uuid: str = Field(description="Minecraft player UUID to compute a risk score for")
+    player_uuid: str = Field(
+        description="Minecraft player UUID to compute a risk score for"
+    )
 
     def audit_target(self) -> str:
         return self.player_uuid

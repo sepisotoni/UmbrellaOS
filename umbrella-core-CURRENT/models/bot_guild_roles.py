@@ -3,6 +3,7 @@ models/bot_guild_roles.py — Single-row table storing the Discord bot's
 guild mentionable role list. Bot POSTs on startup; dashboard reads to
 populate the Role Mention dropdown in the broadcaster.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone

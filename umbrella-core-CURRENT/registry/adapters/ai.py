@@ -25,6 +25,7 @@ documented convention:
    before `registry.call()` ever sees it - closing the TODO left in both
    `action_guard.py` and `orchestrator.py`.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -69,7 +70,9 @@ class ToolCallDenied(Exception):
         super().__init__(reason)
 
 
-def list_tools(ctx_permissions: set[str] | None = None, *, is_superuser: bool = False) -> list[ToolDefinition]:
+def list_tools(
+    ctx_permissions: set[str] | None = None, *, is_superuser: bool = False
+) -> list[ToolDefinition]:
     """
     Every registered capability, as a tool definition. If `ctx_permissions`
     is given (and `is_superuser` is False), the list is filtered to only
@@ -82,7 +85,10 @@ def list_tools(ctx_permissions: set[str] | None = None, *, is_superuser: bool = 
     tools = []
     for spec in registry.list():
         if not is_superuser and ctx_permissions is not None:
-            if spec.required_permission is not None and spec.required_permission not in ctx_permissions:
+            if (
+                spec.required_permission is not None
+                and spec.required_permission not in ctx_permissions
+            ):
                 continue
         tools.append(
             ToolDefinition(
@@ -147,7 +153,9 @@ async def call_tool(
         ) from exc
 
     try:
-        require_autonomous_allowed(name, params.model_dump(mode="json"), autonomous_mode)
+        require_autonomous_allowed(
+            name, params.model_dump(mode="json"), autonomous_mode
+        )
     except ActionGuardViolation as exc:
         raise ToolCallDenied(str(exc)) from exc
 

@@ -26,6 +26,7 @@ RiskScoreResultModel has no risk_level field the way CrashRiskResult does
 a color-coded severity scale here would be presenting a judgment core
 never made. Raw numbers only, exactly what the capability actually returns.
 """
+
 from __future__ import annotations
 
 import logging
@@ -44,49 +45,71 @@ class PlayerRiskCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    @app_commands.command(name="player_risk", description="Compute a unified risk score for a player (anticheat, alts, moderation, investigations).")
+    @app_commands.command(
+        name="player_risk",
+        description="Compute a unified risk score for a player (anticheat, alts, moderation, investigations).",
+    )
     @require_owner_role()
     @app_commands.describe(player_uuid="The Minecraft player's UUID")
-    async def player_risk(self, interaction: discord.Interaction, player_uuid: str) -> None:
+    async def player_risk(
+        self, interaction: discord.Interaction, player_uuid: str
+    ) -> None:
         await interaction.response.defer(thinking=True, ephemeral=True)
 
         try:
             result = await self.bot.core.invoke(
-                "player_risk.score", {"player_uuid": player_uuid}, discord_user_id=str(interaction.user.id)
+                "player_risk.score",
+                {"player_uuid": player_uuid},
+                discord_user_id=str(interaction.user.id),
             )
         except UmbrellaCoreError as exc:
             await interaction.followup.send(self._format_error(exc), ephemeral=True)
             return
 
-        await interaction.followup.send(embed=self._format_risk_score(result), ephemeral=True)
+        await interaction.followup.send(
+            embed=self._format_risk_score(result), ephemeral=True
+        )
 
-    @app_commands.command(name="player_risk_by_discord", description="Compute a unified risk score for a linked Discord member.")
+    @app_commands.command(
+        name="player_risk_by_discord",
+        description="Compute a unified risk score for a linked Discord member.",
+    )
     @require_owner_role()
     @app_commands.describe(member="The Discord member to look up")
-    async def player_risk_by_discord(self, interaction: discord.Interaction, member: discord.Member) -> None:
+    async def player_risk_by_discord(
+        self, interaction: discord.Interaction, member: discord.Member
+    ) -> None:
         await interaction.response.defer(thinking=True, ephemeral=True)
 
         try:
             link = await self.bot.core.invoke(
-                "verification.link.by_discord", {"discord_id": str(member.id)}, discord_user_id=str(interaction.user.id)
+                "verification.link.by_discord",
+                {"discord_id": str(member.id)},
+                discord_user_id=str(interaction.user.id),
             )
         except UmbrellaCoreError as exc:
             await interaction.followup.send(self._format_error(exc), ephemeral=True)
             return
 
         if not link["linked"]:
-            await interaction.followup.send(f"{member.mention} isn't linked to a Minecraft account.", ephemeral=True)
+            await interaction.followup.send(
+                f"{member.mention} isn't linked to a Minecraft account.", ephemeral=True
+            )
             return
 
         try:
             result = await self.bot.core.invoke(
-                "player_risk.score", {"player_uuid": link["player_uuid"]}, discord_user_id=str(interaction.user.id)
+                "player_risk.score",
+                {"player_uuid": link["player_uuid"]},
+                discord_user_id=str(interaction.user.id),
             )
         except UmbrellaCoreError as exc:
             await interaction.followup.send(self._format_error(exc), ephemeral=True)
             return
 
-        await interaction.followup.send(embed=self._format_risk_score(result), ephemeral=True)
+        await interaction.followup.send(
+            embed=self._format_risk_score(result), ephemeral=True
+        )
 
     @staticmethod
     def _format_error(exc: UmbrellaCoreError) -> str:
@@ -108,8 +131,14 @@ class PlayerRiskCog(commands.Cog):
             color=discord.Color.blurple(),
         )
         discord_id = result.get("discord_id")
-        embed.add_field(name="Player UUID", value=result.get("player_uuid", "?"), inline=False)
-        embed.add_field(name="Linked Discord account", value=f"<@{discord_id}>" if discord_id else "Not linked", inline=False)
+        embed.add_field(
+            name="Player UUID", value=result.get("player_uuid", "?"), inline=False
+        )
+        embed.add_field(
+            name="Linked Discord account",
+            value=f"<@{discord_id}>" if discord_id else "Not linked",
+            inline=False,
+        )
 
         breakdown = result.get("breakdown", {})
         lines = [

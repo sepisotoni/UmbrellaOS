@@ -1,6 +1,7 @@
 """
 main.py — umbrella-discord entry point.
 """
+
 import logging
 
 from bot.bot import UmbrellaBot

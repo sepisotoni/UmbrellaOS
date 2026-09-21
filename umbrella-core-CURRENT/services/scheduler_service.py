@@ -7,6 +7,7 @@ deciding when a schedule is due and firing it through the exact same
 — scheduled execution is not a separate code path with its own
 permission/audit handling, it's another caller of the same one.
 """
+
 from datetime import datetime, timezone
 
 from croniter import CroniterBadCronError, croniter
@@ -28,7 +29,9 @@ def _validate_cron(cron_expression: str) -> None:
     try:
         croniter(cron_expression)
     except (CroniterBadCronError, ValueError) as exc:
-        raise ScheduleError(f"invalid cron expression {cron_expression!r}: {exc}") from exc
+        raise ScheduleError(
+            f"invalid cron expression {cron_expression!r}: {exc}"
+        ) from exc
 
 
 class SchedulerService:
@@ -69,7 +72,9 @@ class SchedulerService:
         return schedule
 
     @staticmethod
-    async def set_enabled(db: AsyncSession, schedule_id: str, enabled: bool) -> Schedule:
+    async def set_enabled(
+        db: AsyncSession, schedule_id: str, enabled: bool
+    ) -> Schedule:
         schedule = await SchedulerService.get_schedule(db, schedule_id)
         schedule.enabled = enabled
         await db.flush()
@@ -101,7 +106,9 @@ class SchedulerService:
         if last_run.tzinfo is None:
             last_run = last_run.replace(tzinfo=timezone.utc)
         if most_recent_scheduled_fire.tzinfo is None:
-            most_recent_scheduled_fire = most_recent_scheduled_fire.replace(tzinfo=timezone.utc)
+            most_recent_scheduled_fire = most_recent_scheduled_fire.replace(
+                tzinfo=timezone.utc
+            )
         return most_recent_scheduled_fire > last_run
 
     @staticmethod
@@ -116,7 +123,9 @@ class SchedulerService:
         ctx = CallContext.from_system(db)
         schedule.last_run_at = datetime.now(timezone.utc)
         try:
-            await registry.call(schedule.capability_name, ctx, schedule.capability_params)
+            await registry.call(
+                schedule.capability_name, ctx, schedule.capability_params
+            )
         except Exception as exc:  # noqa: BLE001 - any capability failure must be recorded, not just expected ones
             schedule.last_run_status = "failed"
             schedule.last_run_error = str(exc)
@@ -127,7 +136,9 @@ class SchedulerService:
         await db.flush()
 
     @staticmethod
-    async def run_due_schedules(db: AsyncSession, now: datetime | None = None) -> list[str]:
+    async def run_due_schedules(
+        db: AsyncSession, now: datetime | None = None
+    ) -> list[str]:
         """
         Run every currently-due, enabled schedule. Returns the list of
         schedule IDs that were run (whether they succeeded or failed) —

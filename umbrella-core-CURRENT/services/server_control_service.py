@@ -1,4 +1,5 @@
 """Secure server process control via configured commands (no shell injection)."""
+
 import asyncio
 import shlex
 from typing import Literal
@@ -27,7 +28,9 @@ class ServerControlError(Exception):
 
 async def _validate_server(db: AsyncSession, server_id: str) -> PluginHeartbeat | None:
     """Return heartbeat row if known; allow control when registry is empty."""
-    hb = await db.scalar(select(PluginHeartbeat).where(PluginHeartbeat.server_id == server_id))
+    hb = await db.scalar(
+        select(PluginHeartbeat).where(PluginHeartbeat.server_id == server_id)
+    )
     if hb is not None:
         return hb
     any_hb = await db.scalar(select(PluginHeartbeat).limit(1))
@@ -61,7 +64,9 @@ async def _run_configured_command(db: AsyncSession, setting_key: str) -> dict:
         cwd=workdir or None,
     )
     try:
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=COMMAND_TIMEOUT_SEC)
+        stdout, stderr = await asyncio.wait_for(
+            proc.communicate(), timeout=COMMAND_TIMEOUT_SEC
+        )
     except asyncio.TimeoutError:
         proc.kill()
         raise ServerControlError("Command timed out", 504) from None
@@ -89,11 +94,17 @@ async def execute_server_control(
 
     if action == "maintenance":
         current = await SettingsService.get_value(db, "server.maintenance_mode")
-        new_val = ("true" if enabled else "false") if enabled is not None else (
-            "false" if current == "true" else "true"
+        new_val = (
+            ("true" if enabled else "false")
+            if enabled is not None
+            else ("false" if current == "true" else "true")
         )
         await SettingsService.update(
-            db, "server.maintenance_mode", new_val, actor=actor, actor_type="staff",
+            db,
+            "server.maintenance_mode",
+            new_val,
+            actor=actor,
+            actor_type="staff",
         )
         return {
             "server_id": server_id,

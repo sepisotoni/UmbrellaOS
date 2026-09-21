@@ -14,6 +14,7 @@ capabilities/investigation.py), and `investigation.run` aggregates all of
 them - the one remaining piece of value from Moo's registry.py, without
 the intent-classification layer.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -31,13 +32,17 @@ class Investigation(Base):
 
     __tablename__ = "investigations"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
     requested_by: Mapped[str] = mapped_column(String(32))
     target_user_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     question: Mapped[str] = mapped_column(Text)
     summary: Mapped[str] = mapped_column(Text)
     confidence: Mapped[float] = mapped_column(Float)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
 
 class InvestigationFinding(Base):
@@ -45,11 +50,15 @@ class InvestigationFinding(Base):
 
     __tablename__ = "investigation_findings"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
     investigation_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("investigations.id", ondelete="CASCADE"), index=True
     )
     tool_key: Mapped[str] = mapped_column(String(100))
     finding_text: Mapped[str] = mapped_column(Text)
     confidence: Mapped[float] = mapped_column(Float)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )

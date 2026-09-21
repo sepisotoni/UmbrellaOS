@@ -1,4 +1,5 @@
 """tests/registry/test_plugin_sandbox_guard.py — static AST safety check."""
+
 import pytest
 
 from services.plugins.sandbox_guard import SandboxViolation, check_source_safety
@@ -9,21 +10,27 @@ def test_clean_source_passes():
     check_source_safety(src, entrypoint="handlers:run")  # should not raise
 
 
-@pytest.mark.parametrize("stmt", ["import os", "import sys", "from os import path", "import subprocess"])
+@pytest.mark.parametrize(
+    "stmt", ["import os", "import sys", "from os import path", "import subprocess"]
+)
 def test_import_statements_rejected(stmt):
     src = f"{stmt}\ndef run(params):\n    return {{}}\n"
     with pytest.raises(SandboxViolation):
         check_source_safety(src, entrypoint="handlers:run")
 
 
-@pytest.mark.parametrize("expr", ["eval('1')", "exec('1')", "open('x')", "__import__('os')", "globals()"])
+@pytest.mark.parametrize(
+    "expr", ["eval('1')", "exec('1')", "open('x')", "__import__('os')", "globals()"]
+)
 def test_forbidden_names_rejected(expr):
     src = f"def run(params):\n    {expr}\n    return {{}}\n"
     with pytest.raises(SandboxViolation):
         check_source_safety(src, entrypoint="handlers:run")
 
 
-@pytest.mark.parametrize("attr", ["__class__", "__globals__", "__subclasses__", "__bases__", "__builtins__"])
+@pytest.mark.parametrize(
+    "attr", ["__class__", "__globals__", "__subclasses__", "__bases__", "__builtins__"]
+)
 def test_forbidden_attribute_access_rejected(attr):
     src = f"def run(params):\n    x = params.{attr}\n    return {{}}\n"
     with pytest.raises(SandboxViolation):
@@ -44,13 +51,17 @@ def test_known_escape_gadget_rejected():
 
 def test_syntax_error_raises_sandbox_violation_not_syntax_error():
     with pytest.raises(SandboxViolation):
-        check_source_safety("def run(params)\n    return {}\n", entrypoint="handlers:run")
+        check_source_safety(
+            "def run(params)\n    return {}\n", entrypoint="handlers:run"
+        )
 
 
 # --- Phase 9 hardening additions ---
 
 
-@pytest.mark.parametrize("attr", ["__init_subclass__", "__subclasshook__", "__getattr__", "__setattr__"])
+@pytest.mark.parametrize(
+    "attr", ["__init_subclass__", "__subclasshook__", "__getattr__", "__setattr__"]
+)
 def test_phase9_forbidden_attribute_access_rejected(attr):
     src = f"def run(params):\n    x = params.{attr}\n    return {{}}\n"
     with pytest.raises(SandboxViolation):
@@ -109,7 +120,9 @@ def test_ordinary_format_call_also_rejected():
     """No partial allowlist — .format()/.format_map() are blocked entirely,
     including totally benign uses, since there's no way to statically tell
     a safe format-string apart from one hiding a dunder-chain field name."""
-    src = "def run(params):\n    return {'msg': 'value is {}'.format(params.get('x'))}\n"
+    src = (
+        "def run(params):\n    return {'msg': 'value is {}'.format(params.get('x'))}\n"
+    )
     with pytest.raises(SandboxViolation, match="format"):
         check_source_safety(src, entrypoint="handlers:run")
 

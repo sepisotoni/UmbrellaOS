@@ -18,6 +18,7 @@ Revision ID: 053_add_discord_role_id_settings
 Revises: 052_add_plugin_console_lines_index
 Create Date: 2026-09-01
 """
+
 import uuid
 from alembic import op
 import sqlalchemy as sa
@@ -28,9 +29,18 @@ branch_labels = None
 depends_on = None
 
 _NEW_KEYS = [
-    ("discord.admin_role_id", "Discord role ID for the Admin role; maps to dashboard clearance ADMIN"),
-    ("discord.moderator_role_id", "Discord role ID for the Moderator role; maps to dashboard clearance MODERATOR"),
-    ("discord.helper_role_id", "Discord role ID for the Helper role; maps to dashboard clearance SUPPORT"),
+    (
+        "discord.admin_role_id",
+        "Discord role ID for the Admin role; maps to dashboard clearance ADMIN",
+    ),
+    (
+        "discord.moderator_role_id",
+        "Discord role ID for the Moderator role; maps to dashboard clearance MODERATOR",
+    ),
+    (
+        "discord.helper_role_id",
+        "Discord role ID for the Helper role; maps to dashboard clearance SUPPORT",
+    ),
 ]
 
 
@@ -57,6 +67,4 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     for key, _ in _NEW_KEYS:
-        op.execute(
-            sa.text("DELETE FROM settings WHERE key = :key").bindparams(key=key)
-        )
+        op.execute(sa.text("DELETE FROM settings WHERE key = :key").bindparams(key=key))

@@ -19,6 +19,7 @@ Usage:
 
 Exit code is 0 on successful export, 1 if `main.app.openapi()` raises.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -57,7 +58,9 @@ def main() -> int:
         return 1
 
     args.output.write_text(json.dumps(schema, indent=2, sort_keys=True) + "\n")
-    print(f"Wrote OpenAPI schema ({len(schema.get('paths', {}))} paths) to {args.output}")
+    print(
+        f"Wrote OpenAPI schema ({len(schema.get('paths', {}))} paths) to {args.output}"
+    )
     return 0
 
 

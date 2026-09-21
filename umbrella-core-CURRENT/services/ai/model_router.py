@@ -13,6 +13,7 @@ candidate isn't skipped forever - after `ai_model_health_cooldown_seconds`
 has passed since its last failure, it's given another chance (a "half-open"
 retry), so a transient outage self-heals without an operator's intervention.
 """
+
 from __future__ import annotations
 
 import logging
@@ -46,7 +47,9 @@ class ModelRouter:
     async def _candidates(db: AsyncSession, task_type: str) -> list[AIModelConfig]:
         result = await db.execute(
             select(AIModelConfig)
-            .where(AIModelConfig.task_type == task_type, AIModelConfig.enabled.is_(True))
+            .where(
+                AIModelConfig.task_type == task_type, AIModelConfig.enabled.is_(True)
+            )
             .order_by(AIModelConfig.priority.asc())
         )
         return list(result.scalars().all())
@@ -67,7 +70,9 @@ class ModelRouter:
         return elapsed >= settings.ai_model_health_cooldown_seconds
 
     @staticmethod
-    async def _record_success(db: AsyncSession, config: AIModelConfig, latency_ms: int) -> None:
+    async def _record_success(
+        db: AsyncSession, config: AIModelConfig, latency_ms: int
+    ) -> None:
         config.is_healthy = True
         config.consecutive_failures = 0
         config.last_success_at = datetime.now(timezone.utc)
@@ -212,7 +217,11 @@ class ModelRouter:
             try:
                 provider = await ProviderFactory.build(db, config.provider)
                 result = await provider.generate(
-                    config.model_name, system_prompt, user_prompt, max_tokens, temperature
+                    config.model_name,
+                    system_prompt,
+                    user_prompt,
+                    max_tokens,
+                    temperature,
                 )
             except ProviderError as exc:
                 logger.info(
@@ -226,7 +235,9 @@ class ModelRouter:
                 continue
 
             await ModelRouter._record_success(db, config, result.latency_ms)
-            return RoutedGeneration(result=result, provider=config.provider, model_name=config.model_name)
+            return RoutedGeneration(
+                result=result, provider=config.provider, model_name=config.model_name
+            )
 
         logger.error(
             "no available AI model for task_type=%s (tried: %s)",
@@ -235,5 +246,9 @@ class ModelRouter:
         )
         raise NoAvailableModelError(
             f"no available model for task_type {task_type!r}"
-            + (f" (tried: {', '.join(attempted)})" if attempted else " (no eligible candidates configured)")
+            + (
+                f" (tried: {', '.join(attempted)})"
+                if attempted
+                else " (no eligible candidates configured)"
+            )
         )

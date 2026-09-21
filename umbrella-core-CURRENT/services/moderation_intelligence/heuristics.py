@@ -13,6 +13,7 @@ state - they exist to cheaply flag "this looks like it might be spam/a
 raid" for a ModerationReport to be created from, not to be an audit trail
 themselves. The report + AI analysis that follows is what gets persisted.
 """
+
 from __future__ import annotations
 
 import time

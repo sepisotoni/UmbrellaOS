@@ -1,4 +1,5 @@
 """Server control — power, restart, maintenance."""
+
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException

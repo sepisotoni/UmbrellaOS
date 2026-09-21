@@ -8,6 +8,7 @@ Revision ID: 036_bot_command_manifest
 Revises:     035_plugin_console_lines
 Create Date: 2026-08-26
 """
+
 from __future__ import annotations
 
 import sqlalchemy as sa

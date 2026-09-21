@@ -3,6 +3,7 @@ models/memory.py — Ported from Moo-assistant's models_ai.py (MemoryScope,
 MemoryEntry). `guild_id` dropped, matching every other Phase 5 model (see
 models/moderation_intelligence.py's module docstring).
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -17,7 +18,9 @@ from database.engine import Base
 class MemoryScope(str, enum.Enum):
     SHORT_TERM = "short_term"  # conversational, expires quickly (minutes)
     SERVER = "server"  # facts about the server, rarely expires
-    OPERATIONAL = "operational"  # recurring issues/resolutions staff care about, rarely expires
+    OPERATIONAL = (
+        "operational"  # recurring issues/resolutions staff care about, rarely expires
+    )
 
 
 class MemoryEntry(Base):
@@ -36,7 +39,15 @@ class MemoryEntry(Base):
     scope: Mapped[MemoryScope] = mapped_column(Enum(MemoryScope), index=True)
     key: Mapped[str] = mapped_column(String(300))
     value: Mapped[str] = mapped_column(Text)  # free-form text or JSON-encoded payload
-    hit_count: Mapped[int] = mapped_column(Integer, default=1)  # how many times this has recurred
-    expires_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), onupdate=func.now())
+    hit_count: Mapped[int] = mapped_column(
+        Integer, default=1
+    )  # how many times this has recurred
+    expires_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), onupdate=func.now()
+    )

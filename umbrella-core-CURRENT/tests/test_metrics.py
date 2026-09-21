@@ -2,9 +2,14 @@
 tests/test_metrics.py — Tests for services/metrics_service.py,
 api/middleware/metrics.py, and GET /metrics (Phase 9, item 1).
 """
+
 import pytest
 
-from services.metrics_service import MetricsRegistry, render_exposition, http_requests_total
+from services.metrics_service import (
+    MetricsRegistry,
+    render_exposition,
+    http_requests_total,
+)
 from tests.conftest import ADMIN_HEADERS
 
 

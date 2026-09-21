@@ -3,6 +3,7 @@ tests/registry/test_capabilities_archive_search.py — REST integration
 tests for archive.search: listing, RBAC (moderator+, not helper - given
 the unfiltered-by-channel exposure), and round-trip.
 """
+
 import pytest
 
 from tests.conftest import ADMIN_HEADERS

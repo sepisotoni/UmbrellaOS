@@ -8,6 +8,7 @@ These prove the full path: REST request -> require_admin_key_or_session ->
 CallContext.from_web_auth -> registry.call -> permission check -> handler ->
 audit write -> response.
 """
+
 import pytest
 
 from tests.conftest import ADMIN_HEADERS, WRONG_HEADERS
@@ -52,8 +53,13 @@ async def test_whoami_via_staff_session_reports_real_permissions(client, db_sess
     # Seeded 'helper' role: players.view, punishments.view, appeals.view, investigation.run,
     # investigation.view, knowledge.entry.search, verification.link.view
     assert set(body["permissions"]) == {
-        "players.view", "punishments.view", "appeals.view", "investigation.run", "investigation.view",
-        "knowledge.entry.search", "verification.link.view",
+        "players.view",
+        "punishments.view",
+        "appeals.view",
+        "investigation.run",
+        "investigation.view",
+        "knowledge.entry.search",
+        "verification.link.view",
     }
 
 

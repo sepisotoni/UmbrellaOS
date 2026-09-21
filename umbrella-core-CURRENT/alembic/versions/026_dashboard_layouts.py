@@ -4,6 +4,7 @@ Revision ID: 026_dashboard_layouts
 Revises: 025_observability_security
 Create Date: 2026-08-11
 """
+
 import sqlalchemy as sa
 from alembic import op
 
@@ -38,7 +39,9 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.func.now(),
         ),
-        sa.UniqueConstraint("user_id", "page_id", name="uq_dashboard_layouts_user_page"),
+        sa.UniqueConstraint(
+            "user_id", "page_id", name="uq_dashboard_layouts_user_page"
+        ),
     )
     op.create_index("ix_dashboard_layouts_user_id", "dashboard_layouts", ["user_id"])
 

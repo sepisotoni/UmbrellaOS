@@ -4,6 +4,7 @@ api/routers/health.py — Health check endpoint.
 GET /health — public, no auth required.
 Returns database + Redis connectivity status and app version.
 """
+
 import time
 from fastapi import APIRouter, Depends
 from redis.asyncio import Redis

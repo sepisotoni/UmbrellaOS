@@ -13,6 +13,7 @@ scheduler infrastructure instead of inventing a new one, and gives staff
 visibility/control over the cadence through whatever already manages
 schedules, rather than a cadence hardcoded in Python.
 """
+
 from __future__ import annotations
 
 from pydantic import BaseModel

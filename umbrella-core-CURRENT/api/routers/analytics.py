@@ -6,6 +6,7 @@ GET  /api/v1/analytics/events
 GET  /api/v1/analytics/players/{minecraft_uuid}
 GET  /api/v1/analytics/summary
 """
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
@@ -61,7 +62,7 @@ async def post_analytics_event(
         )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
-    
+
     return AnalyticsEventResponse(
         id=event.id,
         event_type=event.event_type,
@@ -88,7 +89,7 @@ async def get_analytics_events(
         event_type=event_type,
         minecraft_uuid=minecraft_uuid,
     )
-    
+
     return events
 
 
@@ -101,18 +102,21 @@ async def get_player_analytics(
 ):
     """
     Get player statistics for a specific period.
-    
+
     Valid periods: daily, weekly, alltime
     """
     if period not in ["daily", "weekly", "alltime"]:
-        raise HTTPException(status_code=400, detail="Invalid period. Must be one of: daily, weekly, alltime")
-    
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid period. Must be one of: daily, weekly, alltime",
+        )
+
     stats = await analytics_service.get_player_stats(
         db,
         minecraft_uuid,
         period=period,
     )
-    
+
     return stats
 
 
@@ -125,5 +129,5 @@ async def get_server_analytics_summary(
     Get server-wide alltime totals for all metrics.
     """
     summary = await analytics_service.get_server_summary(db)
-    
+
     return summary

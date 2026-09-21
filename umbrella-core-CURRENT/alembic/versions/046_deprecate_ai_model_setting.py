@@ -16,6 +16,7 @@ Revision ID: 046_deprecate_ai_model_setting
 Revises: 045_merge_042_branches
 Create Date: 2026-08-29
 """
+
 from alembic import op
 import sqlalchemy as sa
 

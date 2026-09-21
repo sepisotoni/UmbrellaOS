@@ -44,6 +44,7 @@ discord.ext.tasks.loop()'s decorator signature, Loop.before_loop() for
 deferring until the gateway is ready, and Loop.cancel() as the
 cog_unload() cleanup hook (discord/ext/tasks/__init__.py).
 """
+
 from __future__ import annotations
 
 import logging
@@ -70,7 +71,9 @@ class NotificationsCog(commands.Cog):
     async def cog_unload(self) -> None:
         self.poll_escalations.cancel()
 
-    @tasks.loop(minutes=5)  # Phase 16B: push handles real-time; poll is fallback for missed events
+    @tasks.loop(
+        minutes=5
+    )  # Phase 16B: push handles real-time; poll is fallback for missed events
     async def poll_escalations(self) -> None:
         # No discord_user_id here, deliberately, unlike every other cog's
         # invoke() calls (Phase 6's slash-command -> REST-permission
@@ -79,12 +82,16 @@ class NotificationsCog(commands.Cog):
         # runs as the bot's own identity, using its own API key's blanket
         # scope, same as before that mapping existed.
         try:
-            result = await self.bot.core.invoke("moderation_intelligence.escalation.list", {"limit": 20})
+            result = await self.bot.core.invoke(
+                "moderation_intelligence.escalation.list", {"limit": 20}
+            )
         except UmbrellaCoreError:
             logger.exception("Failed to poll staff escalations.")
             return
 
-        unnotified = [e for e in result.get("escalations", []) if not e.get("notified_at")]
+        unnotified = [
+            e for e in result.get("escalations", []) if not e.get("notified_at")
+        ]
         if not unnotified:
             return
 
@@ -98,23 +105,31 @@ class NotificationsCog(commands.Cog):
 
         channel = self.bot.get_channel(channel_id)
         if channel is None:
-            logger.warning("staff_alert_channel_id=%s isn't a channel this bot can see.", channel_id)
+            logger.warning(
+                "staff_alert_channel_id=%s isn't a channel this bot can see.",
+                channel_id,
+            )
             return
 
         for escalation in unnotified:
             try:
                 await channel.send(embed=self._format_escalation(escalation))
             except discord.HTTPException:
-                logger.exception("Failed to post escalation %s — will retry next poll.", escalation.get("id"))
+                logger.exception(
+                    "Failed to post escalation %s — will retry next poll.",
+                    escalation.get("id"),
+                )
                 continue
 
             try:
                 await self.bot.core.invoke(
-                    "moderation_intelligence.escalation.mark_notified", {"escalation_id": escalation["id"]}
+                    "moderation_intelligence.escalation.mark_notified",
+                    {"escalation_id": escalation["id"]},
                 )
             except UmbrellaCoreError:
                 logger.exception(
-                    "Posted escalation %s but failed to mark it notified — may repost next cycle.", escalation.get("id")
+                    "Posted escalation %s but failed to mark it notified — may repost next cycle.",
+                    escalation.get("id"),
                 )
 
     @poll_escalations.before_loop
@@ -165,9 +180,15 @@ class NotificationsCog(commands.Cog):
         )
         confidence = escalation.get("confidence")
         if confidence is not None:
-            embed.add_field(name="AI confidence", value=f"{confidence:.0%}", inline=True)
+            embed.add_field(
+                name="AI confidence", value=f"{confidence:.0%}", inline=True
+            )
         if escalation.get("related_report_id"):
-            embed.add_field(name="Related report", value=escalation["related_report_id"], inline=True)
+            embed.add_field(
+                name="Related report",
+                value=escalation["related_report_id"],
+                inline=True,
+            )
         embed.set_footer(text=f"Escalation ID: {escalation.get('id', '?')}")
         return embed
 

@@ -23,6 +23,7 @@ Fails open on its own errors, same principle as every other Phase 9
 middleware here: a bug in pattern-matching must never turn into every
 request being rejected.
 """
+
 from __future__ import annotations
 
 import logging
@@ -50,9 +51,9 @@ logger = logging.getLogger(__name__)
 #     an encoded separator was not matched by the prior patterns)
 #   %2e%2e%5c (fully encoded backslash variant)
 _PATH_TRAVERSAL_RE = re.compile(
-    r"\.\./|\.\.\\"           # literal ../ and ..\ 
-    r"|%2e%2e(?:%2f|%5c|/|\\)"   # %2e%2e + encoded or literal sep
-    r"|\.\." + r"(?:%2f|%5c)",    # literal .. + encoded sep (the gap)
+    r"\.\./|\.\.\\"  # literal ../ and ..\
+    r"|%2e%2e(?:%2f|%5c|/|\\)"  # %2e%2e + encoded or literal sep
+    r"|\.\." + r"(?:%2f|%5c)",  # literal .. + encoded sep (the gap)
     re.IGNORECASE,
 )
 _SQLI_RE = re.compile(
@@ -92,11 +93,16 @@ class WAFMiddleware(BaseHTTPMiddleware):
             if content_length is not None and content_length.isdigit():
                 if int(content_length) > _MAX_BODY_BYTES:
                     await threat_detection_service.record(
-                        event_type="waf_block", source_ip=client_ip, detail={"reason": "oversized_body"}
+                        event_type="waf_block",
+                        source_ip=client_ip,
+                        detail={"reason": "oversized_body"},
                     )
                     return JSONResponse(
                         status_code=413,
-                        content={"code": "PAYLOAD_TOO_LARGE", "message": "Request body exceeds the maximum permitted size."},
+                        content={
+                            "code": "PAYLOAD_TOO_LARGE",
+                            "message": "Request body exceeds the maximum permitted size.",
+                        },
                     )
 
             raw_query = request.url.query
@@ -120,13 +126,20 @@ class WAFMiddleware(BaseHTTPMiddleware):
             for reason in (_matches_any(c) for c in candidates if c):
                 if reason:
                     await threat_detection_service.record(
-                        event_type="waf_block", source_ip=client_ip, detail={"reason": reason}
+                        event_type="waf_block",
+                        source_ip=client_ip,
+                        detail={"reason": reason},
                     )
                     return JSONResponse(
                         status_code=400,
-                        content={"code": "BAD_REQUEST", "message": "Request rejected by API hardening rules."},
+                        content={
+                            "code": "BAD_REQUEST",
+                            "message": "Request rejected by API hardening rules.",
+                        },
                     )
         except Exception:
-            logger.exception("WAF middleware failed its own checks — failing open for this request")
+            logger.exception(
+                "WAF middleware failed its own checks — failing open for this request"
+            )
 
         return await call_next(request)

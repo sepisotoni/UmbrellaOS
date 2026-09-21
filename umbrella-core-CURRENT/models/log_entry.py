@@ -23,6 +23,7 @@ scale. If log volume ever makes LIKE-scans too slow, swapping the query
 side of log_aggregation_service.search() for a real FTS index is a
 contained change; nothing else references how search is implemented.
 """
+
 import uuid
 from datetime import datetime
 
@@ -35,14 +36,20 @@ from database.engine import Base
 class LogEntry(Base):
     __tablename__ = "log_entries"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
     )
-    level: Mapped[str] = mapped_column(String(16), nullable=False, index=True)  # DEBUG/INFO/WARNING/ERROR/CRITICAL
+    level: Mapped[str] = mapped_column(
+        String(16), nullable=False, index=True
+    )  # DEBUG/INFO/WARNING/ERROR/CRITICAL
     logger_name: Mapped[str] = mapped_column(String(256), nullable=False, index=True)
     message: Mapped[str] = mapped_column(Text, nullable=False)
-    source: Mapped[str] = mapped_column(String(32), nullable=False, default="umbrella-core", index=True)
+    source: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="umbrella-core", index=True
+    )
     trace_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
 
     def __repr__(self) -> str:

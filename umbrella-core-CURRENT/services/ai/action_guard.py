@@ -19,6 +19,7 @@ instruction can override this. If autonomous execution of a destructive,
 irreversible action is ever truly wanted, that is a deliberate design
 change to this file, reviewed as such - not a runtime toggle.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -33,7 +34,12 @@ from registry.spec import CapabilitySpec
 # moderation capability, so it's already in force the moment one exists.
 MAX_AI_SETTABLE_DURATION_SECONDS = 60 * 60  # 1 hour
 
-_DURATION_LIKE_PARAM_NAMES = {"duration_seconds", "timeout_seconds", "grace_period_seconds", "expires_in_days"}
+_DURATION_LIKE_PARAM_NAMES = {
+    "duration_seconds",
+    "timeout_seconds",
+    "grace_period_seconds",
+    "expires_in_days",
+}
 
 
 class ActionGuardViolation(Exception):
@@ -48,7 +54,9 @@ class GuardDecision:
     reason: str
 
 
-def evaluate(capability_name: str, params: dict, autonomous_mode: bool) -> GuardDecision:
+def evaluate(
+    capability_name: str, params: dict, autonomous_mode: bool
+) -> GuardDecision:
     """
     Decide whether a proposed capability call may proceed autonomously.
 
@@ -63,7 +71,9 @@ def evaluate(capability_name: str, params: dict, autonomous_mode: bool) -> Guard
     try:
         spec: CapabilitySpec = registry.get(capability_name)
     except CapabilityNotFoundError:
-        return GuardDecision(allowed_autonomously=False, reason=f"unknown capability {capability_name!r}")
+        return GuardDecision(
+            allowed_autonomously=False, reason=f"unknown capability {capability_name!r}"
+        )
 
     if spec.destructive and not spec.reversible:
         return GuardDecision(
@@ -79,7 +89,9 @@ def evaluate(capability_name: str, params: dict, autonomous_mode: bool) -> Guard
         if param_name in _DURATION_LIKE_PARAM_NAMES and isinstance(value, (int, float)):
             limit = MAX_AI_SETTABLE_DURATION_SECONDS
             # expires_in_days is in days, not seconds - normalize before comparing.
-            effective_seconds = value * 86400 if param_name == "expires_in_days" else value
+            effective_seconds = (
+                value * 86400 if param_name == "expires_in_days" else value
+            )
             if effective_seconds > limit:
                 return GuardDecision(
                     allowed_autonomously=False,
@@ -95,10 +107,14 @@ def evaluate(capability_name: str, params: dict, autonomous_mode: bool) -> Guard
             reason="autonomous mode is not enabled for this task - proceeding as a human-reviewed suggestion",
         )
 
-    return GuardDecision(allowed_autonomously=True, reason="passed all hard safety checks")
+    return GuardDecision(
+        allowed_autonomously=True, reason="passed all hard safety checks"
+    )
 
 
-def require_autonomous_allowed(capability_name: str, params: dict, autonomous_mode: bool) -> None:
+def require_autonomous_allowed(
+    capability_name: str, params: dict, autonomous_mode: bool
+) -> None:
     """Raises ActionGuardViolation if the call may not proceed
     autonomously. Call this at the point AI-initiated code would
     otherwise directly invoke a capability without human confirmation -

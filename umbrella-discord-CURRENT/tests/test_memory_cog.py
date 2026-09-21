@@ -4,6 +4,7 @@ tests/test_memory_cog.py — Tests for the pure-function pieces of MemoryCog
 test_investigation_cog.py's module docstring for why the actual
 slash-command handlers aren't tested here.
 """
+
 import discord
 import pytest
 
@@ -12,7 +13,9 @@ from bot.services.umbrella_core_client import UmbrellaCoreError
 
 
 def test_format_error_permission_denied():
-    exc = UmbrellaCoreError("Missing permission: memory.manage", status_code=403, code="PERMISSION_DENIED")
+    exc = UmbrellaCoreError(
+        "Missing permission: memory.manage", status_code=403, code="PERMISSION_DENIED"
+    )
     message = MemoryCog._format_error(exc)
     assert "don't have permission" in message
 
@@ -32,8 +35,14 @@ def test_format_set_result():
 
 
 def test_format_list_result_includes_facts_and_recurring():
-    facts = {"facts": [{"key": "server_ip", "value": "play.example.com", "hit_count": 0}]}
-    recurring = {"entries": [{"key": "recurring:lag", "value": "restart the node", "hit_count": 7}]}
+    facts = {
+        "facts": [{"key": "server_ip", "value": "play.example.com", "hit_count": 0}]
+    }
+    recurring = {
+        "entries": [
+            {"key": "recurring:lag", "value": "restart the node", "hit_count": 7}
+        ]
+    }
     embed = MemoryCog._format_list_result(facts, recurring)
     assert isinstance(embed, discord.Embed)
     field_names = {f.name for f in embed.fields}

@@ -18,6 +18,7 @@ itself a pass/fail gate — pip-audit, in scan_dependencies.py, is the
 gate). Intended to run in CI (see .github/workflows/dependency-scan.yml)
 and to be runnable locally by an operator who wants a point-in-time SBOM.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -76,7 +77,9 @@ def main(argv: list[str] | None = None) -> int:
 
     packages = parse_requirements(args.requirements)
     if not packages:
-        print(f"warning: no pinned packages found in {args.requirements}", file=sys.stderr)
+        print(
+            f"warning: no pinned packages found in {args.requirements}", file=sys.stderr
+        )
 
     bom = build_sbom(packages)
     output = JsonV1Dot5(bom)

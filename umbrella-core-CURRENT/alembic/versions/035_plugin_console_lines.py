@@ -8,6 +8,7 @@ Revision ID: 035_plugin_console_lines
 Revises:     034_plugin_heartbeats_and_commands
 Create Date: 2026-08-26
 """
+
 import sqlalchemy as sa
 from alembic import op
 
@@ -39,5 +40,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_plugin_console_lines_server_id_ts", table_name="plugin_console_lines")
+    op.drop_index(
+        "ix_plugin_console_lines_server_id_ts", table_name="plugin_console_lines"
+    )
     op.drop_table("plugin_console_lines")

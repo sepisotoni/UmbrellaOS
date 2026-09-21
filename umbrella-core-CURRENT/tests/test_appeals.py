@@ -5,6 +5,7 @@ GET  /api/v1/appeals           — list all appeals
 POST /api/v1/appeals           — create a new appeal (public endpoint)
 PATCH /api/v1/appeals/{id}     — update an appeal status
 """
+
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -94,7 +95,9 @@ async def test_list_appeals_with_valid_auth(client, db_session, test_appeal):
 
 
 @pytest.mark.asyncio
-async def test_post_appeals_requires_plugin_key(client, db_session, test_player, test_punishment):
+async def test_post_appeals_requires_plugin_key(
+    client, db_session, test_player, test_punishment
+):
     """POST /api/v1/appeals requires X-Plugin-Key (AUDIT-2026-08-29 fix — see
     api/routers/appeals.py create_appeal docstring). The endpoint accepts
     player_uuid directly from the request body with no ownership check, so a
@@ -140,8 +143,10 @@ async def test_post_appeals_requires_plugin_key(client, db_session, test_player,
 
 
 @pytest.mark.asyncio
-async def test_manage_appeal_patch_requires_appeals_manage(client, db_session, test_appeal):
-    """"approved" is not a valid appeal status — ck_appeals_status (migrations
+async def test_manage_appeal_patch_requires_appeals_manage(
+    client, db_session, test_appeal
+):
+    """ "approved" is not a valid appeal status — ck_appeals_status (migrations
     039, 042) and VALID_APPEAL_STATUSES both only permit "accepted". Test was
     asserting a value the DB constraint has never allowed; fixed to use the
     actual valid value so this exercises the appeals.manage permission gate

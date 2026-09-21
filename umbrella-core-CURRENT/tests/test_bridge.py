@@ -6,6 +6,7 @@ GET  /api/v1/bridge/messages
 GET  /api/v1/bridge/settings
 PATCH /api/v1/bridge/settings
 """
+
 import pytest
 from tests.conftest import ADMIN_HEADERS, WRONG_HEADERS
 
@@ -19,7 +20,7 @@ async def test_post_bridge_message_mode_off_returns_forwarded_false(client):
         json={"mode": "off"},
         headers=ADMIN_HEADERS,
     )
-    
+
     # Post a message
     payload = {
         "source": "discord",
@@ -27,7 +28,9 @@ async def test_post_bridge_message_mode_off_returns_forwarded_false(client):
         "message": "Test message",
         "channel_id": "987654321",
     }
-    response = await client.post("/api/v1/bridge/message", json=payload, headers=ADMIN_HEADERS)
+    response = await client.post(
+        "/api/v1/bridge/message", json=payload, headers=ADMIN_HEADERS
+    )
     assert response.status_code == 200
     data = response.json()
     assert data["forwarded"] is False
@@ -43,7 +46,7 @@ async def test_post_bridge_message_mode_full_returns_forwarded_true(client):
         json={"mode": "full", "discord_to_mc": True},
         headers=ADMIN_HEADERS,
     )
-    
+
     # Post a message
     payload = {
         "source": "discord",
@@ -51,7 +54,9 @@ async def test_post_bridge_message_mode_full_returns_forwarded_true(client):
         "message": "Test message",
         "channel_id": "987654321",
     }
-    response = await client.post("/api/v1/bridge/message", json=payload, headers=ADMIN_HEADERS)
+    response = await client.post(
+        "/api/v1/bridge/message", json=payload, headers=ADMIN_HEADERS
+    )
     assert response.status_code == 200
     data = response.json()
     assert data["forwarded"] is True
@@ -68,7 +73,7 @@ async def test_get_bridge_messages_returns_list_with_correct_shape(client):
         "message": "Test message from MC",
     }
     await client.post("/api/v1/bridge/message", json=payload, headers=ADMIN_HEADERS)
-    
+
     # Get messages
     response = await client.get("/api/v1/bridge/messages", headers=ADMIN_HEADERS)
     assert response.status_code == 200
@@ -76,7 +81,16 @@ async def test_get_bridge_messages_returns_list_with_correct_shape(client):
     assert isinstance(data, list)
     if len(data) > 0:
         first = data[0]
-        for field in ("id", "source", "player_uuid", "discord_id", "discord_channel_id", "message", "timestamp", "filtered"):
+        for field in (
+            "id",
+            "source",
+            "player_uuid",
+            "discord_id",
+            "discord_channel_id",
+            "message",
+            "timestamp",
+            "filtered",
+        ):
             assert field in first
 
 
@@ -93,7 +107,7 @@ async def test_get_bridge_messages_with_source_filter_works(client):
         },
         headers=ADMIN_HEADERS,
     )
-    
+
     # Add a discord message
     await client.post(
         "/api/v1/bridge/message",
@@ -104,9 +118,11 @@ async def test_get_bridge_messages_with_source_filter_works(client):
         },
         headers=ADMIN_HEADERS,
     )
-    
+
     # Get only minecraft messages
-    response = await client.get("/api/v1/bridge/messages?source=minecraft", headers=ADMIN_HEADERS)
+    response = await client.get(
+        "/api/v1/bridge/messages?source=minecraft", headers=ADMIN_HEADERS
+    )
     assert response.status_code == 200
     data = response.json()
     for msg in data:
@@ -144,7 +160,9 @@ async def test_post_bridge_message_without_admin_key_returns_401(client):
         "discord_id": "123456789",
         "message": "Test message",
     }
-    response = await client.post("/api/v1/bridge/message", json=payload, headers=WRONG_HEADERS)
+    response = await client.post(
+        "/api/v1/bridge/message", json=payload, headers=WRONG_HEADERS
+    )
     assert response.status_code == 401
 
 
@@ -167,7 +185,7 @@ async def test_get_bridge_settings_requires_settings_view_permission(client):
     # For simplicity, we'll just test with admin headers (should work)
     response = await client.get("/api/v1/bridge/settings", headers=ADMIN_HEADERS)
     assert response.status_code == 200
-    
+
     # Test without headers (should fail)
     response = await client.get("/api/v1/bridge/settings")
     assert response.status_code == 401
@@ -180,7 +198,9 @@ async def test_post_bridge_message_requires_valid_source(client):
         "source": "invalid",
         "message": "Test message",
     }
-    response = await client.post("/api/v1/bridge/message", json=payload, headers=ADMIN_HEADERS)
+    response = await client.post(
+        "/api/v1/bridge/message", json=payload, headers=ADMIN_HEADERS
+    )
     assert response.status_code == 400
 
 
@@ -192,15 +212,19 @@ async def test_post_bridge_message_requires_identifier_for_source(client):
         "source": "minecraft",
         "message": "Test message",
     }
-    response = await client.post("/api/v1/bridge/message", json=payload, headers=ADMIN_HEADERS)
+    response = await client.post(
+        "/api/v1/bridge/message", json=payload, headers=ADMIN_HEADERS
+    )
     assert response.status_code == 400
-    
+
     # Test discord without discord_id
     payload = {
         "source": "discord",
         "message": "Test message",
     }
-    response = await client.post("/api/v1/bridge/message", json=payload, headers=ADMIN_HEADERS)
+    response = await client.post(
+        "/api/v1/bridge/message", json=payload, headers=ADMIN_HEADERS
+    )
     assert response.status_code == 400
 
 
@@ -225,6 +249,7 @@ async def test_dashboard_broadcast_pushes_to_bot_webhook(client, monkeypatch):
         push_calls.append((event, payload))
 
     import services.bot_push_service as bot_push_service
+
     monkeypatch.setattr(bot_push_service, "push_event", fake_push_event)
 
     payload = {
@@ -233,7 +258,9 @@ async def test_dashboard_broadcast_pushes_to_bot_webhook(client, monkeypatch):
         "message": "Server maintenance in 10 minutes",
         "channel_id": "555444333",
     }
-    response = await client.post("/api/v1/bridge/message", json=payload, headers=ADMIN_HEADERS)
+    response = await client.post(
+        "/api/v1/bridge/message", json=payload, headers=ADMIN_HEADERS
+    )
     assert response.status_code == 200
     data = response.json()
     assert data["forwarded"] is True
@@ -263,6 +290,7 @@ async def test_non_dashboard_message_does_not_push(client, monkeypatch):
         push_calls.append((event, payload))
 
     import services.bot_push_service as bot_push_service
+
     monkeypatch.setattr(bot_push_service, "push_event", fake_push_event)
 
     payload = {
@@ -270,6 +298,8 @@ async def test_non_dashboard_message_does_not_push(client, monkeypatch):
         "player_uuid": "11111111-1111-1111-1111-111111111111",
         "message": "hello from minecraft",
     }
-    response = await client.post("/api/v1/bridge/message", json=payload, headers=ADMIN_HEADERS)
+    response = await client.post(
+        "/api/v1/bridge/message", json=payload, headers=ADMIN_HEADERS
+    )
     assert response.status_code == 200
     assert len(push_calls) == 0

@@ -12,6 +12,7 @@ internal request-volume/error-rate data (a real information-disclosure
 surface for an internet-exposed single-operator platform, per this
 project's stated threat model) to an unauthenticated caller.
 """
+
 from fastapi import APIRouter, Depends
 from fastapi.responses import PlainTextResponse
 

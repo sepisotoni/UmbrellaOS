@@ -8,6 +8,7 @@ expected one combined object per server with both as sibling fields
 (checked against the literal string 'ACTIVE'). No test coverage existed
 for this endpoint before this fix.
 """
+
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -24,16 +25,18 @@ async def _seed_heartbeat(
     plugin_version: str = "1.2.3",
 ) -> None:
     async with db_session() as db:
-        db.add(PluginHeartbeat(
-            server_id=server_id,
-            server_name=f"Server {server_id}",
-            online_count=5,
-            tps=19.8,
-            version="1.21.4",
-            plugin_version=plugin_version,
-            grim_connected=grim_connected,
-            last_seen=last_seen or datetime.now(timezone.utc),
-        ))
+        db.add(
+            PluginHeartbeat(
+                server_id=server_id,
+                server_name=f"Server {server_id}",
+                online_count=5,
+                tps=19.8,
+                version="1.21.4",
+                plugin_version=plugin_version,
+                grim_connected=grim_connected,
+                last_seen=last_seen or datetime.now(timezone.utc),
+            )
+        )
         await db.commit()
 
 
@@ -53,7 +56,9 @@ async def test_list_plugins_returns_one_entry_per_server(client, db_session):
 
 
 @pytest.mark.asyncio
-async def test_list_plugins_umbrella_status_is_active_for_recent_heartbeat(client, db_session):
+async def test_list_plugins_umbrella_status_is_active_for_recent_heartbeat(
+    client, db_session
+):
     """FIX (the actual bug): umbrella_status must be the literal string
     'ACTIVE' — the dashboard's status badge does `p.umbrella_status ===
     'ACTIVE'` and previously always got 'connected' (via a fallback chain
@@ -70,7 +75,9 @@ async def test_list_plugins_umbrella_status_is_active_for_recent_heartbeat(clien
 
 
 @pytest.mark.asyncio
-async def test_list_plugins_grimac_status_reflects_real_connection_state(client, db_session):
+async def test_list_plugins_grimac_status_reflects_real_connection_state(
+    client, db_session
+):
     """FIX (the other half of the bug): grimac_status was never populated
     with real data at all -- the frontend's hardcoded 'ACTIVE' fallback
     always won, showing GrimAC as connected even when it wasn't. Now
@@ -92,7 +99,8 @@ async def test_list_plugins_excludes_stale_heartbeats(client, db_session):
     filter."""
     await _seed_heartbeat(db_session, "srv-fresh")
     await _seed_heartbeat(
-        db_session, "srv-stale",
+        db_session,
+        "srv-stale",
         last_seen=datetime.now(timezone.utc) - timedelta(minutes=10),
     )
 

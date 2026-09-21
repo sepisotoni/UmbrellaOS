@@ -3,6 +3,7 @@ services/snapshot_service.py — Snapshot system service.
 
 Methods for managing player snapshots.
 """
+
 import json
 from datetime import datetime, timezone, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -124,7 +125,9 @@ async def list_snapshots(
     Optional filters: trigger, since (datetime), until (datetime).
     Paginated with limit/offset.
     """
-    query = select(PlayerSnapshot).where(PlayerSnapshot.minecraft_uuid == minecraft_uuid)
+    query = select(PlayerSnapshot).where(
+        PlayerSnapshot.minecraft_uuid == minecraft_uuid
+    )
 
     if trigger:
         query = query.where(PlayerSnapshot.trigger == trigger)

@@ -7,6 +7,7 @@ that don't exist. Server-lifecycle-style flows that need a real daemon call
 (tests/test_backup_service.py, with an injected fake DaemonClient) — the
 same documented boundary as hosting.server.create in PHASE2_CHANGES.md.
 """
+
 import pytest
 
 from tests.conftest import ADMIN_HEADERS
@@ -18,7 +19,10 @@ async def test_backup_capabilities_are_listed(client):
     response = await client.get("/api/v1/capabilities")
     names = {c["name"] for c in response.json()}
     assert {
-        "hosting.backup.create", "hosting.backup.list", "hosting.backup.restore", "hosting.backup.delete",
+        "hosting.backup.create",
+        "hosting.backup.list",
+        "hosting.backup.restore",
+        "hosting.backup.delete",
     } <= names
 
 

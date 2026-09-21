@@ -35,6 +35,7 @@ into a multi-thousand-row prompt. Tool execution respects the caller's
 CallContext: a caller without players.view sees an explicit permission-
 denied result for that tool, not a silent empty list or a bypass.
 """
+
 from __future__ import annotations
 
 import json
@@ -79,9 +80,18 @@ If you need a player's UUID for get_punishment_history or get_anticheat_violatio
 # keeping both in sync by eye is easy, and this is checked by
 # test_copilot_tools.py::test_available_tools_list_matches_manifest_count.
 AVAILABLE_TOOLS_DESCRIPTION = [
-    ("lookup_player", "Look up a player by username — UUID, risk score, suspicion score, playtime, first/last seen."),
-    ("get_punishment_history", "List a player's bans/mutes/kicks/warnings, most recent first."),
-    ("get_anticheat_violations", "List a player's recent GrimAC/anticheat flags, most recent first."),
+    (
+        "lookup_player",
+        "Look up a player by username — UUID, risk score, suspicion score, playtime, first/last seen.",
+    ),
+    (
+        "get_punishment_history",
+        "List a player's bans/mutes/kicks/warnings, most recent first.",
+    ),
+    (
+        "get_anticheat_violations",
+        "List a player's recent GrimAC/anticheat flags, most recent first.",
+    ),
 ]
 
 
@@ -142,13 +152,20 @@ async def execute_tool_calls(
         tool = call.get("tool")
         required_perm = _TOOL_PERMISSIONS.get(tool)
         if required_perm is None:
-            results.append(ToolCallResult(tool=str(tool), args=call, result=f"error: unknown tool {tool!r}"))
+            results.append(
+                ToolCallResult(
+                    tool=str(tool), args=call, result=f"error: unknown tool {tool!r}"
+                )
+            )
             continue
         if not ctx.has_permission(required_perm):
-            results.append(ToolCallResult(
-                tool=tool, args=call,
-                result=f"error: caller lacks required permission {required_perm!r} for this tool",
-            ))
+            results.append(
+                ToolCallResult(
+                    tool=tool,
+                    args=call,
+                    result=f"error: caller lacks required permission {required_perm!r} for this tool",
+                )
+            )
             continue
 
         try:
@@ -157,7 +174,9 @@ async def execute_tool_calls(
             elif tool == "get_punishment_history":
                 result = await _get_punishment_history(db, call.get("player_uuid", ""))
             elif tool == "get_anticheat_violations":
-                result = await _get_anticheat_violations(db, call.get("player_uuid", ""))
+                result = await _get_anticheat_violations(
+                    db, call.get("player_uuid", "")
+                )
             else:
                 result = f"error: unknown tool {tool!r}"
         except Exception as exc:
@@ -188,6 +207,7 @@ def format_tool_results_block(results: list[ToolCallResult]) -> str:
 # (see module docstring for why: no matching read-only capability exists yet)
 # ---------------------------------------------------------------------------
 
+
 async def _lookup_player(db: AsyncSession, username: str) -> dict[str, Any] | str:
     if not username:
         return "error: username is required"
@@ -206,7 +226,9 @@ async def _lookup_player(db: AsyncSession, username: str) -> dict[str, Any] | st
     }
 
 
-async def _get_punishment_history(db: AsyncSession, player_uuid: str) -> list[dict[str, Any]] | str:
+async def _get_punishment_history(
+    db: AsyncSession, player_uuid: str
+) -> list[dict[str, Any]] | str:
     if not player_uuid:
         return "error: player_uuid is required"
     result = await db.execute(
@@ -232,7 +254,9 @@ async def _get_punishment_history(db: AsyncSession, player_uuid: str) -> list[di
     ]
 
 
-async def _get_anticheat_violations(db: AsyncSession, player_uuid: str) -> list[dict[str, Any]] | str:
+async def _get_anticheat_violations(
+    db: AsyncSession, player_uuid: str
+) -> list[dict[str, Any]] | str:
     if not player_uuid:
         return "error: player_uuid is required"
     result = await db.execute(
@@ -248,7 +272,9 @@ async def _get_anticheat_violations(db: AsyncSession, player_uuid: str) -> list[
         {
             "check_name": v.check_name,
             "vl": v.vl,
-            "verbose": v.verbose[:200] if v.verbose else "",  # cap: verbose can be long free text
+            "verbose": v.verbose[:200]
+            if v.verbose
+            else "",  # cap: verbose can be long free text
             "timestamp": v.timestamp.isoformat() if v.timestamp else None,
         }
         for v in rows

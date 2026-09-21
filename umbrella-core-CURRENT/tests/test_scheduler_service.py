@@ -3,8 +3,9 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 import capabilities  # noqa: F401 - registers platform.system.whoami etc.; this test file must be
-                      # self-sufficient regardless of test run order, not rely on another test
-                      # module having imported this first in the same process.
+
+# self-sufficient regardless of test run order, not rely on another test
+# module having imported this first in the same process.
 from models.automation import Schedule
 from services.scheduler_service import ScheduleError, SchedulerService
 
@@ -13,14 +14,18 @@ from services.scheduler_service import ScheduleError, SchedulerService
 async def test_create_schedule_validates_cron_expression(db_session):
     async with db_session() as db:
         with pytest.raises(ScheduleError, match="invalid cron"):
-            await SchedulerService.create_schedule(db, "bad", "not a cron", "platform.system.whoami")
+            await SchedulerService.create_schedule(
+                db, "bad", "not a cron", "platform.system.whoami"
+            )
 
 
 @pytest.mark.asyncio
 async def test_create_schedule_validates_capability_exists(db_session):
     async with db_session() as db:
         with pytest.raises(ScheduleError, match="unknown capability"):
-            await SchedulerService.create_schedule(db, "bad-cap", "0 3 * * *", "does.not.exist")
+            await SchedulerService.create_schedule(
+                db, "bad-cap", "0 3 * * *", "does.not.exist"
+            )
 
 
 @pytest.mark.asyncio
@@ -37,7 +42,9 @@ async def test_create_schedule_happy_path(db_session):
 @pytest.mark.asyncio
 async def test_set_enabled_toggles_flag(db_session):
     async with db_session() as db:
-        schedule = await SchedulerService.create_schedule(db, "s", "0 3 * * *", "platform.system.whoami")
+        schedule = await SchedulerService.create_schedule(
+            db, "s", "0 3 * * *", "platform.system.whoami"
+        )
         await db.commit()
         schedule_id = schedule.id
 
@@ -50,7 +57,9 @@ async def test_set_enabled_toggles_flag(db_session):
 @pytest.mark.asyncio
 async def test_delete_schedule_removes_it(db_session):
     async with db_session() as db:
-        schedule = await SchedulerService.create_schedule(db, "s", "0 3 * * *", "platform.system.whoami")
+        schedule = await SchedulerService.create_schedule(
+            db, "s", "0 3 * * *", "platform.system.whoami"
+        )
         await db.commit()
         schedule_id = schedule.id
 
@@ -69,7 +78,9 @@ async def test_delete_schedule_removes_it(db_session):
 
 
 def _schedule(cron="0 3 * * *", last_run_at=None, enabled=True) -> Schedule:
-    s = Schedule(name="test", cron_expression=cron, capability_name="platform.system.whoami")
+    s = Schedule(
+        name="test", cron_expression=cron, capability_name="platform.system.whoami"
+    )
     s.last_run_at = last_run_at
     s.enabled = enabled
     return s
@@ -83,14 +94,18 @@ def test_is_due_true_when_never_run_and_past_fire_time():
 
 def test_is_due_false_when_already_run_since_last_fire_time():
     now = datetime(2026, 7, 8, 3, 5, tzinfo=timezone.utc)
-    last_run = datetime(2026, 7, 8, 3, 0, 30, tzinfo=timezone.utc)  # ran just after 3am today
+    last_run = datetime(
+        2026, 7, 8, 3, 0, 30, tzinfo=timezone.utc
+    )  # ran just after 3am today
     schedule = _schedule(cron="0 3 * * *", last_run_at=last_run)
     assert SchedulerService.is_due(schedule, now) is False
 
 
 def test_is_due_true_when_last_run_was_a_previous_cycle():
     now = datetime(2026, 7, 8, 3, 5, tzinfo=timezone.utc)
-    last_run = datetime(2026, 7, 7, 3, 0, 30, tzinfo=timezone.utc)  # ran yesterday, not today
+    last_run = datetime(
+        2026, 7, 7, 3, 0, 30, tzinfo=timezone.utc
+    )  # ran yesterday, not today
     schedule = _schedule(cron="0 3 * * *", last_run_at=last_run)
     assert SchedulerService.is_due(schedule, now) is True
 
@@ -132,7 +147,9 @@ def test_is_due_handles_naive_last_run_at():
 @pytest.mark.asyncio
 async def test_run_schedule_records_success(db_session):
     async with db_session() as db:
-        schedule = await SchedulerService.create_schedule(db, "s", "0 3 * * *", "platform.system.whoami")
+        schedule = await SchedulerService.create_schedule(
+            db, "s", "0 3 * * *", "platform.system.whoami"
+        )
         await db.commit()
         schedule_id = schedule.id
 
@@ -152,7 +169,9 @@ async def test_run_schedule_records_failure_and_reraises(db_session):
         # unknown capability at the DB level to force a real failure,
         # bypassing create_schedule's own validation which would normally
         # catch this at creation time.
-        schedule = Schedule(name="broken", cron_expression="0 3 * * *", capability_name="does.not.exist")
+        schedule = Schedule(
+            name="broken", cron_expression="0 3 * * *", capability_name="does.not.exist"
+        )
         db.add(schedule)
         await db.flush()
         await db.commit()
@@ -168,13 +187,21 @@ async def test_run_schedule_records_failure_and_reraises(db_session):
 
 
 @pytest.mark.asyncio
-async def test_run_due_schedules_runs_only_due_ones_and_continues_past_failures(db_session):
+async def test_run_due_schedules_runs_only_due_ones_and_continues_past_failures(
+    db_session,
+):
     async with db_session() as db:
-        due = await SchedulerService.create_schedule(db, "due-one", "0 3 * * *", "platform.system.whoami")
-        not_due = await SchedulerService.create_schedule(db, "not-due", "0 3 * * *", "platform.system.whoami")
+        due = await SchedulerService.create_schedule(
+            db, "due-one", "0 3 * * *", "platform.system.whoami"
+        )
+        not_due = await SchedulerService.create_schedule(
+            db, "not-due", "0 3 * * *", "platform.system.whoami"
+        )
         # Mark not_due as already run this cycle.
         not_due.last_run_at = datetime(2026, 7, 8, 3, 1, tzinfo=timezone.utc)
-        broken = Schedule(name="broken", cron_expression="0 3 * * *", capability_name="does.not.exist")
+        broken = Schedule(
+            name="broken", cron_expression="0 3 * * *", capability_name="does.not.exist"
+        )
         db.add(broken)
         await db.commit()
         due_id, not_due_id, broken_id = due.id, not_due.id, broken.id

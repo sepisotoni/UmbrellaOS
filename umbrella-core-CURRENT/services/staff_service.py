@@ -1,4 +1,5 @@
 """Staff role promotion and demotion."""
+
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,7 +37,11 @@ async def manage_staff_role(
     if not user.is_active:
         raise StaffManageError("Cannot change role for inactive user")
 
-    current_role = await db.scalar(select(Role).where(Role.id == user.role_id)) if user.role_id else None
+    current_role = (
+        await db.scalar(select(Role).where(Role.id == user.role_id))
+        if user.role_id
+        else None
+    )
     current_name = current_role.name if current_role else "member"
 
     try:
@@ -180,6 +185,7 @@ async def find_or_add_staff(
 
     if user is None:
         from models import User as UserModel
+
         user = UserModel(
             discord_id=discord_id,
             username=username or f"User {discord_id}",
@@ -190,7 +196,11 @@ async def find_or_add_staff(
         await db.flush()
         previous_name = "member"
     else:
-        current_role = await db.scalar(select(Role).where(Role.id == user.role_id)) if user.role_id else None
+        current_role = (
+            await db.scalar(select(Role).where(Role.id == user.role_id))
+            if user.role_id
+            else None
+        )
         previous_name = current_role.name if current_role else "member"
         user.role_id = role.id
         await db.flush()

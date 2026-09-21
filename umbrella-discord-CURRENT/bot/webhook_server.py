@@ -19,6 +19,7 @@ WebhookServer.register_handler() at cog load time.
 
 aiohttp>=3.9.0 is already in requirements.txt.
 """
+
 from __future__ import annotations
 
 import asyncio

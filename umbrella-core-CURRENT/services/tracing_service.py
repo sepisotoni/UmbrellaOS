@@ -96,6 +96,7 @@ at all, needs daemon/dashboard-side code, which is outside this code
 source — same loose end as the Phase 7->8 Discord/dashboard boundary and
 the daemon_client gap noted above.
 """
+
 from __future__ import annotations
 
 import logging
@@ -128,16 +129,22 @@ def _init_tracer_provider() -> None:
     if _provider_initialized:
         return
     settings = get_settings()
-    provider = TracerProvider(resource=Resource.create({"service.name": "umbrella-core"}))
+    provider = TracerProvider(
+        resource=Resource.create({"service.name": "umbrella-core"})
+    )
 
     if settings.otel_exporter_otlp_endpoint:
         # Local import: only needed if an endpoint is actually configured,
         # so a process that never sets one doesn't pay for importing the
         # HTTP exporter's own dependency chain (requests, protobuf codecs).
-        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+            OTLPSpanExporter,
+        )
 
         provider.add_span_processor(
-            BatchSpanProcessor(OTLPSpanExporter(endpoint=settings.otel_exporter_otlp_endpoint))
+            BatchSpanProcessor(
+                OTLPSpanExporter(endpoint=settings.otel_exporter_otlp_endpoint)
+            )
         )
     if settings.otel_console_export:
         provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
@@ -179,7 +186,10 @@ def request_span(incoming_headers):
     try:
         with _tracer.start_as_current_span("http.request") as span:
             span_ctx = span.get_span_context()
-            yield trace.format_trace_id(span_ctx.trace_id), trace.format_span_id(span_ctx.span_id)
+            yield (
+                trace.format_trace_id(span_ctx.trace_id),
+                trace.format_span_id(span_ctx.span_id),
+            )
     finally:
         otel_context.detach(token)
 
@@ -210,7 +220,10 @@ def start_span(name: str):
         span_id = trace.format_span_id(span_ctx.span_id)
         logger.debug(
             "span start name=%s trace_id=%s span_id=%s parent_span_id=%s",
-            name, trace_id, span_id, parent_span_id,
+            name,
+            trace_id,
+            span_id,
+            parent_span_id,
         )
         try:
             yield span_id
@@ -218,5 +231,8 @@ def start_span(name: str):
             duration_ms = (time.perf_counter() - start) * 1000
             logger.debug(
                 "span end name=%s trace_id=%s span_id=%s duration_ms=%.2f",
-                name, trace_id, span_id, duration_ms,
+                name,
+                trace_id,
+                span_id,
+                duration_ms,
             )
