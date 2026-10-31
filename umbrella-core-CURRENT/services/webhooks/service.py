@@ -18,6 +18,7 @@ behavior worth documenting):
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import ipaddress
@@ -129,7 +130,7 @@ class WebhookService:
         to be, to sign future deliveries — see models/webhook.py's module
         docstring) but the capability layer should still only ever show it
         to the caller at creation time, not on subsequent list calls."""
-        _validate_webhook_url(url)
+        await asyncio.to_thread(_validate_webhook_url, url)
         secret = _generate_secret()
         subscription = WebhookSubscription(
             topic=topic,
@@ -179,7 +180,7 @@ class WebhookService:
     ) -> WebhookSubscription:
         subscription = await WebhookService.get(db, subscription_id)
         if url is not None:
-            _validate_webhook_url(url)
+            await asyncio.to_thread(_validate_webhook_url, url)
             subscription.url = url
         if active is not None:
             subscription.active = active
@@ -217,7 +218,7 @@ class WebhookDeliveryService:
         import json
 
         try:
-            _validate_webhook_url(subscription.url)
+            await asyncio.to_thread(_validate_webhook_url, subscription.url)
         except WebhookError as exc:
             raise WebhookDeliveryError(
                 f"delivery to subscription {subscription.id} blocked: {exc}"
