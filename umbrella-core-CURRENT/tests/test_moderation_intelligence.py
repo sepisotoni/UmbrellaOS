@@ -56,8 +56,9 @@ def _patch_generate(monkeypatch, *texts):
         exclude_providers=None,
     ):
         # Regression: the report-specific schema used to be built and discarded.
-        assert "You are analyzing a moderation report" in user_prompt
-        assert "recommended_action" in user_prompt
+        assert "You are analyzing a moderation report" in system_prompt
+        assert "recommended_action" in system_prompt
+        assert "Report reason:" in user_prompt
         return next(responses)
 
     monkeypatch.setattr(ModelRouter, "generate", fake_generate)
