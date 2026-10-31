@@ -29,10 +29,9 @@ from pydantic import BaseModel
 from datetime import datetime, timezone
 
 from database import get_db
-from models import MCCommand, AuditLog
+from models import MCCommand
 from api.middleware.auth import require_admin_hmac_or_session, require_plugin_key
 from api.middleware.audit import create_audit_log, AuditAction
-from uuid import uuid4
 
 router = APIRouter(prefix="/api/v1/mc", tags=["mc-commands"])
 

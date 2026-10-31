@@ -10,7 +10,7 @@ All responses require admin key or session authentication.
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from pydantic import BaseModel, ConfigDict
 from datetime import datetime, timedelta, timezone

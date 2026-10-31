@@ -26,7 +26,7 @@ from models.plugin_heartbeat import PluginHeartbeat
 from models.plugin_command import PluginCommand
 from models.player import Punishment
 from models.plugin_console_line import PluginConsoleLine
-from api.middleware.auth import require_plugin_key, require_admin_hmac_or_session, require_console_read_auth
+from api.middleware.auth import require_plugin_key, require_console_read_auth
 from api.schemas.plugin_control import PluginControlRequest
 
 router = APIRouter(prefix="/api/v1/plugin", tags=["plugin"])

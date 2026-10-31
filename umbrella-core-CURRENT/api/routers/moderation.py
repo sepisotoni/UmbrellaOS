@@ -12,14 +12,14 @@ GET  /api/v1/moderation/active     — Get active punishments for a player
 All responses require admin key authentication.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
 from datetime import datetime, timezone
 
 from database import get_db
-from models import Player, Punishment, IPAddress
+from models import Player, Punishment
 from api.dependencies.permissions import require_permission
 
 router = APIRouter(prefix="/api/v1/moderation", tags=["moderation"])

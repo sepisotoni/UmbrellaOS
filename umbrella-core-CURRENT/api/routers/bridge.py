@@ -27,7 +27,7 @@ from pydantic import BaseModel
 from datetime import datetime
 
 from database import get_db
-from models import ChatMessage, Setting, PlayerLanguage
+from models import ChatMessage, Setting
 from api.middleware.auth import require_admin_key
 from api.dependencies.permissions import require_permission
 from services.translation_service import translate_message, get_player_language
