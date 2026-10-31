@@ -69,7 +69,10 @@ def _resolve_audit_target(params: BaseModel) -> str | None:
     natural "target" and simply return None, which is a valid AuditLog.target.
     """
     target_fn = getattr(params, "audit_target", None)
-    return target_fn() if callable(target_fn) else None
+    if not callable(target_fn):
+        return None
+    target = target_fn()
+    return str(target) if target is not None else None
 
 
 class CapabilityNotFoundError(ResourceNotFoundException):
