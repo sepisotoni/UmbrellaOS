@@ -22,7 +22,7 @@ async def test_copilot_never_promotes_user_or_tool_text_to_system(
         calls.append(kwargs)
         if request_tools and len(calls) == 1:
             return SimpleNamespace(
-                text='\\x60\\x60\\x60json\\n[{"tool":"lookup_player","username":"Steve"}]\\n\\x60\\x60\\x60',
+                text='```json\n[{"tool":"lookup_player","username":"Steve"}]\n```',
                 primary_provider="fake",
                 primary_model="test",
             )
