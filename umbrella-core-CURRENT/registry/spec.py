@@ -40,9 +40,9 @@ class CapabilitySpec:
     handler: Callable[..., Awaitable[Any]]
 
     # Optional result schema, for adapters that want to advertise a typed
-    # response (e.g. generated SDK clients in a later phase). Not required —
+    # response, either a Pydantic model or a parameterized list of models. Not required —
     # plenty of capabilities return plain dicts.
-    result_model: Type[BaseModel] | None = None
+    result_model: type[Any] | None = None
 
     # Permission key required to invoke this capability. None means "any
     # authenticated actor" (not "anyone unauthenticated" — authentication
