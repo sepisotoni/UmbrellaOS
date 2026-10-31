@@ -278,3 +278,10 @@ No application code changed.
 
 
 **Compatibility check for UOS-CORE-033:** `GET /api/v1/plugin/servers/{server_id}/console/recent` historically allows a plugin key for **read-only** console history. Narrowing the general admin/HMAC dependency would have removed that documented access. Added a dedicated `require_console_read_auth` dependency *only* to the read endpoint, retaining plugin key access there without accepting it on admin/HMAC mutation endpoints, plus positive/negative API tests. The shared key still provides visibility across server IDs until per-server credential scoping is implemented.
+
+
+### PR #8 backend CI failure triage — 2026-11-01
+
+GitHub Actions backend run [41248752765](https://github.com/sepisotoni/UmbrellaOS/actions/runs/41248752765), on an intermediate PR #8 commit, ran actual PostgreSQL/Redis-backed GitHub Actions test infrastructure. `pytest -x` stopped at **1 failed, 663 passed, 35 warnings**: `tests/test_health.py::test_health_returns_200` threw `RuntimeError: Event loop is closed`, with underlying Redis `Future attached to a different loop`. The module-global `redis_client` in `database/redis_client.py` is appropriate for one production event loop but was incorrectly reused by requests in multiple pytest-asyncio function-scoped event loops. **Fix committed:** `tests/conftest.py` now creates and closes a per-client-fixture `fakeredis.aioredis.FakeRedis` and overrides `get_redis` alongside `get_db`; new regression test asserts healthy response with default isolated fake. This repairs test hermeticity without changing production Redis pooling. **Retest pending on the newest head.**
+
+Important: This intermediate-run failure occurred *after* the old test expectation fix; the 663 passed tests cannot be presented as the complete test suite, because `-x` stopped early. No claim of a fully green backend suite is justified without rerun.
