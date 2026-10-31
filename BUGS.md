@@ -152,3 +152,23 @@ Reviewed `registry/registry.py`, `registry/context.py`, `registry/adapters/rest.
 4. Reconcile decorators, dynamic imports, and actual registered capability names.
 
 No application code changed.
+
+
+## Whole-Core progress checkpoint — deeper cross-file checks (2026-10-31)
+
+**Audit status: incomplete.** Repository source could not be cloned into the audit runtime (network DNS unavailable); GitHub connector supports file and indexed-search reads but not a recursive source-tree checkout. Consequently no claim of exhaustive all-script coverage, complete dead-symbol analysis, or successful Python test execution is justified.
+
+| ID | Priority | Evidence level | Source → consequence |
+|---|---|---|---|
+| UOS-CORE-029 | High | Concrete unsupported-session-use pattern; runtime test needed | `api/routers/players.py:327+`: full-profile endpoint uses `asyncio.gather()` to concurrently execute **five database query coroutines on the same injected `AsyncSession`**. Same failure class as UOS-CORE-001 in `services/ai_service.py`; serialize queries or provide independent sessions per coroutine. Test under Postgres concurrent load. |
+| UOS-CORE-030 | High in debug deployments | Auth boundary requires explicit test | `capabilities/dev_auth.py`: `auth.dev.mint_test_session` is registered with `required_permission=None` and can mint real sessions when `settings.debug` is true. Production debug=false blocks it, but **debug=true installations must be isolated**; inspect caller requirements in the REST registry and test low-privilege callers. Do not leave debug enabled on any exposed deployment. |
+| UOS-CORE-031 | Medium | Sensitive-result audit distinction | `registry/registry.py` logs **request params** via `params.model_dump(mode='json')`, not result bodies. `dev_auth` session token, node signing secret and webhook secret are returned in result models, and are *not automatically dumped by this audit line*. However any future capability **input** containing secrets may leak; inventory and redact sensitive input fields. Refines UOS-CORE-026. |
+
+### Verification / cleanup guidance
+
+- Reuse one concurrency regression suite for both `services/ai_service.py` and `api/routers/players.py`.
+- Do not call decorated capability handlers dead solely because callers use string names; registry imports them at runtime.
+- Confirm `debug` is false and secret validation succeeds on all public deployments.
+- After obtaining a recursive repository checkout, run a module inventory, Ruff unused-import checks, Pyright field/type checks, Python AST-based call-reference analysis, OpenAPI-to-SDK contract diff, pytest, then review any findings manually for dynamic dispatch.
+
+**No application code modified.**
