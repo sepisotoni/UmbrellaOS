@@ -111,17 +111,16 @@ async def answer_operational_query(
     model to answer from its own general knowledge about Minecraft server
     performance instead of this server's actual recorded data."""
     evidence = await _gather_window_evidence(db, server_id, window_start, window_end)
-    # Orchestrator applies ConstitutionService to the task prompt. Previously
-    # these grounding instructions were constructed and silently discarded.
-    task_prompt = (
+    system_instructions = (
         "You are answering a staff member's question about this server's operational history. "
         "Base your answer ONLY on the evidence provided below - if the evidence doesn't support a "
-        "clear answer, say so plainly rather than speculating.\n\n"
-        f"Question: {question}\n\n{evidence}"
+        "clear answer, say so plainly rather than speculating."
     )
+    task_prompt = f"Question: {question}\n\n{evidence}"
 
     result = await Orchestrator.run(
-        db, _TASK_TYPE, task_prompt, requested_by=requested_by
+        db, _TASK_TYPE, task_prompt, requested_by=requested_by,
+        system_instructions=system_instructions,
     )
 
     if result.escalated:
