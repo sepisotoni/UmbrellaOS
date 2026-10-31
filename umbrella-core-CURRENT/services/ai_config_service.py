@@ -176,34 +176,36 @@ async def apply_config_action(
         return action
 
     try:
-        if action.action_type == "plugin_config":
-            items = changes.items() if isinstance(changes, dict) else []
-            for key, value in items:
-                cat = key.split(".")[0] if "." in key else "general"
-                if isinstance(value, bool):
+        # Use a SAVEPOINT so a later write failure never commits earlier settings.
+        async with db.begin_nested():
+            if action.action_type == "plugin_config":
+                items = changes.items() if isinstance(changes, dict) else []
+                for key, value in items:
+                    cat = key.split(".")[0] if "." in key else "general"
+                    if isinstance(value, bool):
+                        await SettingsService.set_value(
+                            db, str(key), "true" if value else "false", cat
+                        )
+                    elif isinstance(value, (str, int, float)):
+                        await SettingsService.set_value(db, str(key), str(value), cat)
+
+            elif action.action_type == "dashboard_layout":
+                for i, layout_item in enumerate(
+                    changes if isinstance(changes, list) else [changes]
+                ):
+                    base_key = f"dashboard.layout.{i}"
                     await SettingsService.set_value(
-                        db, str(key), "true" if value else "false", cat
+                        db, base_key, json.dumps(layout_item), "dashboard"
                     )
-                elif isinstance(value, (str, int, float)):
-                    await SettingsService.set_value(db, str(key), str(value), cat)
 
-        elif action.action_type == "dashboard_layout":
-            for i, layout_item in enumerate(
-                changes if isinstance(changes, list) else [changes]
-            ):
-                base_key = f"dashboard.layout.{i}"
-                await SettingsService.set_value(
-                    db, base_key, json.dumps(layout_item), "dashboard"
-                )
-
-        elif action.action_type == "discord_config":
-            for i, discord_item in enumerate(
-                changes if isinstance(changes, list) else [changes]
-            ):
-                base_key = f"discord.config.{i}"
-                await SettingsService.set_value(
-                    db, base_key, json.dumps(discord_item), "discord"
-                )
+            elif action.action_type == "discord_config":
+                for i, discord_item in enumerate(
+                    changes if isinstance(changes, list) else [changes]
+                ):
+                    base_key = f"discord.config.{i}"
+                    await SettingsService.set_value(
+                        db, base_key, json.dumps(discord_item), "discord"
+                    )
 
         action.status = "applied"
         action.applied_at = datetime.now(timezone.utc)
