@@ -736,10 +736,14 @@ class SettingsService:
         await db.flush()
         if commit:
             await db.commit()
-            await db.refresh(setting)
             # Only update the separate .env store once the database committed.
             write_env_value(key, new_value)
 
+        # updated_at uses SQL-side onupdate=func.now(). After a flush SQLAlchemy
+        # expires it and synchronously accessing it during _to_dict raises
+        # MissingGreenlet under AsyncSession. Refresh before serialization,
+        # while still inside the current transaction (even for commit=False).
+        await db.refresh(setting)
         return SettingsService._to_dict(setting, unmasked=False)
 
     @staticmethod
