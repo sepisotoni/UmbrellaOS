@@ -20,14 +20,10 @@ from database import get_db
 from models import Player, Punishment, Appeal, AltGroupMember, AltGroup, DiscordAccount
 from api.dependencies.permissions import require_permission
 
-# AnticheatViolation is added by Backend A. Import with fallback stub so this
-# router compiles even if Backend A has not been merged yet.
-try:
-    from models.anticheat_violation import AnticheatViolation  # noqa: F401
+# A required Core model, not an optional integration.
+from models.anticheat_violation import AnticheatViolation
 
-    _HAS_ANTICHEAT = True
-except ImportError:
-    _HAS_ANTICHEAT = False
+_HAS_ANTICHEAT = True
 
 router = APIRouter(prefix="/api/v1/players", tags=["players"])
 
