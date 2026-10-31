@@ -7,6 +7,7 @@ Returns database + Redis connectivity status and app version.
 
 import time
 from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -59,3 +60,16 @@ async def health(
         "service": "umbrella-core",
         "uptime_seconds": round(time.monotonic() - _start_time),
     }
+
+
+@router.get("/ready")
+async def ready(
+    db: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(get_redis),
+) -> JSONResponse:
+    """Return 503 for degraded dependencies; preserve /health as liveness."""
+    status = await health(db, redis)
+    return JSONResponse(
+        status_code=200 if status["status"] == "ok" else 503,
+        content=status,
+    )
