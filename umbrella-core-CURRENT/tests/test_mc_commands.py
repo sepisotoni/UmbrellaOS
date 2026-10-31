@@ -269,8 +269,12 @@ async def test_post_mc_command_creates_audit_log(client: AsyncClient, db_session
         logs = audit_log.scalars().all()
         assert len(logs) > 0
         latest_log = logs[-1]
-        assert "discord:123456789" == latest_log.actor
+        # The actor is the authenticated credential tier, not an untrusted
+        # requested_by_discord_id taken from the JSON body.
+        assert latest_log.actor == "admin-key"
+        assert latest_log.actor_type == "system"
         assert latest_log.details_json
+        assert "claimed_discord_id" in latest_log.details_json
 
 
 @pytest.mark.asyncio
