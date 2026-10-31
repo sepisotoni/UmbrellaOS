@@ -317,20 +317,12 @@ async def get_player_full_profile(
     if player is None:
         raise HTTPException(status_code=404, detail=f"Player '{uuid}' not found")
 
-    # Parallel queries
-    (
-        punishments,
-        appeals,
-        discord_acct,
-        alt_members,
-        anticheat_hist,
-    ) = await asyncio.gather(
-        _query_punishments(db, uuid),
-        _query_appeals(db, uuid),
-        _query_discord(db, uuid),
-        _query_alt_group_members(db, uuid),
-        _query_anticheat(db, uuid),
-    )
+    # AsyncSession is stateful and must not be used concurrently by several tasks.
+    punishments = await _query_punishments(db, uuid)
+    appeals = await _query_appeals(db, uuid)
+    discord_acct = await _query_discord(db, uuid)
+    alt_members = await _query_alt_group_members(db, uuid)
+    anticheat_hist = await _query_anticheat(db, uuid)
 
     # Build punishment → appeal map (first appeal per punishment)
     appeal_map: dict[str, str] = {}
