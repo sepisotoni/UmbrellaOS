@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 from sqlalchemy.orm import selectinload
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -39,8 +39,7 @@ class IPAddressSchema(BaseModel):
     first_seen: datetime
     last_seen: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PlayerSchema(BaseModel):
@@ -55,15 +54,13 @@ class PlayerSchema(BaseModel):
     suspicion_score: int
     discord_id: str | None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PlayerDetailSchema(PlayerSchema):
     ip_addresses: list[IPAddressSchema] = []
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # --- Full-profile sub-schemas ---
