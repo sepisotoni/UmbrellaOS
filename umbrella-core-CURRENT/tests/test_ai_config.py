@@ -28,9 +28,12 @@ async def test_post_ai_config_request_creates_pending_action(
     from services.ai.orchestrator import OrchestrationResult
 
     async def fake_run(
-        *, db, task_type, task_prompt, requested_by, require_dual_review=False
+        *, db, task_type, task_prompt, requested_by, require_dual_review=False, system_instructions=None
     ):
         assert task_type == "copilot"
+        assert "You are configuring UmbrellaOS" in system_instructions
+        assert "Set bridge mode to full" in task_prompt
+        assert "Set bridge mode to full" not in system_instructions
         return OrchestrationResult(
             text='{"test": "value"}',
             confidence=1.0,
