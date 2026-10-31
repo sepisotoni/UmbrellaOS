@@ -377,3 +377,13 @@ The `api/routers/ai_copilot.py` two-pass inference pipeline retained the legacy 
 | UOS-CORE-013 | High deployment misrepresentation | `api/routers/server_control.py` explicitly claimed power/restart used Minecraft plugin queue with no local shell; actual service executes configured commands **on Core's host** and does not target remote servers. | Corrected endpoint docstring to state local-only behavior, privilege requirements, and separate remote hosting control mechanism. **Remote plugin queue integration remains unimplemented** and must not be assumed to work. |
 
 As of this revision, PR #8 is still **draft**, not merged. Do not treat branch changes as released, and do not approve until runtime tests and security isolation checks complete.
+
+
+## Follow-up regression fixes and static-analysis progress — 2026-11-01
+
+| Finding | Severity | Verified source issue | Branch fix / testing |
+|---|---|---|---|
+| UOS-CORE-046 | Medium availability | `services/ai/copilot_tools.py:execute_tool_calls` used `dict.get(tool)` for a tool name supplied by model-generated JSON before validating its type. `tool=[]` or `tool={}` caused an uncaught `TypeError: unhashable type`, aborting the complete Copilot request. | Type-check tool names and return structured invalid-tool results; add malformed JSON tool-name regression cases in `tests/test_copilot_tools.py`. Pending latest CI. |
+| UOS-CORE-047 | Medium forensic data integrity | `services/snapshot_service.py:create_snapshot` used `json.dumps(value) if value else None`, silently collapsing empty arrays/objects to NULL; the API expressly accepts array-shaped inventory/armor, while the service incorrectly annotated dict-only. | Preserve `[]` and `{}` when explicitly provided, keep true missing values as NULL, and widen inventory/armor type annotations. Added API POST→GET round-trip test in `tests/test_snapshots.py`. Pending latest CI. |
+
+**Quality gate progression:** On the pre-fix [Core Quality Gates run 41251084284](https://github.com/sepisotoni/UmbrellaOS/actions/runs/41251084284), Pyright reported **93 errors** (down from the earlier 113), and Ruff reported **155 findings**. Replacing obsolete optional anticheat model imports, correcting async HTTP transport types, annotating the permission cache, and adopting `ConfigDict` for player schemas reduced typing errors. Neither gate is yet passing. Backward-compatibility and current-head CI remain mandatory before merge.
