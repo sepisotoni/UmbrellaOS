@@ -108,7 +108,6 @@ async def require_admin_hmac_or_session(
     x_auth_mac: str | None = Header(default=None),
     x_auth_timestamp: str | None = Header(default=None),
     x_admin_key: str | None = Security(admin_key_header),
-    x_plugin_key: str | None = Security(plugin_key_header),
     authorization: str | None = Header(None),
     db: AsyncSession = Depends(get_db),
 ) -> str:
@@ -129,12 +128,7 @@ async def require_admin_hmac_or_session(
         if not hmac.compare_digest(expected, x_auth_mac):
             raise HTTPException(status_code=401, detail="Invalid MAC")
         return "hmac"
-    # Accept plugin key or admin key — both use compare_digest
-    key = x_plugin_key or x_admin_key
-    if key and (
-        hmac.compare_digest(key, settings.secret_key)
-        or hmac.compare_digest(key, settings.admin_key)
-    ):
-        return "plugin"
-    # Fall through to session token
+    # Only the admin key (or an owner/admin session) may authorize this tier.
+    # A plugin credential is deliberately insufficient: treating SECRET_KEY
+    # as an admin key permits any plugin to queue arbitrary console commands.
     return await require_admin_key(x_admin_key, authorization, db)
