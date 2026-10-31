@@ -29,7 +29,8 @@ class AnticheatFlagRequest(BaseModel):
 
 class ViolationRecord(BaseModel):
     id: str
-    player_uuid: str
+    # Player rows may be deleted while violations survive (ON DELETE SET NULL).
+    player_uuid: str | None
     player_name: str
     server_id: str | None
     check_name: str
