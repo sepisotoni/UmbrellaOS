@@ -92,7 +92,7 @@ class DaemonClient:
         node_id: str,
         signing_secret: str,
         timeout: float = 10.0,
-        transport: httpx.BaseTransport | None = None,
+        transport: httpx.AsyncBaseTransport | None = None,
     ):
         self._base_url = daemon_url.rstrip("/")
         self._node_id = node_id
