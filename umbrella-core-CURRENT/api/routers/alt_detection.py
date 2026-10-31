@@ -232,7 +232,7 @@ async def get_player_suspicion(
 async def mark_false_positive(
     body: FalsePositiveRequest,
     db: AsyncSession = Depends(get_db),
-    _auth: str = Depends(require_permission("players.manage")),
+    auth = Depends(require_permission("players.manage")),
 ):
     """Mark a suspicion event as false positive."""
     if body.event_id is not None:
@@ -260,7 +260,11 @@ async def mark_false_positive(
 
     event.false_positive = True
     event.reviewed = True
-    event.reviewed_by = auth.username if isinstance(auth, User) else (f"api-key:{auth.id}" if isinstance(auth, ApiKey) else "admin-key")
+    event.reviewed_by = (
+        f"user:{auth.id}" if isinstance(auth, User)
+        else f"api-key:{auth.id}" if isinstance(auth, ApiKey)
+        else "admin-key"
+    )
 
     # Reduce player suspicion_score by event points
     result = await db.execute(select(Player).where(Player.uuid == event.player_uuid))
