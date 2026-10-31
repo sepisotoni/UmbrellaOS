@@ -268,3 +268,10 @@ No application code changed.
 
 **Residual critical risk (issue #1):** Plugin polling and completion still use `require_plugin_key`, a globally shared unscoped secret, with caller-supplied `server_id` or command ID. This patch prevents a plugin credential from *queuing* commands through the admin tier; it does not enforce per-server plugin identity on poll/complete. Rollout of per-server scoped plugin credentials, server-binding on completion, and end-to-end migration tests is required before treating fleets as isolated.
 
+
+
+### Async performance correction (2026-11-01)
+
+| Key | Severity | Source-level evidence | Resolution | Validation |
+| --- | --- | --- | --- | --- |
+| UOS-CORE-034 | Medium | `_validate_webhook_url` uses synchronous `socket.getaddrinfo()` DNS resolution. It was called directly within three async entrypoints: `WebhookService.create()`, `WebhookService.update()` and `WebhookDeliveryService.deliver()`. Slow DNS could therefore block the asyncio event loop and unrelated API/dispatch tasks. | Offload exactly those validation calls to `asyncio.to_thread`; keep SSRF address policy and redirect behavior unchanged. | Added worker-thread regression test, NOT YET RUN. DNS resolution and network connect still have a TOCTOU rebinding risk, not closed by this concurrency patch. |
