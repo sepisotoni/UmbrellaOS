@@ -343,3 +343,12 @@ The added [Core Quality Gates run 41249238973](https://github.com/sepisotoni/Umb
 ### AI trust-boundary follow-up (2026-11-01)
 
 The source fix for UOS-CORE-041 now also covers `services/ai_service.py:_orchestrate` (player/appeal/chat evidence) and `services/ai_config_service.py:process_ai_config_request` (operator natural-language request). Those paths had placed user text inside the same string used to build the constitutional system message. They now forward trusted guidance using `Orchestrator.run(..., system_instructions=...)`, keeping raw input as `task_prompt`. Existing callers without that parameter retain prior behavior for compatibility, so this remains a **partial** trust-boundary audit, not a platform-wide guarantee. Added/updated tests in `tests/test_ai_service.py`, `tests/test_ai_config.py`, and `tests/test_orchestrator.py`; latest CI validation is pending.
+
+
+## Anticheat AI provider integration — 2026-11-01
+
+| ID | Severity | Evidence / root cause | Resolution and validation |
+|---|---|---|---|
+| UOS-CORE-043 | **High configuration and reliability** | `services/anticheat_service.py:_ai_confidence_review()` used a hardcoded Anthropic Messages API endpoint, a fixed Claude model string, and direct `os.environ['ANTHROPIC_API_KEY']` instead of Core's DB-configured provider/model routing. It is a **live** function called by `handle_cheat_flag()`, not dead code. Changing AI provider in settings therefore had no effect on this feature. The direct import also caused Ruff E401/F811. | Routed confidence review through `Orchestrator.run(task_type='moderation_review', system_instructions=...)`, preserving per-flag deterministic VL fallback on provider/unparseable output. Validate finite confidences, and re-raise SQLAlchemy errors instead of masking a broken transaction. Added `tests/test_anticheat_ai_review.py` for provider selection, input trust boundary, fallback, and database-error propagation. Source committed, CI still pending. |
+
+**Compatibility:** The anticheat endpoint request/response contract and AITask fields are unchanged. Deployments that previously set only the environment variable but have no `ai_model_configs` provider row will use VL fallback until a `moderation_review` provider is configured; this is an operational configuration migration and must be documented before rollout.
