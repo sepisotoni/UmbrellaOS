@@ -112,19 +112,18 @@ async def draft_postmortem(
         raise ResourceNotFoundException("Server", server_id)
 
     evidence = await _gather_incident_evidence(db, server)
-    # Orchestrator applies ConstitutionService itself. Include the domain
-    # instructions in the actual prompt rather than discarding them.
-    task_prompt = (
+    system_instructions = (
         "You are drafting an incident postmortem for staff review. This draft will NEVER be "
         "automatically published or shown to anyone other than staff - write it as an internal "
         "engineering document: what happened, likely contributing factors based only on the evidence "
         "given, and what staff should check next. If the evidence doesn't point to a clear cause, "
-        "say so rather than speculating.\n\n"
-        f"Draft a postmortem for this incident.\n\n{evidence}"
+        "say so rather than speculating."
     )
+    task_prompt = f"Draft a postmortem for this incident.\n\n{evidence}"
 
     result = await Orchestrator.run(
-        db, _TASK_TYPE, task_prompt, requested_by=requested_by
+        db, _TASK_TYPE, task_prompt, requested_by=requested_by,
+        system_instructions=system_instructions,
     )
 
     if result.escalated:
