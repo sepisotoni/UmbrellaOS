@@ -172,3 +172,17 @@ No application code changed.
 - After obtaining a recursive repository checkout, run a module inventory, Ruff unused-import checks, Pyright field/type checks, Python AST-based call-reference analysis, OpenAPI-to-SDK contract diff, pytest, then review any findings manually for dynamic dispatch.
 
 **No application code modified.**
+
+
+## Systematic remediation tracker (2026-11-01)
+
+| Workstream | GitHub task | Status |
+|---|---|---|
+| Command execution and console authorization | [#1](https://github.com/sepisotoni/UmbrellaOS/issues/1) | Open — confirm threat model and add tests |
+| Shared AsyncSession and atomic AI configuration | [#2](https://github.com/sepisotoni/UmbrellaOS/issues/2) | Partial fix proposed in [PR #7](https://github.com/sepisotoni/UmbrellaOS/pull/7), tests pending; transaction fix open |
+| Console/remote-control integrations and dead queue | [#3](https://github.com/sepisotoni/UmbrellaOS/issues/3) | Open |
+| Reviewer attribution, debug auth, secret handling | [#4](https://github.com/sepisotoni/UmbrellaOS/issues/4) | Open |
+| Health/migrations/delivery/reporting integrity | [#5](https://github.com/sepisotoni/UmbrellaOS/issues/5) | Open |
+| Incomplete features, unused settings, contracts, lint | [#6](https://github.com/sepisotoni/UmbrellaOS/issues/6) | Open — verification required |
+
+**Fix policy:** A suspected issue is not considered resolved until code has changed where needed, tests have run, and its PR is merged. Current findings include investigation tasks and intentional design decisions; do not mechanically "fix" every item.
