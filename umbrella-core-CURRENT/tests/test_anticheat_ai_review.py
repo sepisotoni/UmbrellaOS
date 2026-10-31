@@ -45,7 +45,13 @@ async def test_anticheat_confidence_routes_through_configured_provider(
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "output",
-    ["not valid json", '{"confidence": "not-a-number"}', None],
+    [
+        "not valid json",
+        '{"confidence": "not-a-number"}',
+        '{"confidence": "NaN"}',
+        '{"confidence": "Infinity"}',
+        None,
+    ],
 )
 async def test_anticheat_confidence_uses_vl_fallback_when_ai_fails(
     db_session, monkeypatch, output
@@ -64,3 +70,21 @@ async def test_anticheat_confidence_uses_vl_fallback_when_ai_fails(
 
     assert confidence == pytest.approx(0.7)
     assert reason == "vl_math_fallback"
+
+
+@pytest.mark.asyncio
+async def test_anticheat_database_failure_is_not_silently_swallowed(
+    db_session, monkeypatch
+):
+    from sqlalchemy.exc import OperationalError
+
+    async def fake_run(**kwargs):
+        raise OperationalError("SELECT 1", {}, RuntimeError("connection unavailable"))
+
+    monkeypatch.setattr(Orchestrator, "run", fake_run)
+
+    async with db_session() as db:
+        with pytest.raises(OperationalError):
+            await anticheat_service._ai_confidence_review(
+                db, "Fly", "test", 4, "Steve", 0
+            )
