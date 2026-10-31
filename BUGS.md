@@ -290,3 +290,12 @@ Important: This intermediate-run failure occurred *after* the old test expectati
 ### Latest PR #8 validation checkpoint (2026-11-01)
 
 At commit `ad0bc37a9a544c6344293449ef031d9650f721a8` (before this documentation-only update): GitHub Actions Dashboard CI **passed**, Bot CI **passed**; Backend CI and Plugin CI were **still running**. Vercel `umbrella-dashboard` and `umbrella-os` returned failure statuses with URLs that explicitly identify `upgradeToPro=build-rate-limit` (deployment quota/rate limitation, **not evidence of a compilation failure**). Treat deployment verification as blocked until the build limit is cleared. Checks from earlier commits do not validate later code changes.
+
+
+### Confirmed audit-log credential exposure (2026-11-01)
+
+| Key | Severity | Actual producer/consumer chain | Resolution | Status |
+| --- | --- | --- | --- | --- |
+| UOS-CORE-035 | High | `capabilities/hosting.py:CreateTemplateParams.default_env` accepts arbitrary environment variables such as `DB_PASSWORD` and `DISCORD_BOT_TOKEN`; the capability has default audit logging enabled. `registry/registry.py:CapabilityRegistry.call` formerly wrote `params.model_dump(mode="json")` verbatim into `AuditLog.details_json` on both success and failure. Secret-bearing template arguments could therefore persist in plaintext audit rows. | Central recursive audit-param redactor masks secret/password/token/key/credential/cookie-shaped dict keys on both success and failure; safe operational fields remain visible. Added unit and persisted-log regression tests. | Source/test changes committed, runtime CI required. |
+
+**Limit:** Key-based redaction cannot detect arbitrary secret values under harmless-looking field names, historical audit rows remain unchanged, and direct logging by non-registry services requires a separate review. Historical exposure must be examined and, if present, credentials rotated and retained logs handled securely.
