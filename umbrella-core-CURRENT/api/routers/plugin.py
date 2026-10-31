@@ -26,7 +26,7 @@ from models.plugin_heartbeat import PluginHeartbeat
 from models.plugin_command import PluginCommand
 from models.player import Punishment
 from models.plugin_console_line import PluginConsoleLine
-from api.middleware.auth import require_plugin_key, require_admin_hmac_or_session
+from api.middleware.auth import require_plugin_key, require_admin_hmac_or_session, require_console_read_auth
 from api.schemas.plugin_control import PluginControlRequest
 
 router = APIRouter(prefix="/api/v1/plugin", tags=["plugin"])
@@ -382,7 +382,7 @@ async def push_console_lines(
 async def get_recent_console(
     server_id: str,
     n: int = Query(default=100, ge=1, le=500),
-    _auth: str = Depends(require_admin_hmac_or_session),
+    _auth: str = Depends(require_console_read_auth),
     db: AsyncSession = Depends(get_db),
 ) -> RecentConsoleResponse:
     """
