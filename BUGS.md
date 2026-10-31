@@ -275,3 +275,6 @@ No application code changed.
 | Key | Severity | Source-level evidence | Resolution | Validation |
 | --- | --- | --- | --- | --- |
 | UOS-CORE-034 | Medium | `_validate_webhook_url` uses synchronous `socket.getaddrinfo()` DNS resolution. It was called directly within three async entrypoints: `WebhookService.create()`, `WebhookService.update()` and `WebhookDeliveryService.deliver()`. Slow DNS could therefore block the asyncio event loop and unrelated API/dispatch tasks. | Offload exactly those validation calls to `asyncio.to_thread`; keep SSRF address policy and redirect behavior unchanged. | Added worker-thread regression test, NOT YET RUN. DNS resolution and network connect still have a TOCTOU rebinding risk, not closed by this concurrency patch. |
+
+
+**Compatibility check for UOS-CORE-033:** `GET /api/v1/plugin/servers/{server_id}/console/recent` historically allows a plugin key for **read-only** console history. Narrowing the general admin/HMAC dependency would have removed that documented access. Added a dedicated `require_console_read_auth` dependency *only* to the read endpoint, retaining plugin key access there without accepting it on admin/HMAC mutation endpoints, plus positive/negative API tests. The shared key still provides visibility across server IDs until per-server credential scoping is implemented.
