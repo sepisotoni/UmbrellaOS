@@ -70,7 +70,7 @@ class MCCommandCompleteRequest(BaseModel):
 async def create_mc_command(
     body: MCCommandRequest,
     db: AsyncSession = Depends(get_db),
-    _auth: str = Depends(require_admin_hmac_or_session),
+    auth: str = Depends(require_admin_hmac_or_session),
 ) -> MCCommandResponse:
     """
     Queue a Minecraft command for execution.
@@ -94,17 +94,28 @@ async def create_mc_command(
     db.add(mc_command)
     await db.flush()
 
-    # Create audit log entry
+    # Attribution must reflect authenticated credentials, not a client-
+    # supplied Discord ID. The latter is only an unverified delegation hint.
+    # Never interpolate a raw admin-key credential into an audit record.
+    actor = (
+        "bot:hmac" if auth == "hmac"
+        else "admin-session" if auth == "session"
+        else "admin-key"
+    )
+    actor_type = "bot" if auth == "hmac" else (
+        "staff" if auth == "session" else "system"
+    )
     await create_audit_log(
         db=db,
         action=AuditAction.MC_COMMAND_REQUESTED,
-        actor=f"discord:{body.requested_by_discord_id}",
-        actor_type="bot",
+        actor=actor,
+        actor_type=actor_type,
         target=str(mc_command.id),
         details={
             "command": body.command,
             "server_id": body.server_id,
             "requested_by": body.requested_by_username,
+            "claimed_discord_id": body.requested_by_discord_id,
         },
     )
 
