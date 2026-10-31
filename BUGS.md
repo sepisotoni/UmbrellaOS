@@ -219,3 +219,14 @@ No application code changed.
 - **PR #8 validation at checkpoint:** No GitHub Actions runs were visible for its new branch yet; only Vercel deployment statuses reported success. PR #8 is draft; do **not** merge without backend, dashboard and security regression validation.
 
 **No modification to the Minecraft plugin implementation.** Full production sign-off remains **blocked**.
+
+
+### Additional confirmed configuration defect (2026-11-01)
+
+| Key | Severity | Root cause and verified source path | Resolution | Validation |
+| --- | --- | --- | --- | --- |
+| UOS-CORE-032 | Medium | `process_ai_config_request()` may persist invalid AI output as `{"raw_response": "..."}`; `apply_config_action()` previously accepted that JSON as valid `plugin_config` and wrote the `raw_response` setting, or marked unsupported/empty types as `applied` despite making no valid changes. This is verified against the actual producer and switch branches, not a runtime exploitation claim. | Validate action type, nonempty JSON structure and scalar plugin setting values; reject generated raw-response placeholders before entering the settings SAVEPOINT. Preserve pending/rejected audit history and the endpoint response shape. | Added parameterized regression cases, NOT YET RUN. |
+
+**Pull requests:** [PR #7](https://github.com/sepisotoni/UmbrellaOS/pull/7) is the upstream partially corrected patch. [Draft PR #8](https://github.com/sepisotoni/UmbrellaOS/pull/8) contains this pass's follow-up fixes, coverage document and tests. Neither is merged by this audit.
+
+**Next precise continuation point:** Start by verifying PR #8 GitHub Actions/backend pytest outcomes and run the new AI-config malformed-input tests. Next, add SQLite/Postgres rollback fault-injection and server-scoped Minecraft command authentication tests (#1/#2), then continue the route/service call-graph pass. The initial static source inventory is complete; deep E2E checks remain unchecked in `CORE_AUDIT_COVERAGE.md`.
