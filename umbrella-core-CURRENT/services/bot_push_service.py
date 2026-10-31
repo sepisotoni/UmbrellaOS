@@ -24,11 +24,8 @@ from __future__ import annotations
 import hashlib
 import logging
 import time
-from datetime import datetime, timezone
 
 import httpx
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_settings
 from database import AsyncSessionLocal

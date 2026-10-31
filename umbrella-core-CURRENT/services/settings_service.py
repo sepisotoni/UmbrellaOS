@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Optional
 from dotenv import set_key
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
+from sqlalchemy import select
 from models.setting import Setting
 from models.audit_log import AuditLog
 

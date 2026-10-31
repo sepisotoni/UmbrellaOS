@@ -6,7 +6,6 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
-from database import AsyncSessionLocal
 from models import AIConfigAction, Setting
 from datetime import datetime, timezone
 

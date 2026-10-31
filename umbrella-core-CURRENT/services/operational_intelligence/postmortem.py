@@ -45,7 +45,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.middleware.errors import ResourceNotFoundException
 from models.audit_log import AuditLog
 from models.hosting import Server
-from services.ai.constitution_service import ConstitutionService
 from services.ai.orchestrator import Orchestrator
 from services.events.bus import EventBus
 from services.moderation_intelligence.repository import ModerationIntelRepository

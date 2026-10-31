@@ -7,7 +7,7 @@ Implements rule-based suspicion scoring for detecting potential alt accounts.
 import json
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_
+from sqlalchemy import select, and_
 
 from config import get_settings
 from models import (

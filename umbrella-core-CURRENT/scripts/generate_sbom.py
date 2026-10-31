@@ -29,7 +29,6 @@ from pathlib import Path
 from cyclonedx.model.bom import Bom
 from cyclonedx.model.component import Component, ComponentType
 from cyclonedx.output.json import JsonV1Dot5
-from cyclonedx.schema import OutputFormat
 
 # Matches `name==version` lines from requirements.txt, ignoring comments,
 # blank lines, and non-pinned/extras-bearing lines (e.g. `-r base.txt`,

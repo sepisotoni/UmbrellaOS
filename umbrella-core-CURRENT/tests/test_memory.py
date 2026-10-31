@@ -6,7 +6,6 @@ import datetime as dt
 
 import pytest
 
-from config import get_settings
 from models.memory import MemoryEntry, MemoryScope
 from services.memory.repository import MemoryRepository
 from services.memory.service import MemoryService

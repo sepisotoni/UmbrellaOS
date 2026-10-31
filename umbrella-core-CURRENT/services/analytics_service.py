@@ -8,7 +8,6 @@ import json
 from datetime import datetime, timezone, date, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from models import AnalyticsEvent, PlayerStat
 
