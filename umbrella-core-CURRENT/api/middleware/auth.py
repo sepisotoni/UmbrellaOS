@@ -132,3 +132,26 @@ async def require_admin_hmac_or_session(
     # A plugin credential is deliberately insufficient: treating SECRET_KEY
     # as an admin key permits any plugin to queue arbitrary console commands.
     return await require_admin_key(x_admin_key, authorization, db)
+
+
+async def require_console_read_auth(
+    x_plugin_key: str | None = Security(plugin_key_header),
+    x_admin_key: str | None = Security(admin_key_header),
+    x_auth_mac: str | None = Header(default=None),
+    x_auth_timestamp: str | None = Header(default=None),
+    authorization: str | None = Header(None),
+    db: AsyncSession = Depends(get_db),
+) -> str:
+    """Preserve legacy plugin read access to console history, not admin writes.
+
+    This narrow exception must not be used by command enqueue or other
+    mutation endpoints: the shared plugin key has no staff privileges.
+    """
+    if x_plugin_key is not None:
+        if hmac.compare_digest(x_plugin_key, settings.secret_key):
+            return "plugin-console-read"
+        raise HTTPException(status_code=401, detail="Invalid plugin key")
+
+    return await require_admin_hmac_or_session(
+        x_auth_mac, x_auth_timestamp, x_admin_key, authorization, db
+    )
