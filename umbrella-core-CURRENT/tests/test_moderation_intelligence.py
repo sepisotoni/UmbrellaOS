@@ -55,6 +55,9 @@ def _patch_generate(monkeypatch, *texts):
         temperature=0.7,
         exclude_providers=None,
     ):
+        # Regression: the report-specific schema used to be built and discarded.
+        assert "You are analyzing a moderation report" in user_prompt
+        assert "recommended_action" in user_prompt
         return next(responses)
 
     monkeypatch.setattr(ModelRouter, "generate", fake_generate)
