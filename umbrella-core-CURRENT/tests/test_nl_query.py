@@ -40,7 +40,8 @@ async def test_answer_grounds_response_in_window_evidence(db_session, monkeypatc
     ):
         # The model must receive BOTH evidence and the domain grounding rules.
         assert "12.0" in user_prompt or "TPS ranged" in user_prompt
-        assert "Base your answer ONLY on the evidence" in user_prompt
+        assert "Base your answer ONLY on the evidence" in system_prompt
+        assert "Question:" in user_prompt
         return _routed("anthropic", "TPS dropped due to a plugin reload at that time.")
 
     monkeypatch.setattr(ModelRouter, "generate", fake_generate)
