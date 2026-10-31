@@ -176,6 +176,27 @@ async def apply_config_action(
         return action
 
     try:
+        # Reject generated text placeholders and unsupported payload types before
+        # any setting is flushed, rather than marking an empty operation "applied".
+        if action.action_type not in SYSTEM_PROMPTS:
+            raise ValueError(f"Unsupported configuration action: {action.action_type}")
+        if action.action_type == "plugin_config":
+            if not isinstance(changes, dict) or not changes or "raw_response" in changes:
+                raise ValueError("Plugin configuration must be a nonempty JSON object")
+            if not all(
+                isinstance(key, str)
+                and isinstance(value, (str, int, float, bool))
+                for key, value in changes.items()
+            ):
+                raise ValueError("Plugin setting values must be scalar values")
+        else:
+            items = changes if isinstance(changes, list) else [changes]
+            if not items or not all(
+                isinstance(item, dict) and item and "raw_response" not in item
+                for item in items
+            ):
+                raise ValueError("Dashboard/Discord configuration must contain JSON action objects")
+
         # Use a SAVEPOINT so a later write failure never commits earlier settings.
         async with db.begin_nested():
             if action.action_type == "plugin_config":
