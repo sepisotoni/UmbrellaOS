@@ -243,6 +243,17 @@ async def review_flagged_player(
 
     anticheat_section = _build_anticheat_summary(violations)
 
+    # Previously fetched then discarded: include staff-reviewed false positives
+    # so the risk assessor can distinguish cleared triggers from active ones.
+    suspicion_section = (
+        "\n".join(
+            f"  {_fmt_dt(evt.created_at)}: {evt.trigger} (+{evt.points} points, "
+            f"false_positive={bool(evt.false_positive)}, reviewed={bool(evt.reviewed)})"
+            for evt in suspicion_events
+        )
+        or "  none"
+    )
+
     context_str = f"""PLAYER REVIEW CONTEXT
 =====================
 Player: {player.username} ({player.uuid})
@@ -258,6 +269,9 @@ GrimAC History (last 30 days):
 
 Punishment History:
 - {len(punishments)} total | {punishment_breakdown}
+
+Suspicion Events (latest {len(suspicion_events)}):
+{suspicion_section}
 """
 
     system_prompt = (
@@ -292,6 +306,16 @@ Punishment History:
         },
         "anticheat_flags_30d": len(violations),
         "punishment_count": len(punishments),
+        "suspicion_events": [
+            {
+                "id": event.id,
+                "trigger": event.trigger,
+                "points": event.points,
+                "false_positive": bool(event.false_positive),
+                "reviewed": bool(event.reviewed),
+            }
+            for event in suspicion_events
+        ],
         "ai_result": ai_result,
     }
 
