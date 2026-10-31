@@ -536,11 +536,12 @@ export class UmbrellaApiClient {
   }
 
   public getServerConsoleWebSocketUrl(serverId: string): string {
-    const wsProtocol = this.baseUrl.startsWith('https') ? 'wss:' : 'ws:';
+    const wsProtocol = this.baseUrl.startsWith('https://') ? 'wss:' : 'ws:';
     const host = this.baseUrl.replace(/^https?:\/\//, '');
-    const tokenParam = this.sessionToken ? `&token=${encodeURIComponent(this.sessionToken)}` : '';
-    const adminParam = this.adminKey ? `&admin_key=${encodeURIComponent(this.adminKey)}` : '';
-    return `${wsProtocol}//${host}/ws/console/${encodeURIComponent(serverId)}?source=dashboard${tokenParam}${adminParam}`;
+    // The Core hosting console authenticates via a session token, not the
+    // long-lived admin key. Never put the admin key into a WebSocket URL.
+    const tokenParam = this.sessionToken ? `?token=${encodeURIComponent(this.sessionToken)}` : '';
+    return `${wsProtocol}//${host}/api/v1/hosting/servers/${encodeURIComponent(serverId)}/console${tokenParam}`;
   }
 
   public async sendServerCommand(serverId: string, command: string): Promise<any> {
