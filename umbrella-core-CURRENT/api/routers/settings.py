@@ -87,6 +87,10 @@ async def create_or_update_setting(
         create_if_missing=True,
         commit=False,
     )
+    if updated is None:
+        # An upsert must never return an absent setting; avoid persisting
+        # a model configuration with no corresponding setting row.
+        raise HTTPException(status_code=500, detail="Setting upsert returned no result")
     await sync_task_model_setting(db, key, body.value)
     await db.commit()
     write_env_value(key, body.value)

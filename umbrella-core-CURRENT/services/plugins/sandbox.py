@@ -47,6 +47,7 @@ from __future__ import annotations
 import json
 import logging
 import multiprocessing as mp
+from multiprocessing.connection import Connection
 import resource
 import sqlite3
 import time
@@ -207,7 +208,7 @@ def _child_main(
     params_json: str,
     cpu_seconds: int,
     memory_bytes: int,
-    conn: "mp.connection.Connection",
+    conn: Connection,
 ) -> None:
     """Runs inside the forked child process. Sets resource limits FIRST,
     before compiling or executing a single line of plugin-authored code —
@@ -572,6 +573,10 @@ class ProcessSandbox:
             exc = SandboxExecutionError(str(payload))
             exc.telemetry = telemetry
             raise exc
+        # Only dictionaries are valid plugin results; reject any malformed
+        # IPC payload rather than returning a string as a successful result.
+        if not isinstance(payload, dict):
+            raise SandboxExecutionError("sandbox returned an invalid result type")
         return payload, telemetry
 
 

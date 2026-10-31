@@ -92,6 +92,8 @@ async def manage_staff_role(
                 raise StaffManageError("Only owners can demote an owner", 403)
             if current_name == "owner":
                 owner_role = current_role
+                if owner_role is None:
+                    raise StaffManageError("Owner role record not found", 409)
                 remaining_owners = await db.scalar(
                     select(func.count(User.id)).where(
                         User.role_id == owner_role.id,
@@ -126,6 +128,8 @@ async def manage_staff_role(
             # Refuse the demotion in that specific case; any other owner
             # count (2+) is unaffected.
             owner_role = current_role
+            if owner_role is None:
+                raise StaffManageError("Owner role record not found", 409)
             remaining_owners = await db.scalar(
                 select(func.count(User.id)).where(
                     User.role_id == owner_role.id,
