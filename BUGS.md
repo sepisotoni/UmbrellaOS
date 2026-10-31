@@ -92,3 +92,27 @@ A separate repository-wide symbol/reference and API compatibility pass is still 
 Logs, security, audit, plugins, moderation, auth, Discord bridge, verification, alternate detection, analytics, replay, snapshots, AI tasks/copilot, translations, anti-cheat, server control, staff, registry, webhook, hosting, bot registration, and knowledge modules all require further end-to-end coverage.
 
 **No application behavior was changed.**
+
+
+## Core request-to-output tracing — route-order pass 2 (2026-10-31)
+
+> Inspected routers for logs, security, audit, plugins, moderation, bridge, anti-cheat, server control, webhooks and knowledge, plus database session dependency and server control implementation. Findings below are source-grounded, but **not runtime-tested**.
+
+| ID | Severity | Confidence | Chain and finding |
+|---|---|---|---|
+| UOS-CORE-013 | High | **Confirmed implementation/documentation mismatch** | `POST /api/v1/server/control` → `api/routers/server_control.py` claims power/restart route through the Minecraft plugin command queue → `services/server_control_service.py: _run_configured_command` actually invokes **local host processes** with `asyncio.create_subprocess_exec` based on `server.control.*_cmd` settings. On a remote host this may do nothing useful or invoke an unintended local command; on a privileged host it expands the execution surface. Decide whether to implement the claimed plugin queue or explicitly document and restrict local command execution. Test all actions against the actual hosting architecture. |
+| UOS-CORE-014 | High | **Confirmed unconsumed queue in implementation comments; verify via repo-wide search** | `POST /api/v1/plugin/control` → creates `PluginCommand` pending row → returns 202 with an explicit note that no worker consumes it. This endpoint is currently **not functional as a control mechanism**; do not advertise as working or silently remove until its consumer is designed. |
+| UOS-CORE-015 | Medium | Potential cross-origin / trust boundary | `POST /api/v1/bridge/message` accepts `source` in `minecraft/discord/DASHBOARD`, authenticated by `require_admin_key`; values are client-provided and the resulting actor identity is not separately cryptographically bound to that source. Review whether all callers legitimately have full admin key, and whether unauthorized source impersonation is possible inside that trusted caller population. **Not a demonstrated exploit.** |
+| UOS-CORE-016 | Medium | Semantic delivery gap | Bridge message route computes `forwarded=True` and targets, commits to DB, then for DASHBOARD→Discord invokes push-event. The response's `forwarded` represents intent/routing rather than confirmed downstream delivery. Consider `queued` or `dispatch_attempted` vs `delivered` and add retry/ack visibility, especially for Discord and Minecraft targets. |
+| UOS-CORE-017 | Low | Verified non-issue | `database/engine.py:get_db` commits the session after the endpoint returns. Therefore `db.flush()` without an explicit `db.commit()` in plugin/knowledge routers is **not by itself** an uncommitted-write bug. Preserve this transaction design when auditing other handlers. |
+| UOS-CORE-018 | Medium | Testing scope | Webhook test path calls `WebhookDeliveryService.deliver`; verify outbound URL validation, redirects, DNS rebinding resistance and timeouts at the delivery service rather than assuming SSRF merely because webhooks accept URLs. This is a **test requirement**, not a confirmed SSRF finding. |
+
+### Feature chain status
+
+- **Known nonfunctional:** `PluginCommand` queue has a producer without an implemented consumer.
+- **Confirmed cross-file mismatch:** power/restart path documented as remote plugin commands but implemented as local subprocess execution.
+- **Intent vs outcome:** bridge routing response does not guarantee Discord/Minecraft delivery.
+- **Verified persistence mechanism:** shared `get_db` dependency commits a successful request automatically.
+- **Remaining:** inspect the services called by other routers, verify generated schemas and downstream consumers, test authentication boundaries and error cases.
+
+No application source code changed.
