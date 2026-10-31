@@ -97,6 +97,7 @@ export const ConsoleView: React.FC = () => {
     let ws: WebSocket;
     try {
       ws = new WebSocket(wsUrl);
+      ws.binaryType = "arraybuffer";
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -110,7 +111,10 @@ export const ConsoleView: React.FC = () => {
       };
 
       ws.onmessage = (event) => {
-        setLogs((prev) => [...prev, event.data]);
+        const output = event.data instanceof ArrayBuffer
+          ? new TextDecoder().decode(event.data)
+          : typeof event.data === "string" ? event.data : String(event.data);
+        setLogs((prev) => [...prev, output]);
       };
 
       ws.onerror = () => {
@@ -163,7 +167,8 @@ export const ConsoleView: React.FC = () => {
 
     // Send via WebSocket if open
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ command: cmd }));
+      // The Core proxy awaits receive_bytes(); JSON text frames disconnect.
+      wsRef.current.send(new TextEncoder().encode(`${cmd}\n`));
     } else {
       // Or fallback to HTTP command dispatch
       try {
