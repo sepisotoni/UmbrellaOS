@@ -681,6 +681,8 @@ class SettingsService:
         actor: str,
         actor_type: str = "staff",
         create_if_missing: bool = False,
+        *,
+        commit: bool = True,
     ) -> Optional[dict]:
         """
         Update a setting value. Writes an audit log entry.
@@ -729,11 +731,14 @@ class SettingsService:
             ),
         )
         db.add(log)
-        await db.commit()
-        await db.refresh(setting)
-
-        # Keep .env in sync so a backend restart doesn't lose this value
-        write_env_value(key, new_value)
+        # Callers that have additional dependent writes can commit them atomically.
+        # Keep historical immediate-commit semantics by default.
+        await db.flush()
+        if commit:
+            await db.commit()
+            await db.refresh(setting)
+            # Only update the separate .env store once the database committed.
+            write_env_value(key, new_value)
 
         return SettingsService._to_dict(setting, unmasked=False)
 
