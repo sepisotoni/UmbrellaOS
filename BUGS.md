@@ -198,7 +198,7 @@ No application code changed.
 - **UOS-CORE-025:** PR #7 uses `db.begin_nested()` (SAVEPOINT). `SettingsService.set_value()` flushes, not commits, which supports atomicity for correctly configured DB transactions. **SQLite legacy transaction mode** can release a SAVEPOINT without a parent BEGIN; test engine configuration and rollback under SQLite and Postgres before calling this complete.
 - **UOS-001:** PR #7 corrects the dashboard WebSocket URL, while this follow-up fixes binary framing. **UOS-004 remains:** long-lived *session* token is still in query and may be logged; design short-lived, single-use WS tickets before production.
 - **UOS-CORE-013/014:** legacy server control executes local configured processes, not Minecraft commands; the plugin command queue has an unimplemented consumer. These are still unresolved functional design mismatches.
-- **UOS-CORE-003 (config), UOS-006:** `cors_origins` remains ineffective against wildcard CORS middleware; no verified exploit, but configuration mismatch remains.
+- **UOS-CORE-002 (config), UOS-006:** `cors_origins` remains ineffective against wildcard CORS middleware; no verified exploit, but configuration mismatch remains.
 - **Unused/unfinished integration candidates:** unused `auto_action_confidence_threshold` (pending dynamic-setting check), AI orchestrator without automated tool dispatch, Discord nickname sync responsibility, `PluginCommand` unconsumed queue, and AI-proposed `dashboard.layout.*` / `discord.config.*` consumer validation.
 
 ### Unresolved highest-risk items
@@ -215,6 +215,7 @@ No application code changed.
 - Local clone into test container: **failed** (network DNS resolution of github.com unavailable).
 - `pytest` / `compileall` on complete repo: **NOT RUN**; source not present in runtime.
 - `ruff`, `pyright`, Postgres integration, browser WebSocket, dependency vulnerability checks: **NOT RUN**.
-- CI: check remote status after opening follow-up PR. Do not merge if the tests fail or checks are missing.
+- **PR #7 CI (actual GitHub Actions run [41246881461](https://github.com/sepisotoni/UmbrellaOS/actions/runs/41246881461), completed 2026-10-31 22:11 UTC):** backend pytest stopped at 1 failed / 413 passed / 33 warnings; failure `tests/test_ai_tasks.py::test_post_ai_tasks_id_approve_updates_status`, expecting attacker-controlled `staff123` but receiving correct authenticated `admin-key`. The follow-up branch updates this and the corresponding deny assertion. The original PR #7 dashboard, bot, and plugin CI workflows succeeded; these are **not** verification of PR #8.
+- **PR #8 validation at checkpoint:** No GitHub Actions runs were visible for its new branch yet; only Vercel deployment statuses reported success. PR #8 is draft; do **not** merge without backend, dashboard and security regression validation.
 
 **No modification to the Minecraft plugin implementation.** Full production sign-off remains **blocked**.
