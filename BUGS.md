@@ -186,3 +186,15 @@ No application code changed.
 | Incomplete features, unused settings, contracts, lint | [#6](https://github.com/sepisotoni/UmbrellaOS/issues/6) | Open — verification required |
 
 **Fix policy:** A suspected issue is not considered resolved until code has changed where needed, tests have run, and its PR is merged. Current findings include investigation tasks and intentional design decisions; do not mechanically "fix" every item.
+
+
+### Consolidated fix branch update — 2026-11-01
+
+[PR #7](https://github.com/sepisotoni/UmbrellaOS/pull/7) now contains **proposed, unmerged** changes for:
+- UOS-CORE-001 / 029 shared AsyncSession parallel-query usage;
+- UOS-CORE-019 / 020 authenticated reviewer attribution;
+- UOS-CORE-003 required migration startup failure;
+- UOS-001 / UOS-CORE-004 dashboard WebSocket route alignment and removal of admin key from WebSocket URL;
+- UOS-CORE-025 atomic multi-setting AI configuration using a savepoint.
+
+**Not fixed:** Minecraft command/server-bound authorization, console-write authorization, local-vs-remote server-control design, disabled plugin command queue, health/readiness split, secret exposure audit, every incomplete/unused feature, remaining API naming consistency checks. The attempted console-write change was blocked during the source write and is *not* present in the PR. This is an incomplete remediation pass, **not a claim all Core findings are fixed**. No CI or integration tests run in the audit environment. Keep PR unmerged until validated.
