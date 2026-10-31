@@ -132,3 +132,23 @@ Reviewed route declarations and permission dependencies for alt detection, analy
 | UOS-CORE-024 | Low | Coverage pending | API schemas, `umbrella-sdk-ts` generated contracts, Discord/Minecraft callers | Verify reviewed field names (`reviewed_by`, `event_data_json`, `server_id`, `minecraft_uuid`) against all real consumers and generated OpenAPI. No complete automated cross-language contract comparison was performed. |
 
 No application source code was changed.
+
+
+## Core service/capability chain — pass 4 (2026-10-31)
+
+Reviewed `registry/registry.py`, `registry/context.py`, `registry/adapters/rest.py`, `services/ai_config_service.py`, `services/settings_service.py`, `services/verification/service.py`, and the surrounding API route interfaces. No full dynamic-call graph or runtime tests yet.
+
+| ID | Priority | Confidence | Request-to-output finding |
+|---|---|---|---|
+| UOS-CORE-025 | High | **Confirmed transaction-handling bug in source** | AI config approval → `services/ai_config_service.py:apply_config_action()` → multiple `SettingsService.set_value()` calls (`db.flush()` each) → on any exception the catch branch sets `action.status='rejected'` and calls `db.commit()` **without rolling back previously applied changes**. A failure after some successful upserts can persist partial configuration changes while reporting the whole action as rejected; certain database errors may also leave the session in failed state so commit itself errors. Wrap application in a transactional savepoint / atomic operation and rollback before recording rejection using a fresh clean transaction. Add fault-injection test failing after the first settings mutation. |
+| UOS-CORE-026 | Medium | Security-review target | Capability invocation → `registry.call()` → audit event stores `params.model_dump(mode='json')` on success and error. Check all registered capability parameter schemas for credentials/tokens/passwords or private values: their raw values may be copied to audit records. Redact sensitive params centrally before logging. **Exposure not proven without schema inventory**. |
+| UOS-CORE-027 | Low | Verified architecture | `registry/adapters/rest.py` → `CallContext.from_web_auth/from_discord_user` → `registry.call()` → capability decorator handlers. Direct source references are intentionally sparse because decorated capabilities register at import time. Do not classify handlers as unused based only on import count; verify registration imports in startup and compare list of registered names against API clients. |
+| UOS-CORE-028 | Low | Naming consistency | AI config proposal `action_type` switches on `plugin_config`, `dashboard_layout`, `discord_config`; each maps to differently named DB setting prefixes (`dashboard.layout.*`, `discord.config.*`). Check that real consumers read those prefixes before claiming the generated layout/Discord config is operational; a successful settings write alone proves only persistence. |
+
+### Follow-up tests
+1. Reproduce UOS-CORE-025 with multi-setting proposal and injected later failure; verify no partial writes.
+2. Inventory capability parameter schemas and audit payload redaction.
+3. Check consumer reads for the AI-config-generated dashboard/Discord setting prefixes.
+4. Reconcile decorators, dynamic imports, and actual registered capability names.
+
+No application code changed.
