@@ -111,18 +111,15 @@ async def _orchestrate(
 
     Raises AIServiceError on orchestrator failure or non-JSON response.
     """
-    # The constitution's system prompt wraps the task prompt automatically
-    # inside Orchestrator.run() via ConstitutionService.build_system_prompt().
-    # For review tasks we supply a structured JSON-enforcing prompt as the
-    # task prompt so the constitution appears before it in the final system
-    # prompt (tier ordering: PLATFORM_SAFETY < CORE_PLATFORM < TASK).
-    combined_prompt = f"{system_prompt}\n\n{user_content}"
-
+    # Preserve the trust boundary: staff-authored instructions stay in the
+    # constitutional system message; player chat/appeal/anticheat evidence
+    # must remain user-level content and cannot override that message.
     try:
         result = await Orchestrator.run(
             db=db,
             task_type=task_type,
-            task_prompt=combined_prompt,
+            task_prompt=user_content,
+            system_instructions=system_prompt,
             requested_by=requested_by,
             require_dual_review=False,  # review tasks are staff-confirmed; no need for dual review
         )
