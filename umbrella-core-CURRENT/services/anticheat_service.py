@@ -3,8 +3,10 @@
 import asyncio
 import os
 from datetime import datetime, timedelta, timezone
+from math import isfinite
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import delete, select
 
 from config import get_settings
@@ -67,8 +69,13 @@ async def _ai_confidence_review(
 
         parsed = json.loads(result.text)
         conf = float(parsed.get("confidence", 0.5))
+        if not isfinite(conf):
+            raise ValueError("non-finite AI confidence")
         reason = str(parsed.get("reason", ""))
         return max(0.0, min(1.0, conf)), reason
+    except SQLAlchemyError:
+        # A broken transaction cannot be safely hidden by a model fallback.
+        raise
     except Exception:
         # AI remains advisory: a provider outage must not break the flag API.
         return min(0.95, 0.5 + vl * 0.05), "vl_math_fallback"
