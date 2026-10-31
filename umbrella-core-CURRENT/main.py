@@ -125,7 +125,8 @@ async def lifespan(app: FastAPI):
         await asyncio.to_thread(_run_migrations)
         print("[Umbrella Core] Alembic migrations applied")
     except Exception as _mig_err:
-        print(f"[Umbrella Core] WARNING: Alembic migration failed: {_mig_err}")
+        print(f"[Umbrella Core] ERROR: Alembic migration failed: {_mig_err}")
+        raise RuntimeError("Required database migrations failed") from _mig_err
 
     # Create tables (safe in dev; in prod, use Alembic migrations instead)
     await create_tables()
