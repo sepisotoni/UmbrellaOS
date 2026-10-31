@@ -263,15 +263,14 @@ class RolesService:
 
     @staticmethod
     async def get_all(db: AsyncSession) -> list[dict]:
-        counts = dict(
-            (
-                await db.execute(
-                    select(Role.name, func.count(User.id))
-                    .join(User, User.role_id == Role.id)
-                    .group_by(Role.name)
-                )
-            ).all()
-        )
+        count_rows = (
+            await db.execute(
+                select(Role.name, func.count(User.id))
+                .join(User, User.role_id == Role.id)
+                .group_by(Role.name)
+            )
+        ).all()
+        counts: dict[str, int] = {str(row[0]): int(row[1]) for row in count_rows}
         result = await db.execute(
             select(Role).options(selectinload(Role.permissions)).order_by(Role.name)
         )
