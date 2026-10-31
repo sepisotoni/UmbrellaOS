@@ -145,3 +145,30 @@ async def test_pipe_console_closes_client_gracefully_when_daemon_unreachable():
         "a-signing-secret-at-least-32-bytes-long",
     )
     assert client_ws.closed is True
+
+
+@pytest.mark.asyncio
+async def test_pipe_console_view_only_cannot_forward_commands():
+    """A viewer may connect but their input must never reach the daemon."""
+    received_by_daemon = []
+
+    async def fake_daemon_handler(connection):
+        async for message in connection:
+            received_by_daemon.append(message)
+
+    async with websockets.serve(fake_daemon_handler, "localhost", 0) as server:
+        port = server.sockets[0].getsockname()[1]
+        client_ws = FakeClientWS(to_send=[b"stop\n"])
+        await asyncio.wait_for(
+            pipe_console(
+                client_ws,
+                f"ws://localhost:{port}",
+                "node-1",
+                "a-signing-secret-at-least-32-bytes-long",
+                allow_client_input=False,
+            ),
+            timeout=2.0,
+        )
+
+    assert received_by_daemon == []
+    assert client_ws.closed is True
