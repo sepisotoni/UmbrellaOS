@@ -157,13 +157,12 @@ class ModerationIntelligenceService:
         evidence = await ModerationIntelligenceService._gather_evidence(
             db, report.reported_user_id
         )
-        # Orchestrator.run() builds the constitutional system prompt itself.
-        # The previous standalone build was unused, so the report-specific
-        # JSON schema never reached either model.
-        task_prompt = (
-            f"You are analyzing a moderation report. {_RESULT_SCHEMA_INSTRUCTIONS}\n\n"
-            f"Report reason: {report.reason}\n\nEvidence:\n{evidence}"
+        # Keep task instructions in the trusted system message; report
+        # reason and chat evidence must remain lower-trust user content.
+        system_instructions = (
+            f"You are analyzing a moderation report. {_RESULT_SCHEMA_INSTRUCTIONS}"
         )
+        task_prompt = f"Report reason: {report.reason}\n\nEvidence:\n{evidence}"
 
         result = await Orchestrator.run(
             db,
@@ -171,6 +170,7 @@ class ModerationIntelligenceService:
             task_prompt,
             requested_by=report.reporter_id,
             agreement_fn=_moderation_agreement,
+            system_instructions=system_instructions,
         )
 
         parsed = _safe_parse(result.text)
