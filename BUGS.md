@@ -234,7 +234,7 @@ No application code changed.
 
 ## Pre-existing main-branch remediation notes (preserved during merge)
 
-Systematic remediation tracker (2026-11-01)
+### Systematic remediation tracker (2026-11-01)
 
 | Workstream | GitHub task | Status |
 |---|---|---|
