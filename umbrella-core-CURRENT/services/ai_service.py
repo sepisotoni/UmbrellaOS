@@ -39,13 +39,10 @@ from models import (
 from services.ai.orchestrator import Orchestrator
 from services.ai.model_router import NoAvailableModelError
 
-# AnticheatViolation is provided by Backend A.
-try:
-    from models.anticheat_violation import AnticheatViolation
+# AnticheatViolation is a required Core model (migration 009+).
+from models.anticheat_violation import AnticheatViolation
 
-    _HAS_ANTICHEAT = True
-except ImportError:
-    _HAS_ANTICHEAT = False
+_HAS_ANTICHEAT = True
 
 
 class AIServiceError(Exception):
