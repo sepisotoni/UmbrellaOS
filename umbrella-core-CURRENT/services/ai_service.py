@@ -21,7 +21,6 @@ On any AI failure: raise AIServiceError (caller returns 503) — never fabricate
 a result.
 """
 
-import asyncio
 import json
 from collections import defaultdict, Counter
 from datetime import datetime, timedelta, timezone
