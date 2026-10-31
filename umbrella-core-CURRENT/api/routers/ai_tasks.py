@@ -209,7 +209,7 @@ async def approve_ai_task(
         raise HTTPException(status_code=400, detail="Task is not pending")
 
     task.status = "approved"
-    task.reviewed_by = auth.username if isinstance(auth, User) else (f"api-key:{auth.id}" if isinstance(auth, ApiKey) else "admin-key")
+    task.reviewed_by = f"user:{auth.id}" if isinstance(auth, User) else (f"api-key:{auth.id}" if isinstance(auth, ApiKey) else "admin-key")
     task.reviewed_at = datetime.now(timezone.utc)
     task.action_taken = body.action_taken
 
@@ -253,7 +253,7 @@ async def deny_ai_task(
         raise HTTPException(status_code=400, detail="Task is not pending")
 
     task.status = "denied"
-    task.reviewed_by = auth.username if isinstance(auth, User) else (f"api-key:{auth.id}" if isinstance(auth, ApiKey) else "admin-key")
+    task.reviewed_by = f"user:{auth.id}" if isinstance(auth, User) else (f"api-key:{auth.id}" if isinstance(auth, ApiKey) else "admin-key")
     task.reviewed_at = datetime.now(timezone.utc)
 
     audit = AuditLog(
