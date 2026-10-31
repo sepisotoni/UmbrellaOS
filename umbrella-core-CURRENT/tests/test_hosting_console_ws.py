@@ -59,7 +59,9 @@ class FakeClientWS:
     async def send_bytes(self, data: bytes) -> None:
         self.received.append(data)
 
-    async def close(self, code: int | None = None) -> None:
+    async def close(
+        self, code: int | None = None, reason: str | None = None
+    ) -> None:
         self.closed = True
 
 
