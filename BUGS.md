@@ -367,3 +367,13 @@ The `api/routers/ai_copilot.py` two-pass inference pipeline retained the legacy 
 | UOS-CORE-025 SQLite verification | High data integrity check | Python 3.11 `aiosqlite` legacy transaction handling does not guarantee a physical parent BEGIN before a SAVEPOINT. Changed the in-memory SQLite test fixture to explicitly emit BEGIN on SQLAlchemy transaction start so a released SAVEPOINT cannot silently persist outside the outer rollback. Production still uses PostgreSQL. | Added `tests/test_ai_config_atomicity.py` injecting failure after first of two writes and verifying no partial Settings rows persist while the AI action is rejected. **Test committed but not yet confirmed passing**. Still require Postgres failure-injection before claiming portability. |
 
 **CI checkpoints:** Backend CI [41250122505](https://github.com/sepisotoni/UmbrellaOS/actions/runs/41250122505) passed on the earlier `8c8e73f` revision of PR #8, **not** on the latest branch head. Later commits touch AI prompts, command audit, SQLite fixture and tests, so a new green backend run is mandatory. Static-analysis quality gates remain failing (Ruff/Pyright). Keep draft PR #8 unmerged until confirmed successful checks.
+
+
+## Local process-control lifecycle repair — 2026-11-01
+
+| ID | Severity | Evidence/root cause | Resolution/status |
+|---|---|---|---|
+| UOS-CORE-045 | High resource cleanup | `services/server_control_service.py:_run_configured_command()` used local `asyncio.create_subprocess_exec()`; on a 60s timeout it only issued `proc.kill()` without `await proc.wait()`, risking unreaped children. If the request task was cancelled, it left the child running. A failed `create_subprocess_exec` raised an unhandled `OSError` (500). | Now stop and reap the process on timeout or coroutine cancellation, re-raise cancellation correctly, and return a 503 `ServerControlError` for launch failures. Added timeout/cancel/launch-failure regressions in `tests/test_server_control.py`. Tests committed, latest CI unverified. |
+| UOS-CORE-013 | High deployment misrepresentation | `api/routers/server_control.py` explicitly claimed power/restart used Minecraft plugin queue with no local shell; actual service executes configured commands **on Core's host** and does not target remote servers. | Corrected endpoint docstring to state local-only behavior, privilege requirements, and separate remote hosting control mechanism. **Remote plugin queue integration remains unimplemented** and must not be assumed to work. |
+
+As of this revision, PR #8 is still **draft**, not merged. Do not treat branch changes as released, and do not approve until runtime tests and security isolation checks complete.
