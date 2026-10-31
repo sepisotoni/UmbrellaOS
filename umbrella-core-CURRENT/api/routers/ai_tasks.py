@@ -237,7 +237,7 @@ async def deny_ai_task(
     task_id: int,
     body: DenyTaskRequest,
     db: AsyncSession = Depends(get_db),
-    _auth=Depends(require_permission("punishments.create")),
+    auth=Depends(require_permission("punishments.create")),
 ):
     """
     Staff denies AI recommendation.
