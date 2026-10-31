@@ -31,3 +31,38 @@
 - AI capability adapter has a documented action-guard integration path.
 
 **Documentation only:** This backlog does not alter application behavior.
+
+
+## Core-only follow-up audit — cross-file and unused-feature checks (2026-10-31)
+
+> **Coverage boundary:** Searched the indexed core codebase for unfinished markers, uses of configured fields, and registry/router references; read key service/router/configuration implementations. This is **not** proof that every core file and line has been inspected. Dynamic registration, migrations and external API consumers can make apparently unused symbols genuinely necessary. Do not remove code solely based on text search.
+
+| ID | Priority | Confidence | Location | Evidence and follow-up |
+|---|---|---|---|---|
+| UOS-CORE-001 | High | Concrete concurrency design risk; reproduction required | `umbrella-core-CURRENT/services/ai_service.py:184–218,366–393` | Both AI moderation and appeal review pass a **single shared SQLAlchemy `AsyncSession`** to several coroutines executed concurrently with `asyncio.gather()`. Concurrent operations on the same `AsyncSession` are unsupported and can produce session-state/connection errors. Execute these queries sequentially on that session or use independent per-task sessions with explicit ownership. Add integration tests on actual production DB engine. |
+| UOS-CORE-002 | Medium | Verified configuration mismatch | `umbrella-core-CURRENT/config/settings.py`, `umbrella-core-CURRENT/main.py:224–253` | `cors_origins` is declared with a concrete allowlist, but middleware explicitly uses `allow_origins=["*"]`. The field presently has no runtime effect at this middleware. Either honor it in production or remove/relabel the misleading unused setting and update documentation. Wildcard with `allow_credentials=False` is not itself proof of a CSRF vulnerability. Overlaps UOS-006. |
+| UOS-CORE-003 | Medium | Candidate unused setting | `umbrella-core-CURRENT/config/settings.py` (`auto_action_confidence_threshold`) | Indexed repository search found this identifier only at its definition. Nearby comment says the value is intended for later auto-apply execution; classify as **reserved/not implemented**, not active safety protection. Check direct/dynamic settings access before removing or relying on it. |
+| UOS-CORE-004 | Medium | Deferred integration | `umbrella-core-CURRENT/services/ai/orchestrator.py:158+`, `registry/adapters/ai.py` | AI tool adapter and action guard are implemented, but orchestrator currently only generates/reviews text. There is no demonstrated autonomous tool-calling loop connected to it. Label this feature **scaffolded, not fully integrated**; ensure future execution passes through guarded `call_tool()`. Do not misclassify adapter code as dead. |
+| UOS-CORE-005 | Low | Intentional incomplete cross-service feature | `umbrella-core-CURRENT/capabilities/verification.py`, `api/routers/verification.py` | Nickname synchronization after verification is described as Discord-side responsibility, not implemented inside Core. Core lacks a live Discord gateway; confirm Discord bot handles it. Do **not** implement nickname updates directly in Core as a purported bug fix. |
+| UOS-CORE-006 | Low | Ambiguous naming / permission consistency | `umbrella-core-CURRENT/api/routers/verification.py`, `capabilities/verification.py` | Legacy verification endpoints mix `require_admin_key` and `require_plugin_key` while capability wrappers use granular `verification.link.manage/view`. This can be intentional for distinct clients; document an endpoint-to-caller permission matrix and test compatibility before renaming or consolidating. |
+| UOS-CORE-007 | Medium | Incomplete cross-file validation | Core models, Pydantic schemas, settings service, API routers, dashboard/Discord/MC clients | No complete AST/reference graph or generated OpenAPI/schema comparison has been run, so variable/type naming consistency **across every script remains unverified**. Run Ruff/Pyright, inspect unreferenced exports, compare response fields with generated SDK and consumers, and check dynamic registry decorators. Mark findings as confirmed only with call-site evidence. |
+
+### Confirmed-versus-candidate distinctions
+
+- **Concrete mismatch:** `cors_origins` configuration does not control the active CORS middleware.
+- **Code-level risk:** simultaneous calls on a single async SQLAlchemy session. Reproduce with integration tests before claiming observed production errors.
+- **Candidates, not proven dead code:** `auto_action_confidence_threshold`; currently unused in indexed source, but potentially consumed through dynamic settings resolution.
+- **Planned feature:** AI tool execution, and bot-side nickname synchronization.
+- **Do not delete** registration-only capability handlers, Alembic migration scripts, CLI adapters, or dynamically discovered plugins on the basis of reference-count searches.
+
+### Suggested core test commands (from the core directory)
+
+```sh
+python -m compileall -q .
+python -m pytest -q
+ruff check .
+# If configured:
+pyright
+```
+
+A separate repository-wide symbol/reference and API compatibility pass is still necessary before claiming every script, field name, and feature is audited.
