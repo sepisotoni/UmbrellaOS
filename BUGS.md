@@ -116,3 +116,19 @@ Logs, security, audit, plugins, moderation, auth, Discord bridge, verification, 
 - **Remaining:** inspect the services called by other routers, verify generated schemas and downstream consumers, test authentication boundaries and error cases.
 
 No application source code changed.
+
+
+## Core request-to-output tracing — route-order pass 3 (2026-10-31)
+
+Reviewed route declarations and permission dependencies for alt detection, analytics, replay, snapshot, AI tasks/copilot, translation, AI config, dashboard, staff and bot registration. Inspected representative implementations and request/response contracts. **This is a route-level pass, not an exhaustive inspection of every downstream service.**
+
+| ID | Priority | Confidence | Trace and finding |
+|---|---|---|---|
+| UOS-CORE-019 | Medium | Confirmed actor attribution risk | `POST /api/v1/ai/tasks/{task_id}/approve` / `deny` → `require_permission("punishments.create")` → `ApproveTaskRequest.reviewed_by` / `DenyTaskRequest.reviewed_by` → `AITask.reviewed_by` and `AuditLog.actor`. The audit actor is supplied by the request body rather than derived from the authenticated user. A permitted reviewer can claim another reviewer identity. Resolve actor from auth dependency and treat client-provided labels as non-authoritative. |
+| UOS-CORE-020 | Medium | Confirmed actor attribution risk | `POST /api/v1/alt-detection/false-positive` (verify router prefix) → `require_permission("players.manage")` → `FalsePositiveRequest.reviewed_by` → `SuspicionEvent.reviewed_by`. Similarly trusts a caller-provided reviewer label. Derive from authenticated principal for reliable audit trails. |
+| UOS-CORE-021 | Medium | Possible reporting/data-integrity flaw | `POST /api/v1/snapshot` → `create_snapshot()` → `_parse_json_field`. Invalid serialized inventory/armor/offhand JSON logs a warning and stores null while returning HTTP 201. Code documents intentional partial success; response should explicitly surface partial-data warnings so forensic consumers do not mistake missing evidence for absent inventory. |
+| UOS-CORE-022 | Low | Contract validation candidate | `POST /api/v1/replay/sessions/{replay_id}/events` → event normalization. `data` or `event_data` dicts are converted to serialized `event_data_json`; if `event_data_json` already exists, its format is not normalized here. Confirm the service validates the payload shape and add malformed-string tests rather than assuming a syntax bug. |
+| UOS-CORE-023 | Low | Verified feature wiring | `api/routers/ai_copilot.py` resolves `CallContext` from the authenticated actor, including the `/commands` fast path. The feature is **not** dead or inherently unauthenticated; test actual tool-permission enforcement when expanded. |
+| UOS-CORE-024 | Low | Coverage pending | API schemas, `umbrella-sdk-ts` generated contracts, Discord/Minecraft callers | Verify reviewed field names (`reviewed_by`, `event_data_json`, `server_id`, `minecraft_uuid`) against all real consumers and generated OpenAPI. No complete automated cross-language contract comparison was performed. |
+
+No application source code was changed.
