@@ -243,15 +243,29 @@ async def client(db_session, monkeypatch):
                 await session.close()
 
     from main import app
+    from database import get_redis
+    import fakeredis.aioredis
+
+    # Redis clients keep loop-bound asyncio streams internally. A module-level
+    # client reused by pytest-asyncio's per-function loops fails later with
+    # "Future attached to a different loop" / "Event loop is closed".
+    # Test requests receive a fresh in-memory Redis isolated to this fixture.
+    fake_redis = fakeredis.aioredis.FakeRedis()
+
+    async def override_get_redis():
+        yield fake_redis
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_redis] = override_get_redis
 
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as ac:
-        yield ac
-
-    app.dependency_overrides.clear()
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as ac:
+            yield ac
+    finally:
+        app.dependency_overrides.clear()
+        await fake_redis.aclose()
 
 
 # Shorthand headers for convenience
