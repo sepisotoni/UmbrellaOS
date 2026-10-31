@@ -10,7 +10,7 @@ python-dotenv==1.2.2
 redis==5.2.1
 python-multipart==0.0.31
 httpx==0.28.1
-pyjwt==2.13.0
+pyjwt==2.15.0
 pyotp==2.9.0
 websockets==16.0
 croniter==6.2.3
@@ -33,9 +33,9 @@ starlette==1.3.1
 # wire-format-compatibility verification. Exporter is HTTP (not gRPC) to
 # avoid adding a grpcio build dependency for a feature that's off by
 # default (OTEL_EXPORTER_OTLP_ENDPOINT unset) in this project.
-opentelemetry-api==1.44.0
-opentelemetry-sdk==1.44.0
-opentelemetry-exporter-otlp-proto-http==1.44.0
+opentelemetry-api==1.45.1
+opentelemetry-sdk==1.45.1
+opentelemetry-exporter-otlp-proto-http==1.45.1
 
 # services/secrets_service.py uses cryptography.fernet directly. This was
 # missing from requirements.txt entirely (not a version mismatch - just
@@ -58,7 +58,7 @@ pytest==9.0.3
 # to move with starlette above, so bumping this alongside pytest rather
 # than as a separate untested step.
 pytest-asyncio==1.3.0
-anyio==4.7.0
+anyio==4.14.2
 aiosqlite
 fakeredis==2.26.2
 cyclonedx-python-lib>=4.0.0
