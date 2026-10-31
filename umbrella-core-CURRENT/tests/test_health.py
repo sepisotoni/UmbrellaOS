@@ -118,3 +118,11 @@ async def test_ready_returns_503_when_redis_unreachable():
     response = await ready(db, redis)
     assert response.status_code == 503
     assert b"degraded" in response.body
+
+
+@pytest.mark.asyncio
+async def test_health_default_redis_is_function_scoped(client):
+    """The test client uses an in-memory Redis on this test's event loop."""
+    response = await client.get("/health")
+    assert response.status_code == 200
+    assert response.json()["redis"] == "connected"
