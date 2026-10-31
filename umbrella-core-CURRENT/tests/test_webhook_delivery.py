@@ -297,3 +297,28 @@ def test_validate_webhook_url_rejects_missing_scheme():
 def test_validate_webhook_url_rejects_url_with_no_hostname():
     with pytest.raises(WebhookError, match="valid hostname"):
         _validate_webhook_url("http:///no-host-here")
+
+
+@pytest.mark.asyncio
+async def test_webhook_dns_lookup_does_not_block_event_loop(db_session, monkeypatch):
+    """The synchronous socket resolver must execute in a worker thread."""
+    import socket
+    import threading
+    import services.webhooks.service as webhook_module
+
+    event_loop_thread_id = threading.get_ident()
+    resolver_thread_ids = []
+
+    def fake_dns(host, port):
+        resolver_thread_ids.append(threading.get_ident())
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", 0))]
+
+    monkeypatch.setattr(webhook_module.socket, "getaddrinfo", fake_dns)
+    async with db_session() as db:
+        subscription, _ = await WebhookService.create(
+            db, topic="test.nonblocking", url="https://test.example/hook", created_by=None
+        )
+        await WebhookService.update(db, subscription.id, url="https://test.example/new")
+
+    assert len(resolver_thread_ids) == 2
+    assert all(worker_id != event_loop_thread_id for worker_id in resolver_thread_ids)
