@@ -8,6 +8,7 @@ before this fix. First tests this endpoint has ever had.
 """
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.conftest import ADMIN_HEADERS, PLUGIN_HEADERS
 
@@ -127,7 +128,7 @@ async def test_configured_process_timeout_is_reaped(monkeypatch):
     )
 
     with pytest.raises(ctrl.ServerControlError) as raised:
-        await ctrl._run_configured_command(object(), "server.control.restart_cmd")
+        await ctrl._run_configured_command(AsyncMock(spec=AsyncSession), "server.control.restart_cmd")
     assert raised.value.status_code == 504
     assert proc.kill_called
     assert proc.wait_called
@@ -166,7 +167,7 @@ async def test_configured_process_is_reaped_on_request_cancellation(monkeypatch)
         ctrl.asyncio, "create_subprocess_exec", AsyncMock(return_value=proc)
     )
     task = asyncio.create_task(
-        ctrl._run_configured_command(object(), "server.control.restart_cmd")
+        ctrl._run_configured_command(AsyncMock(spec=AsyncSession), "server.control.restart_cmd")
     )
     await asyncio.wait_for(entered.wait(), timeout=2.0)
     task.cancel()
@@ -190,5 +191,5 @@ async def test_missing_configured_command_returns_control_error(monkeypatch):
         AsyncMock(side_effect=FileNotFoundError("not found")),
     )
     with pytest.raises(ctrl.ServerControlError) as raised:
-        await ctrl._run_configured_command(object(), "server.control.restart_cmd")
+        await ctrl._run_configured_command(AsyncMock(spec=AsyncSession), "server.control.restart_cmd")
     assert raised.value.status_code == 503
