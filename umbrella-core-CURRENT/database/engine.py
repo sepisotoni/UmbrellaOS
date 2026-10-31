@@ -7,6 +7,8 @@ Design decisions:
 - Sessions are scoped per-request via FastAPI dependency injection.
 """
 
+from typing import AsyncIterator
+
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 from config.settings import get_settings
@@ -55,7 +57,7 @@ class Base(DeclarativeBase):
     pass
 
 
-async def get_db() -> AsyncSession:
+async def get_db() -> AsyncIterator[AsyncSession]:
     """
     FastAPI dependency. Yields an async DB session per request,
     rolling back on exception and always closing on exit.
