@@ -28,6 +28,7 @@ from database import get_db
 from api.middleware.auth import require_admin_key
 from api.dependencies.permissions import require_permission
 from models import User
+from models.api_key import ApiKey
 from services import ai_service
 from models import AITask, Appeal, AuditLog
 
@@ -208,7 +209,7 @@ async def approve_ai_task(
         raise HTTPException(status_code=400, detail="Task is not pending")
 
     task.status = "approved"
-    task.reviewed_by = auth.username if isinstance(auth, User) else str(auth)
+    task.reviewed_by = auth.username if isinstance(auth, User) else (f"api-key:{auth.id}" if isinstance(auth, ApiKey) else "admin-key")
     task.reviewed_at = datetime.now(timezone.utc)
     task.action_taken = body.action_taken
 
@@ -252,7 +253,7 @@ async def deny_ai_task(
         raise HTTPException(status_code=400, detail="Task is not pending")
 
     task.status = "denied"
-    task.reviewed_by = auth.username if isinstance(auth, User) else str(auth)
+    task.reviewed_by = auth.username if isinstance(auth, User) else (f"api-key:{auth.id}" if isinstance(auth, ApiKey) else "admin-key")
     task.reviewed_at = datetime.now(timezone.utc)
 
     audit = AuditLog(
