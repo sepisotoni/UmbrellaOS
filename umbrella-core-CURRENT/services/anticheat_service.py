@@ -1,7 +1,5 @@
 """Anticheat flag handling — Grim integration via Umbrella plugin."""
 
-import asyncio
-import os
 from datetime import datetime, timedelta, timezone
 from math import isfinite
 
