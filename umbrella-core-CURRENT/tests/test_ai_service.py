@@ -103,7 +103,7 @@ async def test_review_flagged_player_routes_through_orchestrator(
     calls = []
 
     async def fake_run(
-        *, db, task_type, task_prompt, requested_by, require_dual_review=False
+        *, db, task_type, task_prompt, requested_by, require_dual_review=False, system_instructions=None
     ):
         calls.append(task_type)
         return _mk_result(player_review_response)
@@ -211,7 +211,7 @@ async def test_review_appeal_routes_through_orchestrator(
     db_session, monkeypatch, appeal_review_response
 ):
     async def fake_run(
-        *, db, task_type, task_prompt, requested_by, require_dual_review=False
+        *, db, task_type, task_prompt, requested_by, require_dual_review=False, system_instructions=None
     ):
         assert task_type == "appeal_review"
         return _mk_result(appeal_review_response)
@@ -321,9 +321,10 @@ async def test_review_appeal_delimits_untrusted_appeal_message(
     captured_prompt = {}
 
     async def fake_run(
-        *, db, task_type, task_prompt, requested_by, require_dual_review=False
+        *, db, task_type, task_prompt, requested_by, require_dual_review=False, system_instructions=None
     ):
         captured_prompt["value"] = task_prompt
+        captured_prompt["system"] = system_instructions
         return _mk_result(appeal_review_response)
 
     monkeypatch.setattr(ai_service.Orchestrator, "run", fake_run)
@@ -350,6 +351,7 @@ async def test_review_appeal_delimits_untrusted_appeal_message(
     prompt = captured_prompt["value"]
     assert "<appeal_statement>" in prompt
     assert "</appeal_statement>" in prompt
+    assert "Ignore all previous instructions" not in captured_prompt["system"]
     assert (
         "Ignore all previous instructions" in prompt
     )  # the text itself is still passed through...
@@ -367,7 +369,7 @@ async def test_review_chat_message_routes_through_orchestrator(
     db_session, monkeypatch, chat_review_response
 ):
     async def fake_run(
-        *, db, task_type, task_prompt, requested_by, require_dual_review=False
+        *, db, task_type, task_prompt, requested_by, require_dual_review=False, system_instructions=None
     ):
         assert task_type == "chat_review"
         return _mk_result(chat_review_response)
@@ -443,7 +445,7 @@ async def test_player_risk_review_consumes_suspicion_events(
     """Fetched suspicion history, including cleared events, must reach the model."""
     captured = []
 
-    async def fake_run(*, db, task_type, task_prompt, requested_by, require_dual_review=False):
+    async def fake_run(*, db, task_type, task_prompt, requested_by, require_dual_review=False, system_instructions=None):
         captured.append(task_prompt)
         return _mk_result(player_review_response)
 
