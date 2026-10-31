@@ -66,3 +66,29 @@ pyright
 ```
 
 A separate repository-wide symbol/reference and API compatibility pass is still necessary before claiming every script, field name, and feature is audited.
+
+
+## Core request-to-output tracing — route-order pass 1 (2026-10-31)
+
+**Method:** Followed the actual `main.py` router registration order, inspecting health, metrics, settings, roles, players, punishments, appeals, Minecraft commands, and feature flags. Checked Minecraft command polling against the Java plugin. Other routes remain for later review; this is **not yet exhaustive**.
+
+| ID | Severity | Confidence | Request → output chain | Finding / test |
+|---|---|---|---|---|
+| UOS-CORE-008 | High | Authorization design risk; test needed | `POST /api/v1/mc/command` → `require_admin_hmac_or_session` → `MCCommand` DB row → plugin polls → Bukkit console executes | Enqueue accepts the admin/HMAC/session authentication dependency, but the route itself has no explicit command-specific permission such as `mc.command.execute`. Verify session authorization inside the dependency and test low-permission authenticated users; require explicit command execution authorization and audit true actor identity. |
+| UOS-CORE-009 | High | Cross-server authorization risk | `GET /api/v1/mc/commands/pending?server_id=...` and `POST /commands/{id}/complete` → `require_plugin_key` → commands DB | Server-specific queue selection uses a caller-supplied `server_id`, and completion looks up by numeric command ID alone. The auth dependency appears to validate a global plugin credential, not an identity bound to one server. A compromised plugin with this credential may retrieve or acknowledge another server's commands. Bind token identity to server, scope completion by server, and test cross-server isolation. |
+| UOS-CORE-010 | Medium | Concrete behavior / monitoring issue | `GET /health` → DB/Redis ping → response | Health endpoint intentionally returns HTTP **200** even when body says `status: degraded`. HTTP-only load balancers and uptime checks may classify an unusable instance as healthy. Consider separate `/live` (200) and `/ready` (503 if dependencies unavailable) and test both. |
+| UOS-CORE-011 | Medium | Cross-table consistency risk | `PATCH /api/v1/settings/{key}` → `SettingsService.update` commits → `sync_task_model_setting` commits | AI task settings and corresponding `ai_model_configs` can diverge if second write fails. The source code explicitly documents this trade-off, but it may leave the old model active while UI displays the new setting. Consider one transaction or a visible explicit `sync_pending/sync_failed` response and reconciliation. |
+| UOS-CORE-012 | Low | Verified routing contract | `GET /api/v1/mc/commands/pending` → `server_id` filter → `minecraft-plugin/.../CommandPoller.java` | Java caller correctly appends `server_id` when configured; default queue compatibility is intentional. **Not a dead setting.** Check deployment config to ensure each server sets a unique ID; avoid deleting fallback without migration. |
+
+### Naming and response-contract checks
+
+- `MCCommandRequest.server_id`, `MCCommandResponse.server_id`, `CommandPoller.serverId` and the serialized `server_id` query are **consistent** across inspected producer/consumer paths.
+- `MCCommandCompleteRequest.output/success` matches the plugin acknowledgment shape at a conceptual level; integration test remains recommended.
+- `SettingsService.update` and `sync_task_model_setting` have intentionally separate commits, which is a **state-consistency issue**, not a misspelled symbol.
+- Do not remove role, router, registry, or schema classes only because they lack direct import references; they may be used through FastAPI dependency injection, decorators, generated API clients, or plugin calls.
+
+### Remaining route-order audit queue
+
+Logs, security, audit, plugins, moderation, auth, Discord bridge, verification, alternate detection, analytics, replay, snapshots, AI tasks/copilot, translations, anti-cheat, server control, staff, registry, webhook, hosting, bot registration, and knowledge modules all require further end-to-end coverage.
+
+**No application behavior was changed.**
