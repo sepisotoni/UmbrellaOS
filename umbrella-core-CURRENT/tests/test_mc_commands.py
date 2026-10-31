@@ -146,7 +146,7 @@ async def test_post_mc_commands_id_complete_marks_completed(
     async with db_session() as db:
         updated_cmd = await db.scalar(select(MCCommand).where(MCCommand.id == cmd.id))
         assert updated_cmd.status == "completed"
-        assert updated_cmd.success == True
+        assert updated_cmd.success is True
         assert updated_cmd.output == "Command executed successfully"
         assert updated_cmd.completed_at is not None
 
@@ -183,7 +183,7 @@ async def test_post_mc_commands_id_complete_marks_failed(
     async with db_session() as db:
         updated_cmd = await db.scalar(select(MCCommand).where(MCCommand.id == cmd.id))
         assert updated_cmd.status == "failed"
-        assert updated_cmd.success == False
+        assert updated_cmd.success is False
 
 
 @pytest.mark.asyncio

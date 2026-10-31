@@ -311,7 +311,7 @@ async def list_alt_groups(
     _auth: str = Depends(require_permission("players.view")),
 ) -> list[AltGroupSchema]:
     """List all confirmed alt groups."""
-    result = await db.execute(select(AltGroup).where(AltGroup.confirmed == True))
+    result = await db.execute(select(AltGroup).where(AltGroup.confirmed.is_(True)))
     groups = result.scalars().all()
 
     return [AltGroupSchema.from_orm(g) for g in groups]

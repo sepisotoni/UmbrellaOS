@@ -212,7 +212,7 @@ async def get_link_by_discord(
         .join(Player, Player.uuid == DiscordAccount.player_uuid, isouter=True)
         .where(
             and_(
-                DiscordAccount.discord_id == discord_id, DiscordAccount.verified == True
+                DiscordAccount.discord_id == discord_id, DiscordAccount.verified.is_(True)
             )
         )  # noqa: E712
     )
@@ -235,7 +235,7 @@ async def get_verification_status(
         select(DiscordAccount).where(
             and_(
                 DiscordAccount.player_uuid == player_uuid,
-                DiscordAccount.verified == True,
+                DiscordAccount.verified.is_(True),
             )  # noqa: E712
         )
     )

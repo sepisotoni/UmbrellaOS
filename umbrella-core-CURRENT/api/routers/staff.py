@@ -171,7 +171,7 @@ async def list_staff(
     # Load users that have a role_id (unassigned users = players without a role)
     result = await db.execute(
         select(User)
-        .where(User.is_active == True, User.role_id.is_not(None))
+        .where(User.is_active.is_(True), User.role_id.is_not(None))
         .order_by(User.created_at.desc())
     )
     users = result.scalars().all()
@@ -314,7 +314,7 @@ async def staff_lookup(
         discord_account = await db.scalar(
             select(DiscordAccount).where(
                 DiscordAccount.player_uuid == identifier,
-                DiscordAccount.verified == True,
+                DiscordAccount.verified.is_(True),
             )
         )
         if discord_account is not None:
@@ -327,7 +327,7 @@ async def staff_lookup(
         return StaffLookupResponse(is_staff=False)
 
     user = await db.scalar(
-        select(User).where(User.discord_id == discord_id, User.is_active == True)
+        select(User).where(User.discord_id == discord_id, User.is_active.is_(True))
     )
     if user is None or user.role_id is None:
         return StaffLookupResponse(is_staff=False, discord_id=discord_id)

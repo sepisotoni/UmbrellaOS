@@ -28,8 +28,8 @@ async def test_post_translation_language_sets_player_language(
     assert data["player_uuid"] == "00000000-0000-0000-0000-000000000001"
     assert data["language_code"] == "es"
     assert data["language_name"] == "Spanish"
-    assert data["auto_translate_incoming"] == True
-    assert data["auto_translate_outgoing"] == False
+    assert data["auto_translate_incoming"] is True
+    assert data["auto_translate_outgoing"] is False
 
 
 @pytest.mark.asyncio
@@ -64,8 +64,8 @@ async def test_post_translation_language_updates_existing(
     assert response.status_code == 200
     data = response.json()
     assert data["language_code"] == "es"
-    assert data["auto_translate_incoming"] == False
-    assert data["auto_translate_outgoing"] == True
+    assert data["auto_translate_incoming"] is False
+    assert data["auto_translate_outgoing"] is True
 
 
 @pytest.mark.asyncio
@@ -125,8 +125,8 @@ async def test_get_translation_language_default_returns_english(
     data = response.json()
     assert data["language_code"] == "en"
     assert data["language_name"] == "English"
-    assert data["auto_translate_incoming"] == True
-    assert data["auto_translate_outgoing"] == False
+    assert data["auto_translate_incoming"] is True
+    assert data["auto_translate_outgoing"] is False
 
 
 @pytest.mark.asyncio
@@ -166,7 +166,7 @@ async def test_post_translation_translate_with_no_api_key_returns_original(
     data = response.json()
     assert data["original"] == "Hello world"
     assert data["translated"] == "Hello world"
-    assert data["was_translated"] == False
+    assert data["was_translated"] is False
 
 
 @pytest.mark.asyncio
@@ -218,7 +218,7 @@ async def test_post_translation_translate_english_to_english_returns_original(
         data = response.json()
         assert data["original"] == "Hello world"
         assert data["translated"] == "Hello world"
-        assert data["was_translated"] == False
+        assert data["was_translated"] is False
     finally:
         services.translation_service.translate_message = original_translate
 
@@ -264,7 +264,7 @@ async def test_post_translation_translate_with_player_uuid(
     assert (
         data["translated"] == "Hello world"
     )  # Will fail to translate and return original
-    assert data["was_translated"] == False
+    assert data["was_translated"] is False
 
 
 @pytest.mark.asyncio

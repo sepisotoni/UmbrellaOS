@@ -122,7 +122,7 @@ async def calculate_suspicion(
         select(DiscordAccount).where(
             and_(
                 DiscordAccount.player_uuid == player_uuid,
-                DiscordAccount.verified == True,
+                DiscordAccount.verified.is_(True),
             )
         )
     )
@@ -158,7 +158,7 @@ async def calculate_suspicion(
 
     # Rule: similar_username_to_banned_player - check Levenshtein distance
     # For simplicity, we'll check for exact substring matches
-    result = await db.execute(select(Punishment).where(Punishment.active == True))
+    result = await db.execute(select(Punishment).where(Punishment.active.is_(True)))
     active_punishments = result.scalars().all()
 
     for punishment in active_punishments:

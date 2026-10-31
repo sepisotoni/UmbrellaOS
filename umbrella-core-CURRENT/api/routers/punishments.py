@@ -72,9 +72,9 @@ async def list_punishments(
         query = query.where(Punishment.player_uuid == player_uuid)
 
     if active_only:
-        query = query.where(Punishment.active == True)
+        query = query.where(Punishment.active.is_(True))
         query = query.where(
-            (Punishment.expires_at == None)
+            (Punishment.expires_at.is_(None))
             | (Punishment.expires_at > datetime.now(timezone.utc))
         )
 

@@ -183,7 +183,7 @@ async def unban_player(
         select(Punishment).where(
             (Punishment.player_uuid == body.player_uuid)
             & (Punishment.type.in_(["ban", "tempban"]))
-            & (Punishment.active == True)
+            & (Punishment.active.is_(True))
         )
     )
     bans = ban_result.scalars().all()
@@ -249,7 +249,7 @@ async def ipunban_address(
         select(Punishment).where(
             (Punishment.type == "ipban")
             & (Punishment.ban_ip_address == body.ip_address)
-            & (Punishment.active == True)
+            & (Punishment.active.is_(True))
         )
     )
     ipban = ipban_result.scalar_one_or_none()
@@ -285,8 +285,8 @@ async def get_active_punishments(
     result = await db.execute(
         select(Punishment).where(
             (Punishment.player_uuid == player_uuid)
-            & (Punishment.active == True)
-            & ((Punishment.expires_at == None) | (Punishment.expires_at > now))
+            & (Punishment.active.is_(True))
+            & ((Punishment.expires_at.is_(None)) | (Punishment.expires_at > now))
         )
     )
     punishments = result.scalars().all()
