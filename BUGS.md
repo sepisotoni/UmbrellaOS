@@ -172,3 +172,49 @@ No application code changed.
 - After obtaining a recursive repository checkout, run a module inventory, Ruff unused-import checks, Pyright field/type checks, Python AST-based call-reference analysis, OpenAPI-to-SDK contract diff, pytest, then review any findings manually for dynamic dispatch.
 
 **No application code modified.**
+
+
+## Continuous Core audit checkpoint — 2026-11-01 (PR #7 review follow-up)
+
+**Reference state:** PR #7 head `a4236fa4`; change branch `audit/phase1-pr7-regressions-20261101`. See [CORE_AUDIT_COVERAGE.md](CORE_AUDIT_COVERAGE.md) for the full file-level checklist. **This is a partial repair pass, not a production-readiness sign-off.**
+
+**Coverage:** 413/413 Core tracked files inventoried; all 390 Python files were fetched and subjected to an initial static/metadata pass (224 non-migration/non-test support and app modules, 57 migration Python files including one `__init__.py`, 108 `tests/` Python files, and standalone `test_phase4.py`). Source scans looked for risky concurrency/exec/unfinished markers; migrations checked revision declarations and tests enumerated declarations. This is **not** equivalent to manual end-to-end review of every file. Remaining 23 non-Python files were inventoried but not fully audited.
+
+### Confirmed defects addressed on the follow-up branch (pending runtime validation)
+
+| Key | Severity | Evidence / root cause | Fix on branch | Status |
+| --- | --- | --- | --- | --- |
+| UOS-PR7-001 | High | PR #7 `api/routers/alt_detection.py:mark_false_positive` declares `_auth` but uses undefined `auth`; requests with an existing event raise `NameError` | Bind the actual permission-check principal; add non-skipping API regression test checking persisted reviewer and spoofed client value | Source fix committed; tests not run |
+| UOS-PR7-002 | Medium | PR #7 attributes AI review actions to `User.username` although `users.username` is not unique/immutable | Persist `user:<UUID>` for authenticated User, retain `api-key:<id>` and `admin-key` sentinels; fix stale tests that expected body-supplied reviewer | Source fix committed; tests not run |
+| UOS-PR7-003 | High | `ConsoleView.tsx` sends JSON text frames and assumes text responses; Core console proxy calls `receive_bytes()` and `send_bytes()` | Send binary encoded command lines and decode received binary frames | Source fix committed; browser/daemon test not run |
+| UOS-002 | High | Console proxy only checks `hosting.server.view` then permits console input, allowing view-only users to send daemon commands | Permit console input only with already-seeded `hosting.server.control`; deny unauthorized frames and add proxy regression test | Source fix committed; live RBAC test not run |
+| UOS-CORE-010 | Medium | `/health` intentionally returns HTTP 200 on degraded DB/Redis, unsuitable as strict readiness signal | Preserve existing `/health` contract, add `/ready` with HTTP 503 on degraded dependencies and unit regression tests | Source fix committed; tests not run |
+
+### PR #7 review / unchanged or not fully verified
+
+- **UOS-CORE-001 and UOS-CORE-029:** PR #7 removes observed shared-AsyncSession `asyncio.gather` uses in AI service, profile, and analytics. Change is reasonable by static inspection; no Postgres concurrency regression run. More complete async-session ownership verification remains.
+- **UOS-CORE-003:** PR #7 changes Alembic migration failures to fail startup. Source improvement confirmed; boot failure-injection test outstanding.
+- **UOS-CORE-019 and UOS-CORE-020:** PR #7 replaces body-supplied review attribution; branch additionally corrects undefined binding and stable User IDs. Existing test assumptions needed revision.
+- **UOS-CORE-025:** PR #7 uses `db.begin_nested()` (SAVEPOINT). `SettingsService.set_value()` flushes, not commits, which supports atomicity for correctly configured DB transactions. **SQLite legacy transaction mode** can release a SAVEPOINT without a parent BEGIN; test engine configuration and rollback under SQLite and Postgres before calling this complete.
+- **UOS-001:** PR #7 corrects the dashboard WebSocket URL, while this follow-up fixes binary framing. **UOS-004 remains:** long-lived *session* token is still in query and may be logged; design short-lived, single-use WS tickets before production.
+- **UOS-CORE-013/014:** legacy server control executes local configured processes, not Minecraft commands; the plugin command queue has an unimplemented consumer. These are still unresolved functional design mismatches.
+- **UOS-CORE-003 (config), UOS-006:** `cors_origins` remains ineffective against wildcard CORS middleware; no verified exploit, but configuration mismatch remains.
+- **Unused/unfinished integration candidates:** unused `auto_action_confidence_threshold` (pending dynamic-setting check), AI orchestrator without automated tool dispatch, Discord nickname sync responsibility, `PluginCommand` unconsumed queue, and AI-proposed `dashboard.layout.*` / `discord.config.*` consumer validation.
+
+### Unresolved highest-risk items
+
+1. **P0 issue #1:** Minecraft plugin queue has globally shared plugin credential and caller-selected `server_id`; cross-server completion authorization not proven. The command enqueue authorization matrix is also unresolved. Do not deploy to mutually untrusted servers without server-scoped credentials and tests.
+2. **High:** WebSocket bearer tokens in URLs; dedicated short-lived tickets, proxy log redaction, reconnect and expiration tests required.
+3. **High:** `dev_auth` session minting when debug=true; test low-privilege registry access and prohibit exposed debug deployments.
+4. **High:** Local host-process server control path, unconsumed plugin command queue, and AI configuration SQLite SAVEPOINT parent-transaction semantics.
+5. **Medium:** Outbound webhook SSRF and redirect/DNS behavior, capability request-param secret redaction, dashboard/Discord/Java OpenAPI contract diff, event/delivery semantics, database and Redis failure behavior, configuration key mismatch and dead-code proof remain unverified.
+
+### Actual validation status
+
+- GitHub source fetch, file inventory, and static marker/revision/test-declaration scans: **performed**.
+- Local clone into test container: **failed** (network DNS resolution of github.com unavailable).
+- `pytest` / `compileall` on complete repo: **NOT RUN**; source not present in runtime.
+- `ruff`, `pyright`, Postgres integration, browser WebSocket, dependency vulnerability checks: **NOT RUN**.
+- CI: check remote status after opening follow-up PR. Do not merge if the tests fail or checks are missing.
+
+**No modification to the Minecraft plugin implementation.** Full production sign-off remains **blocked**.
