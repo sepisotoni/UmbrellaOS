@@ -258,3 +258,13 @@ No application code changed.
 - UOS-CORE-025 atomic multi-setting AI configuration using a savepoint.
 
 **Not fixed:** Minecraft command/server-bound authorization, console-write authorization, local-vs-remote server-control design, disabled plugin command queue, health/readiness split, secret exposure audit, every incomplete/unused feature, remaining API naming consistency checks. The attempted console-write change was blocked during the source write and is *not* present in the PR. This is an incomplete remediation pass, **not a claim all Core findings are fixed**. No CI or integration tests run in the audit environment. Keep PR unmerged until validated.
+
+
+### Critical command-auth boundary correction (2026-11-01)
+
+| Key | Severity | Concrete evidence | Resolution | Status |
+| --- | --- | --- | --- | --- |
+| UOS-CORE-033 | **Critical** | `require_admin_hmac_or_session` accepted either `X-Plugin-Key` or `X-Admin-Key`, then matched the supplied value to **SECRET_KEY or ADMIN_KEY**, returning the plugin's credential as successful admin-tier authentication. `POST /api/v1/mc/command` depends on that function, so a plugin with the shared secret could enqueue arbitrary commands, including those targeted to a different server. Other admin/HMAC-protected endpoints also inherited the same credential confusion. | Removed plugin-key and SECRET_KEY acceptance from the admin/HMAC dependency. Legitimate HMAC, full admin-key and owner/admin sessions remain accepted. Added regression tests for `X-Plugin-Key` and for `X-Admin-Key` containing SECRET_KEY when the two configured secrets differ. | Code/test committed in draft PR #8; targeted regressions still need CI. |
+
+**Residual critical risk (issue #1):** Plugin polling and completion still use `require_plugin_key`, a globally shared unscoped secret, with caller-supplied `server_id` or command ID. This patch prevents a plugin credential from *queuing* commands through the admin tier; it does not enforce per-server plugin identity on poll/complete. Rollout of per-server scoped plugin credentials, server-binding on completion, and end-to-end migration tests is required before treating fleets as isolated.
+
