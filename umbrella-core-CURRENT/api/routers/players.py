@@ -8,7 +8,6 @@ GET  /api/v1/players/{uuid}/full-profile — aggregated full profile (Task 1 / P
 All responses require admin key or session authentication.
 """
 
-import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
