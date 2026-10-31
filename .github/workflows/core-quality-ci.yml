@@ -23,6 +23,7 @@ jobs:
       - name: Ruff unused imports, undefined names, and syntax hygiene
         run: ruff check umbrella-core-CURRENT --select E4,E7,E9,F
       - name: Pyright type and interface validation
+        if: success() || failure()
         run: pyright umbrella-core-CURRENT
 
   dependency-audit:
