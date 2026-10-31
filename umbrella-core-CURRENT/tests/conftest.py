@@ -40,6 +40,7 @@ os.environ.setdefault("ADMIN_KEY", "test-secret-key-not-the-insecure-default")
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.pool import StaticPool
 
@@ -132,6 +133,18 @@ async def db_session():
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
+    # aiosqlite on Python 3.11 uses legacy transaction control: SAVEPOINT
+    # alone may not start a physical BEGIN, so releasing it can persist
+    # writes even if the outer SQLAlchemy transaction later rolls back.
+    # Explicit BEGIN makes the AI config atomicity tests meaningful.
+    @event.listens_for(engine.sync_engine, "connect")
+    def _configure_sqlite_connection(dbapi_connection, connection_record):
+        dbapi_connection.isolation_level = None
+
+    @event.listens_for(engine.sync_engine, "begin")
+    def _explicit_sqlite_begin(connection):
+        connection.exec_driver_sql("BEGIN")
+
     session_factory = async_sessionmaker(
         bind=engine,
         class_=AsyncSession,
