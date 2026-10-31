@@ -31,6 +31,7 @@ async def test_post_ai_config_request_creates_pending_action(
         *, db, task_type, task_prompt, requested_by, require_dual_review=False, system_instructions=None
     ):
         assert task_type == "copilot"
+        assert system_instructions is not None
         assert "You are configuring UmbrellaOS" in system_instructions
         assert "Set bridge mode to full" in task_prompt
         assert "Set bridge mode to full" not in system_instructions

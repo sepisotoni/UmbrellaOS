@@ -470,6 +470,7 @@ async def test_player_risk_review_consumes_suspicion_events(
     assert len(captured) == 1
     assert "shared_ip" in captured[0]
     assert "false_positive=True" in captured[0]
+    assert task.evidence is not None
     evidence = json.loads(task.evidence)
     assert evidence["suspicion_events"][0]["trigger"] == "shared_ip"
     assert evidence["suspicion_events"][0]["false_positive"] is True

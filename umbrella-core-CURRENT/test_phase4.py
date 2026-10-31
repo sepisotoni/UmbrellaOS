@@ -1,4 +1,6 @@
 import asyncio
+
+from fastapi.routing import APIRoute
 from main import app
 from models import Player, Punishment, Appeal
 
@@ -10,7 +12,7 @@ async def comprehensive_test():
     print("[TEST 1] Router Registration")
     routes = {}
     for route in app.routes:
-        if hasattr(route, "methods") and hasattr(route, "path"):
+        if isinstance(route, APIRoute):
             path = route.path
             method = list(route.methods)[0] if route.methods else "GET"
             if "/api/v1/" in path:

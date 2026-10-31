@@ -89,6 +89,7 @@ async def test_index_entry_is_idempotent_on_same_message_id(db_session, monkeypa
             author_name="Alice",
             content="original content",
         )
+        assert first is not None and second is not None
         assert second.id == first.id
 
 
@@ -118,6 +119,7 @@ async def test_index_entry_snapshots_version_on_content_change(db_session, monke
         )
         await db.commit()
 
+        assert entry is not None and updated is not None
         assert updated.content == "v2 content"
         history = await KnowledgeRepository.history(db, entry.id)
         assert len(history) == 1
@@ -160,6 +162,7 @@ async def test_propose_and_approve_correction_supersedes_original(
             author_name="Alice",
             content="old IP: 1.2.3.4",
         )
+        assert original is not None
         await db.commit()
 
         correction = await KnowledgeService.propose_correction(
@@ -173,6 +176,7 @@ async def test_propose_and_approve_correction_supersedes_original(
             content="new IP: 5.6.7.8",
         )
         await db.commit()
+        assert correction is not None
         assert correction.review_status == KnowledgeReviewStatus.PENDING
 
         # Not yet retrievable - only the original (still un-superseded) is.
@@ -183,6 +187,7 @@ async def test_propose_and_approve_correction_supersedes_original(
             db, correction.id, reviewed_by="admin-1"
         )
         await db.commit()
+        assert approved is not None
         assert approved.review_status == KnowledgeReviewStatus.APPROVED
 
         results_after = await KnowledgeService.search(db, "IP")
@@ -204,6 +209,7 @@ async def test_reject_correction_leaves_original_live(db_session, monkeypatch):
             author_name="Alice",
             content="store hours: 9-5",
         )
+        assert original is not None
         await db.commit()
 
         correction = await KnowledgeService.propose_correction(
@@ -218,10 +224,12 @@ async def test_reject_correction_leaves_original_live(db_session, monkeypatch):
         )
         await db.commit()
 
+        assert correction is not None
         rejected = await KnowledgeService.reject(
             db, correction.id, reviewed_by="admin-1"
         )
         await db.commit()
+        assert rejected is not None
         assert rejected.review_status == KnowledgeReviewStatus.REJECTED
 
         results = await KnowledgeService.search(db, "hours")
@@ -241,6 +249,7 @@ async def test_list_pending_only_shows_pending(db_session, monkeypatch):
             author_name="Alice",
             content="entry A",
         )
+        assert original is not None
         await db.commit()
         await KnowledgeService.propose_correction(
             db,

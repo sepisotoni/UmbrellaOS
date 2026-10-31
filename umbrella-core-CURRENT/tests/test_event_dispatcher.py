@@ -251,6 +251,7 @@ async def test_dispatch_pending_retries_whole_event_when_global_subscriber_fails
         assert dispatched == []
         assert event.dispatched_at is None
         assert event.attempts == 1
+        assert event.last_error is not None
         assert "webhook delivery failed" in event.last_error
         assert event.next_attempt_at is not None
 

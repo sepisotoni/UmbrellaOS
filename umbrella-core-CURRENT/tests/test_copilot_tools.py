@@ -51,6 +51,7 @@ def test_parse_requested_tools_extracts_fenced_json_array():
 def test_parse_requested_tools_extracts_multiple_calls():
     text = '```json\n[{"tool": "lookup_player", "username": "Steve"}, {"tool": "get_punishment_history", "player_uuid": "abc"}]\n```'
     parsed = parse_requested_tools(text)
+    assert parsed is not None
     assert len(parsed) == 2
     assert parsed[0]["tool"] == "lookup_player"
     assert parsed[1]["tool"] == "get_punishment_history"
