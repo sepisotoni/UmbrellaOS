@@ -325,3 +325,14 @@ def test_format_tool_results_block_delimits_output():
     assert block.endswith("</tool_results>")
     assert "lookup_player" in block
     assert "abc" in block
+
+
+@pytest.mark.asyncio
+async def test_llm_tool_name_with_unhashable_json_value_is_rejected(db_session):
+    """A malformed model JSON tool name must not trigger a 500 in Copilot."""
+    async with db_session() as db:
+        calls = [{"tool": []}, {"tool": {"unexpected": "object"}}, {"tool": None}]
+        results = await execute_tool_calls(_ctx(db, is_superuser=True), calls)
+
+    assert len(results) == len(calls)
+    assert all(result.result == "error: invalid tool name" for result in results)
