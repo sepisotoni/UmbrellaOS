@@ -15,7 +15,8 @@ from sqlalchemy import select, and_
 from pydantic import BaseModel
 
 from database import get_db
-from models import SuspicionEvent, AltGroup, AltGroupMember, Player
+from models import SuspicionEvent, AltGroup, AltGroupMember, Player, User
+from models.api_key import ApiKey
 from api.middleware.auth import require_admin_key, require_plugin_key
 from api.dependencies.permissions import require_permission
 from services.alt_detection_service import calculate_suspicion, flag_player
@@ -259,7 +260,7 @@ async def mark_false_positive(
 
     event.false_positive = True
     event.reviewed = True
-    event.reviewed_by = body.reviewed_by
+    event.reviewed_by = auth.username if isinstance(auth, User) else (f"api-key:{auth.id}" if isinstance(auth, ApiKey) else "admin-key")
 
     # Reduce player suspicion_score by event points
     result = await db.execute(select(Player).where(Player.uuid == event.player_uuid))

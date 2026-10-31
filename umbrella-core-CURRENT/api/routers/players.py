@@ -8,7 +8,6 @@ GET  /api/v1/players/{uuid}/full-profile — aggregated full profile (Task 1 / P
 All responses require admin key or session authentication.
 """
 
-import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
@@ -317,20 +316,12 @@ async def get_player_full_profile(
     if player is None:
         raise HTTPException(status_code=404, detail=f"Player '{uuid}' not found")
 
-    # Parallel queries
-    (
-        punishments,
-        appeals,
-        discord_acct,
-        alt_members,
-        anticheat_hist,
-    ) = await asyncio.gather(
-        _query_punishments(db, uuid),
-        _query_appeals(db, uuid),
-        _query_discord(db, uuid),
-        _query_alt_group_members(db, uuid),
-        _query_anticheat(db, uuid),
-    )
+    # AsyncSession is stateful and must not be used concurrently by several tasks.
+    punishments = await _query_punishments(db, uuid)
+    appeals = await _query_appeals(db, uuid)
+    discord_acct = await _query_discord(db, uuid)
+    alt_members = await _query_alt_group_members(db, uuid)
+    anticheat_hist = await _query_anticheat(db, uuid)
 
     # Build punishment → appeal map (first appeal per punishment)
     appeal_map: dict[str, str] = {}

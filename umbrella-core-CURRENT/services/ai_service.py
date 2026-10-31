@@ -21,7 +21,6 @@ On any AI failure: raise AIServiceError (caller returns 503) — never fabricate
 a result.
 """
 
-import asyncio
 import json
 from collections import defaultdict, Counter
 from datetime import datetime, timedelta, timezone
@@ -211,11 +210,9 @@ async def review_flagged_player(
         )
         return list(result.scalars().all())
 
-    punishments, suspicion_events, violations = await asyncio.gather(
-        _fetch_punishments(),
-        _fetch_suspicion(),
-        _fetch_anticheat(),
-    )
+    punishments = await _fetch_punishments()
+    suspicion_events = await _fetch_suspicion()
+    violations = await _fetch_anticheat()
 
     # Build punishment breakdown
     ptype_counts = Counter(p.type for p in punishments)
@@ -388,12 +385,10 @@ async def _do_appeal_review(appeal: Appeal, db: AsyncSession) -> AITask:
         )
         return list(result.scalars().all())
 
-    punishment, player, all_punishments, prev_appeals = await asyncio.gather(
-        _fetch_punishment(),
-        _fetch_player(),
-        _fetch_all_punishments(),
-        _fetch_previous_appeals(),
-    )
+    punishment = await _fetch_punishment()
+    player = await _fetch_player()
+    all_punishments = await _fetch_all_punishments()
+    prev_appeals = await _fetch_previous_appeals()
 
     # GrimAC ±72hr window around punishment issued date
     anticheat_section = "No GrimAC flags in this window."
