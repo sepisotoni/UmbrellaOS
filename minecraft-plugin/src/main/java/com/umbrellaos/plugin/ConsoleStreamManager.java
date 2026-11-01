@@ -173,15 +173,25 @@ public class ConsoleStreamManager {
     /** Package-private for testing. Production callers use startPushing(). */
     List<String> drainNewLines(int maxLines) {
         synchronized (lock) {
-            long newCount = totalAppended - totalPushed;
-            if (newCount <= 0) return Collections.emptyList();
-            int take = (int) Math.min(newCount, maxLines);
-            // Lines are in the buffer oldest-first; we want the newest `take` that haven't been sent.
-            // totalPushed tracks how many have been sent; buffer may have evicted oldest under capacity.
+            if (maxLines <= 0 || totalAppended <= totalPushed) {
+                return Collections.emptyList();
+            }
+            // The ring may have evicted unsent entries. Translate the
+            // monotonically increasing append counter into its current
+            // buffer window, then advance from the OLDEST surviving unsent
+            // entry. Selecting the latest N on every pass duplicated lines
+            // and permanently skipped earlier batches under sustained load.
+            long oldestRetainedIndex = totalAppended - buffer.size();
+            long firstUnsentIndex = Math.max(totalPushed, oldestRetainedIndex);
+            int fromIndex = (int) (firstUnsentIndex - oldestRetainedIndex);
+            int take = Math.min(maxLines, buffer.size() - fromIndex);
+            if (take == 0) {
+                totalPushed = firstUnsentIndex;
+                return Collections.emptyList();
+            }
             List<String> all = new ArrayList<>(buffer);
-            int fromIndex = Math.max(0, all.size() - take);
-            List<String> result = new ArrayList<>(all.subList(fromIndex, all.size()));
-            totalPushed += result.size();
+            List<String> result = new ArrayList<>(all.subList(fromIndex, fromIndex + take));
+            totalPushed = firstUnsentIndex + take;
             return result;
         }
     }

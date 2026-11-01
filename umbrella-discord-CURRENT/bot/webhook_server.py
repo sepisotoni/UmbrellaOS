@@ -102,11 +102,15 @@ class WebhookServer:
         except Exception:
             return web.Response(status=400, text="Invalid JSON")
 
+        if not isinstance(body, dict):
+            return web.Response(status=400, text="Webhook body must be an object")
         event = body.get("event")
         payload = body.get("payload", {})
 
-        if not event:
-            return web.Response(status=400, text="Missing 'event' field")
+        if not isinstance(event, str) or not event:
+            return web.Response(status=400, text="Invalid 'event' field")
+        if not isinstance(payload, dict):
+            return web.Response(status=400, text="Webhook payload must be an object")
 
         handler = self._handlers.get(event)
         if handler is None:

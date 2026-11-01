@@ -21,6 +21,7 @@ and the new URL is picked up within 60 s.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import time
@@ -30,6 +31,7 @@ import httpx
 from config import get_settings
 from database import AsyncSessionLocal
 from models.bot_registration import BotRegistration
+from services.webhooks.service import WebhookError, _validate_webhook_url
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -80,9 +82,13 @@ async def push_event(event: str, payload: dict) -> None:
         logger.debug("No bot registration found; skipping push for event %s", event)
         return
 
-    headers = _make_push_headers()
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        # Existing DB rows may predate registration validation; never send
+        # a privileged MAC or event payload to a private/internal address.
+        # DNS resolution and PBKDF2 are blocking operations.
+        await asyncio.to_thread(_validate_webhook_url, url)
+        headers = await asyncio.to_thread(_make_push_headers)
+        async with httpx.AsyncClient(timeout=5.0, follow_redirects=False) as client:
             response = await client.post(
                 url,
                 json={"event": event, "payload": payload},
@@ -92,6 +98,8 @@ async def push_event(event: str, payload: dict) -> None:
             logger.warning(
                 "Bot push for event %s returned HTTP %s", event, response.status_code
             )
+    except (WebhookError, ValueError):
+        logger.warning("Bot push blocked: unsafe registered callback for event %s", event)
     except Exception:
         logger.warning("Bot push failed for event %s", event, exc_info=True)
 

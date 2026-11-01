@@ -357,23 +357,25 @@ async def push_console_lines(
         total = count_result.scalar_one()
 
         if total > _CONSOLE_CAP:
-            # Find the id of the (_CONSOLE_CAP + 1)-th newest row — everything
-            # older than that gets deleted.
-            cutoff_result = await db.execute(
+            # A batch assigns the same timestamp to every row; timestamp
+            # ordering alone is nondeterministic. Delete precisely the rows
+            # outside the newest 500 using the id as a stable tie-breaker,
+            # rather than assuming timestamp order always matches id order.
+            stale_ids = (
                 select(PluginConsoleLine.id)
                 .where(PluginConsoleLine.server_id == server_id)
-                .order_by(PluginConsoleLine.captured_at.desc())
-                .offset(_CONSOLE_CAP)
-                .limit(1)
-            )
-            cutoff_id = cutoff_result.scalar_one_or_none()
-            if cutoff_id is not None:
-                await db.execute(
-                    delete(PluginConsoleLine).where(
-                        PluginConsoleLine.server_id == server_id,
-                        PluginConsoleLine.id <= cutoff_id,
-                    )
+                .order_by(
+                    PluginConsoleLine.captured_at.desc(),
+                    PluginConsoleLine.id.desc(),
                 )
+                .offset(_CONSOLE_CAP)
+            )
+            await db.execute(
+                delete(PluginConsoleLine).where(
+                    PluginConsoleLine.server_id == server_id,
+                    PluginConsoleLine.id.in_(stale_ids),
+                )
+            )
 
     return {"ok": True, "stored": len(new_rows)}
 
@@ -394,7 +396,7 @@ async def get_recent_console(
     result = await db.execute(
         select(PluginConsoleLine)
         .where(PluginConsoleLine.server_id == server_id)
-        .order_by(PluginConsoleLine.captured_at.desc())
+        .order_by(PluginConsoleLine.captured_at.desc(), PluginConsoleLine.id.desc())
         .limit(n)
     )
     rows = result.scalars().all()

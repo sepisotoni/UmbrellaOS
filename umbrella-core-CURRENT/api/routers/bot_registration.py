@@ -15,6 +15,7 @@ Auth: require_admin_hmac_or_session (only the bot or a dashboard session).
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import datetime, timezone
 
@@ -29,6 +30,7 @@ from models.bot_command_manifest import BotCommandManifest
 from models.bot_guild_channels import BotGuildChannels
 from models.bot_guild_roles import BotGuildRoles
 import services.bot_push_service as bot_push_service
+from services.webhooks.service import WebhookError, _validate_webhook_url
 
 router = APIRouter(prefix="/api/v1/bot", tags=["bot"])
 
@@ -57,10 +59,13 @@ async def register_bot(
     is at most one registration. Subsequent bot restarts overwrite the URL
     with the (potentially new) HeavenCloud address.
     """
-    if not body.callback_url.startswith(("http://", "https://")):
-        raise HTTPException(
-            status_code=422, detail="callback_url must be an http(s) URL"
-        )
+    # The callback is a server-side outbound HTTP destination. Apply the
+    # same public-address/metadata-IP protection as ordinary webhooks.
+    # DNS is blocking, so resolve outside the FastAPI event loop.
+    try:
+        await asyncio.to_thread(_validate_webhook_url, body.callback_url)
+    except (WebhookError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     now = datetime.now(timezone.utc)
     existing = await db.get(BotRegistration, 1)

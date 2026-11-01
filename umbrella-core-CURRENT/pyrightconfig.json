@@ -1,0 +1,19 @@
+{
+  "include": [
+    "alembic",
+    "api",
+    "capabilities",
+    "config",
+    "database",
+    "models",
+    "registry",
+    "scripts",
+    "services",
+    "main.py"
+  ],
+  "exclude": [
+    "tests",
+    "test_phase4.py",
+    "**/__pycache__"
+  ]
+}
