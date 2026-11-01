@@ -114,7 +114,7 @@ public class ChatResponderListener implements Listener {
                 requestBody.put("context", context);
 
                 HttpResponse<String> resp = apiClient.post(
-                        "/api/v1/ai/copilot", requestBody.toString());
+                        "/api/v1/ai/chat-responder", requestBody.toString());
 
                 if (resp.statusCode() == 200) {
                     JSONObject body = new JSONObject(resp.body());
