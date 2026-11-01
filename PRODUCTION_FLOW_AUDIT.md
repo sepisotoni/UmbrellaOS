@@ -29,3 +29,11 @@ Scope: repository branch `audit/phase1-pr7-regressions-20261101`, draft PR #8. T
 ## CI policy and verification
 
 `.github/workflows/core-quality-ci.yml`: Ruff excludes the Core `tests/` folder and standalone legacy test script; Pyright uses `umbrella-core-CURRENT/pyrightconfig.json` for production-only scope. This is **not** deletion of regression tests: separate Backend/Bot/Plugin/Dashboard CI jobs remain present. Do not merge PR #8 unless the current head's required checks pass; a green static gate does not prove live integration, deployments or security migration.
+
+## Follow-up fixes after initial report
+
+- Minecraft command completion now requires the claiming `server_id` and scopes the lookup by both command ID and server ID. Command request fields now enforce the database's 512/64-character limits, and completion output is capped at 16 KiB before it reaches persistence/audit logging.
+- Bot webhook handler exceptions now return HTTP 500 instead of a false HTTP 200 acknowledgement. Callback URL lookup is inside the push service's best-effort exception boundary, so a transient database error no longer escapes a function documented to never raise.
+- Discord bridge delivery now reports success only after resolving the target channel and successfully sending the embed. Cache misses trigger a REST channel lookup; invalid/missing channels and Discord API failures are reported as failed delivery. The webhook cog re-raises bridge failures (including an unavailable BridgeCog) so the receiver returns a non-2xx status to Core instead of silently acknowledging a dropped broadcast.
+- These changes improve failure visibility, but **do not create a durable retry/outbox**. Dashboard broadcasts can still be lost after Core records the message if the push fails; the dashboard must treat `forwarded=false` as not delivered. Durable delivery remains a priority item.
+- Latest branch head at time of this update: `7e3740880a70a29af89735eee797f3c0f2a761ac`. Full CI for this exact head has not yet been reported; do not infer it from the preceding green run.
