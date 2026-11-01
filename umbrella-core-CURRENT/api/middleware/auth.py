@@ -15,7 +15,6 @@ All secret comparisons use hmac.compare_digest to prevent timing attacks.
 """
 
 import hmac
-import time
 
 from fastapi import Depends, HTTPException, Security, Header
 from redis.asyncio import Redis
