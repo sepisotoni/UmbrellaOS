@@ -25,7 +25,7 @@ for the bug this fixes ([PLUGIN] subsystem audit).
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime, timezone
 
 from database import get_db
@@ -39,14 +39,17 @@ router = APIRouter(prefix="/api/v1/mc", tags=["mc-commands"])
 
 
 class MCCommandRequest(BaseModel):
-    command: str
-    requested_by_discord_id: str
-    requested_by_username: str
+    # Keep API validation aligned with the database column widths. Reject
+    # invalid requests here instead of surfacing database truncation errors
+    # as HTTP 500 responses.
+    command: str = Field(min_length=1, max_length=512)
+    requested_by_discord_id: str = Field(min_length=1, max_length=64)
+    requested_by_username: str = Field(min_length=1, max_length=64)
     # FIX ([PLUGIN] audit): default "default" preserves existing behavior
     # for callers that don't specify one (single-server deployments,
     # anything not yet updated) — see models/mc_commands.py for the full
     # fleet-routing rationale.
-    server_id: str = "default"
+    server_id: str = Field(default="default", min_length=1, max_length=64)
 
 
 class MCCommandResponse(BaseModel):
@@ -63,7 +66,9 @@ class MCCommandResponse(BaseModel):
 
 
 class MCCommandCompleteRequest(BaseModel):
-    output: str
+    # Bound plugin-controlled output so a single completion cannot exhaust
+    # request memory or inflate the audit log/database row without limit.
+    output: str = Field(max_length=16_384)
     success: bool
 
 
@@ -215,9 +220,11 @@ async def claim_pending_mc_commands(
 async def complete_mc_command(
     command_id: int,
     body: MCCommandCompleteRequest,
-    server_id: str | None = Query(
-        default=None,
-        description="Claiming server ID; omitted only for legacy plugin compatibility",
+    server_id: str = Query(
+        ...,
+        min_length=1,
+        max_length=64,
+        description="Server ID that claimed this command",
     ),
     db: AsyncSession = Depends(get_db),
     _auth: str = Depends(require_plugin_key),
@@ -230,9 +237,10 @@ async def complete_mc_command(
     Auth: X-Plugin-Key — see get_pending_mc_commands docstring above for
     why this changed from require_admin_key (Phase 13 Step 2).
     """
-    query = select(MCCommand).where(MCCommand.id == command_id)
-    if server_id is not None:
-        query = query.where(MCCommand.server_id == server_id)
+    query = select(MCCommand).where(
+        MCCommand.id == command_id,
+        MCCommand.server_id == server_id,
+    )
     result = await db.execute(query)
     mc_command = result.scalar_one_or_none()
 
