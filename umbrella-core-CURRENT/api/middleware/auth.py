@@ -14,6 +14,7 @@ Three auth tiers, in order of trust:
 All secret comparisons use hmac.compare_digest to prevent timing attacks.
 """
 
+import asyncio
 import hashlib
 import hmac
 import time
@@ -118,13 +119,13 @@ async def require_admin_hmac_or_session(
             raise HTTPException(status_code=401, detail="Invalid timestamp")
         if abs(time.time() - ts) > 30:
             raise HTTPException(status_code=401, detail="Timestamp out of window")
-        expected = hashlib.pbkdf2_hmac(
+        expected = (await asyncio.to_thread(
             "sha256",
             settings.admin_key.encode(),
             str(ts).encode(),
             100_000,
             dklen=32,
-        ).hex()
+        )).hex()
         if not hmac.compare_digest(expected, x_auth_mac):
             raise HTTPException(status_code=401, detail="Invalid MAC")
         return "hmac"

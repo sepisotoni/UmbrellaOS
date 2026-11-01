@@ -7,6 +7,7 @@ keys; see services/api_key_service.py for why a key can never carry
 superuser/wildcard access).
 """
 
+import asyncio
 import hashlib
 import hmac
 import time
@@ -69,13 +70,13 @@ async def require_capability_auth(
                 raise HTTPException(status_code=401, detail="Invalid timestamp")
             if abs(time.time() - ts) > 30:
                 raise HTTPException(status_code=401, detail="Timestamp out of window")
-            expected = hashlib.pbkdf2_hmac(
+            expected = (await asyncio.to_thread(
                 "sha256",
                 get_settings().admin_key.encode(),
                 str(ts).encode(),
                 100_000,
                 dklen=32,
-            ).hex()
+            )).hex()
             if not hmac.compare_digest(expected, x_auth_mac):
                 raise HTTPException(status_code=401, detail="Invalid MAC")
             return "hmac"
