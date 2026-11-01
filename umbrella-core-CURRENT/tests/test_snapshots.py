@@ -358,3 +358,29 @@ async def test_multiple_snapshots_for_same_player_returned_newest_first(
     # Verify newest first
     timestamps = [s["timestamp"] for s in data]
     assert timestamps == sorted(timestamps, reverse=True)
+
+@pytest.mark.asyncio
+async def test_empty_equipment_snapshot_preserves_empty_structures(client: AsyncClient):
+    """An explicitly empty inventory is evidence, not a missing inventory."""
+    response = await client.post(
+        "/api/v1/snapshots",
+        json={
+            "minecraft_uuid": "550e8400-e29b-41d4-a716-446655440000",
+            "inventory": [],
+            "armor": {},
+            "offhand": {},
+        },
+        headers={"X-Admin-Key": "test-secret-key"},
+    )
+    assert response.status_code == 201
+    snapshot_id = response.json()["id"]
+
+    saved = await client.get(
+        f"/api/v1/snapshots/{snapshot_id}",
+        headers={"X-Admin-Key": "test-secret-key"},
+    )
+    assert saved.status_code == 200
+    row = saved.json()
+    assert row["inventory_json"] == "[]"
+    assert row["armor_json"] == "{}"
+    assert row["offhand_json"] == "{}"

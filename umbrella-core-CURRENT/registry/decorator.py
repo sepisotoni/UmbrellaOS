@@ -30,7 +30,7 @@ any of those.
 
 from __future__ import annotations
 
-from typing import Awaitable, Callable, Type, TypeVar
+from typing import Any, Awaitable, Callable, Type, TypeVar
 
 from pydantic import BaseModel
 
@@ -45,7 +45,7 @@ def capability(
     name: str,
     summary: str,
     params_model: Type[BaseModel],
-    result_model: Type[BaseModel] | None = None,
+    result_model: type[Any] | None = None,
     required_permission: str | None = None,
     destructive: bool = False,
     reversible: bool = True,

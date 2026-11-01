@@ -17,13 +17,13 @@ from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.ai.anthropic_provider import AnthropicProvider
-from services.ai.base import AIProvider, ProviderError
+from services.ai.base import AIProvider, HTTPProvider, ProviderError
 from services.ai.gemini_provider import GeminiProvider
 from services.ai.openrouter_provider import OpenRouterProvider
 from services.settings_service import SettingsService
 
 # provider name -> (DB key for its API key, DB key for its enabled toggle, provider class)
-_PROVIDER_REGISTRY: dict[str, tuple[str, str, type[AIProvider]]] = {
+_PROVIDER_REGISTRY: dict[str, tuple[str, str, type[HTTPProvider]]] = {
     "openrouter": ("ai.openrouter_key", "ai.openrouter_enabled", OpenRouterProvider),
     "anthropic": ("ai.anthropic_api_key", "ai.anthropic_enabled", AnthropicProvider),
     "gemini": ("ai.gemini_api_key", "ai.gemini_enabled", GeminiProvider),

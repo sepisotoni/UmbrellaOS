@@ -2,7 +2,7 @@
 api/dependencies/permissions.py — Role-based permission dependencies.
 
 Checks permission keys against the authenticated user's role.
-X-Admin-Key auth bypasses all permission checks (plugin god mode).
+X-Admin-Key and authenticated Discord-bot HMAC are bootstrap/system tiers that bypass role checks. Minecraft X-Plugin-Key is never accepted by this dependency and must be opted into per route.
 
 Permission *resolution* (role -> permission keys, plus extra_permissions)
 lives in services/permission_resolution.py and is shared with the
@@ -18,7 +18,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
 from models import User
 from models.permissions import Role
-from api.middleware.session import require_admin_key_or_session
 from api.middleware.api_key_auth import require_capability_auth
 from models.api_key import ApiKey
 from services.permission_resolution import resolve_user_permissions
@@ -30,7 +29,7 @@ async def _load_role_permissions(
     request: Request,
 ) -> set[str]:
     """Load and cache a user's effective permission keys for the current request."""
-    cache: dict[str | None, set[str]] = getattr(
+    cache: dict[str | None, set[str]] | None = getattr(
         request.state, "role_permissions_cache", None
     )
     if cache is None:

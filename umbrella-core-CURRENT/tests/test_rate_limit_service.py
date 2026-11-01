@@ -20,9 +20,11 @@ def redis_client():
 @pytest.mark.asyncio
 async def test_allows_requests_within_limit(redis_client):
     limiter = RateLimiter(redis_client)
+    result = None
     for _ in range(5):
         result = await limiter.check("client-a", limit=5, window_seconds=60)
         assert result.allowed is True
+    assert result is not None
     assert result.remaining == 0
 
 

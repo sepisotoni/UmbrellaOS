@@ -105,7 +105,7 @@ class HTTPProvider(AIProvider):
         api_key: str,
         base_url: str | None = None,
         timeout: float = 30.0,
-        transport: httpx.BaseTransport | None = None,
+        transport: httpx.AsyncBaseTransport | None = None,
     ):
         if not api_key:
             raise ProviderError(f"{self.display_name} API key is empty")

@@ -7,11 +7,9 @@ Methods for managing replay sessions and events.
 import json
 from datetime import datetime, timezone, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, func
-from sqlalchemy.orm import selectinload
+from sqlalchemy import select, update
 
 from models import ReplaySession, ReplayEvent, AuditLog
-from models.player import Player
 
 
 VALID_EVENT_TYPES = {"movement", "inventory", "combat", "command", "damage", "block"}

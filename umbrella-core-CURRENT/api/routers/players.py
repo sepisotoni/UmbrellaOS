@@ -8,27 +8,23 @@ GET  /api/v1/players/{uuid}/full-profile — aggregated full profile (Task 1 / P
 All responses require admin key or session authentication.
 """
 
-import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from database import get_db
 from models import Player, Punishment, Appeal, AltGroupMember, AltGroup, DiscordAccount
 from api.dependencies.permissions import require_permission
+from api.middleware.auth import require_plugin_key
 
-# AnticheatViolation is added by Backend A. Import with fallback stub so this
-# router compiles even if Backend A has not been merged yet.
-try:
-    from models.anticheat_violation import AnticheatViolation  # noqa: F401
+# A required Core model, not an optional integration.
+from models.anticheat_violation import AnticheatViolation
 
-    _HAS_ANTICHEAT = True
-except ImportError:
-    _HAS_ANTICHEAT = False
+_HAS_ANTICHEAT = True
 
 router = APIRouter(prefix="/api/v1/players", tags=["players"])
 
@@ -44,8 +40,7 @@ class IPAddressSchema(BaseModel):
     first_seen: datetime
     last_seen: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PlayerSchema(BaseModel):
@@ -60,15 +55,13 @@ class PlayerSchema(BaseModel):
     suspicion_score: int
     discord_id: str | None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PlayerDetailSchema(PlayerSchema):
     ip_addresses: list[IPAddressSchema] = []
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # --- Full-profile sub-schemas ---
@@ -317,20 +310,12 @@ async def get_player_full_profile(
     if player is None:
         raise HTTPException(status_code=404, detail=f"Player '{uuid}' not found")
 
-    # Parallel queries
-    (
-        punishments,
-        appeals,
-        discord_acct,
-        alt_members,
-        anticheat_hist,
-    ) = await asyncio.gather(
-        _query_punishments(db, uuid),
-        _query_appeals(db, uuid),
-        _query_discord(db, uuid),
-        _query_alt_group_members(db, uuid),
-        _query_anticheat(db, uuid),
-    )
+    # AsyncSession is stateful and must not be used concurrently by several tasks.
+    punishments = await _query_punishments(db, uuid)
+    appeals = await _query_appeals(db, uuid)
+    discord_acct = await _query_discord(db, uuid)
+    alt_members = await _query_alt_group_members(db, uuid)
+    anticheat_hist = await _query_anticheat(db, uuid)
 
     # Build punishment → appeal map (first appeal per punishment)
     appeal_map: dict[str, str] = {}
@@ -420,9 +405,6 @@ class PlayerSnapshotRequest(BaseModel):
     protocol_version: int | None = None
     event: str | None = None  # "join" | "quit" | "snapshot"
     action: str | None = None
-
-
-from api.middleware.auth import require_plugin_key
 
 
 @router.post("/{uuid}/snapshot", status_code=200)

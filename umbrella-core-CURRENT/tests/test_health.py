@@ -92,3 +92,37 @@ async def test_health_redis_unreachable(client):
         assert data["status"] == "degraded"
     finally:
         del app.dependency_overrides[get_redis]
+
+
+@pytest.mark.asyncio
+async def test_ready_returns_200_when_dependencies_respond():
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from api.routers.health import ready
+
+    db = SimpleNamespace(execute=AsyncMock(return_value=None))
+    redis = SimpleNamespace(ping=AsyncMock(return_value=True))
+    response = await ready(db, redis)
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_ready_returns_503_when_redis_unreachable():
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from redis.exceptions import RedisError
+    from api.routers.health import ready
+
+    db = SimpleNamespace(execute=AsyncMock(return_value=None))
+    redis = SimpleNamespace(ping=AsyncMock(side_effect=RedisError("offline")))
+    response = await ready(db, redis)
+    assert response.status_code == 503
+    assert b"degraded" in response.body
+
+
+@pytest.mark.asyncio
+async def test_health_default_redis_is_function_scoped(client):
+    """The test client uses an in-memory Redis on this test's event loop."""
+    response = await client.get("/health")
+    assert response.status_code == 200
+    assert response.json()["redis"] == "connected"

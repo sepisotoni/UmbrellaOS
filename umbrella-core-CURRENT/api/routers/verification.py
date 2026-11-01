@@ -137,7 +137,7 @@ async def request_verification(
         select(DiscordAccount).where(
             and_(
                 DiscordAccount.player_uuid == body.player_uuid,
-                DiscordAccount.verified == True,
+                DiscordAccount.verified.is_(True),
             )
         )
     )
@@ -176,7 +176,7 @@ async def request_verification(
         sa_update(VerificationCode)
         .where(
             VerificationCode.player_uuid == body.player_uuid,
-            VerificationCode.used == False,
+            VerificationCode.used.is_(False),
         )
         .values(used=True)
     )
@@ -273,7 +273,7 @@ async def confirm_verification(
         select(DiscordAccount).where(
             and_(
                 DiscordAccount.player_uuid == verification_code.player_uuid,
-                DiscordAccount.verified == True,
+                DiscordAccount.verified.is_(True),
                 DiscordAccount.discord_id != body.discord_id,
             )
         )
@@ -352,7 +352,7 @@ async def verification_status(
         select(DiscordAccount).where(
             and_(
                 DiscordAccount.player_uuid == body.player_uuid,
-                DiscordAccount.verified == True,
+                DiscordAccount.verified.is_(True),
             )
         )
     )
@@ -377,7 +377,7 @@ async def list_pending_verifications(
     result = await db.execute(
         select(VerificationCode).where(
             and_(
-                VerificationCode.used == False,
+                VerificationCode.used.is_(False),
                 VerificationCode.expires_at > datetime.now(timezone.utc),
             )
         )
@@ -613,7 +613,7 @@ async def list_verification_links(
     # stale rows into the "verified links" view.
     result = await db.execute(
         select(DiscordAccount)
-        .where(DiscordAccount.verified == True)
+        .where(DiscordAccount.verified.is_(True))
         .order_by(DiscordAccount.linked_at.desc().nulls_last())
         .offset(offset)
         .limit(limit)
@@ -702,7 +702,7 @@ async def get_verification_count(
 
     total = await db.scalar(
         select(sql_func.count(DiscordAccount.discord_id)).where(
-            DiscordAccount.verified == True
+            DiscordAccount.verified.is_(True)
         )
     )
     return {"count": total or 0}
@@ -745,7 +745,7 @@ async def plugin_verify_code(
         select(DiscordAccount).where(
             and_(
                 DiscordAccount.player_uuid == player_uuid,
-                DiscordAccount.verified == True,
+                DiscordAccount.verified.is_(True),
             )
         )
     )
@@ -763,7 +763,7 @@ async def plugin_verify_code(
         select(VerificationCode).where(
             and_(
                 VerificationCode.code == body.code,
-                VerificationCode.used == False,
+                VerificationCode.used.is_(False),
                 VerificationCode.expires_at > now,
             )
         )

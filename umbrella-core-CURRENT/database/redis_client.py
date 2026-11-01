@@ -6,6 +6,8 @@ settings.redis_url the rest of the app already uses (see main.py's
 rate-limiter wiring and services/rate_limit_service.py).
 """
 
+from typing import AsyncIterator
+
 from redis.asyncio import Redis, from_url
 
 from config.settings import get_settings
@@ -17,7 +19,7 @@ settings = get_settings()
 redis_client: Redis = from_url(settings.redis_url)
 
 
-async def get_redis() -> Redis:
+async def get_redis() -> AsyncIterator[Redis]:
     """
     FastAPI dependency. Yields the shared async Redis client.
 

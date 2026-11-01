@@ -55,7 +55,6 @@ from models.moderation_intelligence import (
     RecommendedAction,
     ReportStatus,
 )
-from services.ai.constitution_service import ConstitutionService
 from services.ai.orchestrator import Orchestrator
 from services.moderation_intelligence.repository import ModerationIntelRepository
 import services.bot_push_service as bot_push_service
@@ -158,8 +157,10 @@ class ModerationIntelligenceService:
         evidence = await ModerationIntelligenceService._gather_evidence(
             db, report.reported_user_id
         )
-        system_prompt = await ConstitutionService.build_system_prompt(
-            db, f"You are analyzing a moderation report. {_RESULT_SCHEMA_INSTRUCTIONS}"
+        # Keep task instructions in the trusted system message; report
+        # reason and chat evidence must remain lower-trust user content.
+        system_instructions = (
+            f"You are analyzing a moderation report. {_RESULT_SCHEMA_INSTRUCTIONS}"
         )
         task_prompt = f"Report reason: {report.reason}\n\nEvidence:\n{evidence}"
 
@@ -169,6 +170,7 @@ class ModerationIntelligenceService:
             task_prompt,
             requested_by=report.reporter_id,
             agreement_fn=_moderation_agreement,
+            system_instructions=system_instructions,
         )
 
         parsed = _safe_parse(result.text)

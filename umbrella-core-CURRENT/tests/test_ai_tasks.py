@@ -220,7 +220,8 @@ async def test_post_ai_tasks_id_approve_updates_status(client: AsyncClient, db_s
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "approved"
-    assert data["reviewed_by"] == "staff123"
+    # Reviewer identity is taken from the authenticated admin key, not the JSON body.
+    assert data["reviewed_by"] == "admin-key"
     assert data["action_taken"] == "Banned for 7 days"
 
 
@@ -252,7 +253,8 @@ async def test_post_ai_tasks_id_deny_updates_status(client: AsyncClient, db_sess
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "denied"
-    assert data["reviewed_by"] == "staff123"
+    # Reviewer identity is taken from the authenticated admin key, not the JSON body.
+    assert data["reviewed_by"] == "admin-key"
 
 
 @pytest.mark.asyncio

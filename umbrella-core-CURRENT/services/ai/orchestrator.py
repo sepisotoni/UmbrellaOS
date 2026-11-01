@@ -63,6 +63,7 @@ class Orchestrator:
         require_dual_review: bool | None = None,
         agreement_threshold: float = 0.55,
         agreement_fn: Callable[[str, str], float] | None = None,
+        system_instructions: str | None = None,
     ) -> OrchestrationResult:
         """
         require_dual_review=None defers to the global
@@ -91,7 +92,11 @@ class Orchestrator:
         )
         compare = agreement_fn or _similarity
 
-        system_prompt = await ConstitutionService.build_system_prompt(db, task_prompt)
+        # Keep trusted task rules separate from evidence/user input. Existing
+        # callers preserve their original behavior when no override is given.
+        system_prompt = await ConstitutionService.build_system_prompt(
+            db, system_instructions if system_instructions is not None else task_prompt
+        )
 
         primary = await ModelRouter.generate(db, task_type, system_prompt, task_prompt)
 

@@ -57,19 +57,31 @@ async def _run_configured_command(db: AsyncSession, setting_key: str) -> dict:
 
     workdir = await SettingsService.get_value(db, "server.control.workdir")
 
-    proc = await asyncio.create_subprocess_exec(
-        *args,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        cwd=workdir or None,
-    )
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=workdir or None,
+        )
+    except OSError as exc:
+        raise ServerControlError(
+            "Configured server-control command could not start", 503
+        ) from exc
+
     try:
         stdout, stderr = await asyncio.wait_for(
             proc.communicate(), timeout=COMMAND_TIMEOUT_SEC
         )
-    except asyncio.TimeoutError:
-        proc.kill()
-        raise ServerControlError("Command timed out", 504) from None
+    except (asyncio.TimeoutError, asyncio.CancelledError) as exc:
+        # Timeout and request cancellation must both terminate and reap
+        # the local process, preventing orphan children/zombie transports.
+        if proc.returncode is None:
+            proc.kill()
+        await proc.wait()
+        if isinstance(exc, asyncio.TimeoutError):
+            raise ServerControlError("Command timed out", 504) from exc
+        raise
 
     return {
         "exit_code": proc.returncode,

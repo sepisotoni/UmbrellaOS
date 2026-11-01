@@ -17,7 +17,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import get_settings, validate_secrets
-from database import get_db, create_tables, AsyncSessionLocal
+from database import create_tables, AsyncSessionLocal
 from services import SettingsService, RolesService
 from services.ai.constitution_service import ConstitutionService
 from api.middleware.errors import register_error_handlers
@@ -36,11 +36,7 @@ from services.operational_intelligence.sampler_loop import run_sampler_loop
 import services.events  # noqa: F401 - registers built-in event subscribers before the dispatcher starts
 from services.events import run_event_dispatcher_loop
 from services.log_aggregation_service import DBLogHandler, run_log_flush_loop
-
-# Root-logger handler that feeds the log-aggregation queue (Phase 9, item
-# 3). Module-level singleton so it's the same instance added/removed
-# across the lifespan handler above.
-_db_log_handler = DBLogHandler()
+import redis.asyncio as _redis_asyncio
 
 # Import routers
 from api.routers.health import router as health_router
@@ -77,6 +73,8 @@ from api.routers.auth import keys_router as auth_keys_router
 from api.routers.bot_registration import router as bot_registration_router
 from api.routers.knowledge import router as knowledge_router
 
+# Module-level singleton, created only after all routers have been imported.
+_db_log_handler = DBLogHandler()
 settings = get_settings()
 # NOTE: validate_secrets() is intentionally NOT called here at module import
 # time. Test modules do `from main import app`, which would trip this check
@@ -120,12 +118,11 @@ async def lifespan(app: FastAPI):
         alembic_command.upgrade(alembic_cfg, "heads")
 
     try:
-        import asyncio
-
         await asyncio.to_thread(_run_migrations)
         print("[Umbrella Core] Alembic migrations applied")
     except Exception as _mig_err:
-        print(f"[Umbrella Core] WARNING: Alembic migration failed: {_mig_err}")
+        print(f"[Umbrella Core] ERROR: Alembic migration failed: {_mig_err}")
+        raise RuntimeError("Required database migrations failed") from _mig_err
 
     # Create tables (safe in dev; in prod, use Alembic migrations instead)
     await create_tables()
@@ -257,8 +254,6 @@ app.add_middleware(
 # the same redis_url the rest of the app already uses; see
 # services/rate_limit_service.py for the fixed-window algorithm and its
 # documented trade-offs.
-import redis.asyncio as _redis_asyncio  # local import: only this module needs it
-
 _rate_limiter = RateLimiter(_redis_asyncio.from_url(settings.redis_url))
 app.add_middleware(
     RateLimitMiddleware,

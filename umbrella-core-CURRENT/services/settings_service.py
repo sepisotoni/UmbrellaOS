@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Optional
 from dotenv import set_key
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
+from sqlalchemy import select
 from models.setting import Setting
 from models.audit_log import AuditLog
 
@@ -681,6 +681,8 @@ class SettingsService:
         actor: str,
         actor_type: str = "staff",
         create_if_missing: bool = False,
+        *,
+        commit: bool = True,
     ) -> Optional[dict]:
         """
         Update a setting value. Writes an audit log entry.
@@ -729,12 +731,19 @@ class SettingsService:
             ),
         )
         db.add(log)
-        await db.commit()
+        # Callers that have additional dependent writes can commit them atomically.
+        # Keep historical immediate-commit semantics by default.
+        await db.flush()
+        if commit:
+            await db.commit()
+            # Only update the separate .env store once the database committed.
+            write_env_value(key, new_value)
+
+        # updated_at uses SQL-side onupdate=func.now(). After a flush SQLAlchemy
+        # expires it and synchronously accessing it during _to_dict raises
+        # MissingGreenlet under AsyncSession. Refresh before serialization,
+        # while still inside the current transaction (even for commit=False).
         await db.refresh(setting)
-
-        # Keep .env in sync so a backend restart doesn't lose this value
-        write_env_value(key, new_value)
-
         return SettingsService._to_dict(setting, unmasked=False)
 
     @staticmethod

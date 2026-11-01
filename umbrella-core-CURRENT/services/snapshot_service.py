@@ -22,8 +22,8 @@ async def create_snapshot(
     health: float | None = None,
     food: int | None = None,
     xp: float | None = None,
-    inventory: dict | None = None,
-    armor: dict | None = None,
+    inventory: dict | list | None = None,
+    armor: dict | list | None = None,
     offhand: dict | None = None,
     x: float | None = None,
     y: float | None = None,
@@ -37,7 +37,7 @@ async def create_snapshot(
 ) -> PlayerSnapshot:
     """
     Create a new player snapshot.
-    inventory, armor, offhand are dicts; store as JSON strings.
+    inventory/armor accept JSON dicts or lists; offhand accepts a dict.
     timestamp defaults to utcnow() if not provided.
     Validates trigger is one of the four allowed values; raise ValueError if not.
     """
@@ -54,9 +54,9 @@ async def create_snapshot(
         health=health,
         food=food,
         xp=xp,
-        inventory_json=json.dumps(inventory) if inventory else None,
-        armor_json=json.dumps(armor) if armor else None,
-        offhand_json=json.dumps(offhand) if offhand else None,
+        inventory_json=json.dumps(inventory) if inventory is not None else None,
+        armor_json=json.dumps(armor) if armor is not None else None,
+        offhand_json=json.dumps(offhand) if offhand is not None else None,
         x=x,
         y=y,
         z=z,

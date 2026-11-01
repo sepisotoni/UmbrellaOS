@@ -22,7 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 
 from config import get_settings
 from database import get_db
@@ -34,6 +34,7 @@ from api.dependencies.permissions import RoleChecker, require_permission
 from services import discord_service
 from services.discord_service import DiscordOAuthError
 from services.settings_service import SettingsService
+from services.api_key_service import ApiKeyService
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -407,8 +408,6 @@ async def discord_callback(
     # token until they supply a valid code. The dashboard must POST to
     # /api/v1/auth/mfa/verify with the pre-session token to complete login.
     # This prevents MFA from being silently bypassed at the OAuth callback step.
-    from services.mfa_service import MFAService
-
     if user.mfa_enabled:
         # Issue a short-lived (5-minute) pre-session token scoped only to MFA
         # verification — it cannot be used for any other authenticated endpoint.
@@ -686,10 +685,6 @@ async def mfa_disable(
 # (Task 7, P14 backend fixes). Dashboard APIHub calls GET/POST/DELETE
 # /api/v1/auth/keys; the actual CRUD lives in ApiKeyService.
 # ---------------------------------------------------------------------------
-
-from models.api_key import ApiKey
-from services.api_key_service import ApiKeyService
-
 
 class ApiKeySchema(BaseModel):
     id: str

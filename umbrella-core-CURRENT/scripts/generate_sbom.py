@@ -25,11 +25,11 @@ import argparse
 import re
 import sys
 from pathlib import Path
+from typing import Any, cast
 
 from cyclonedx.model.bom import Bom
 from cyclonedx.model.component import Component, ComponentType
 from cyclonedx.output.json import JsonV1Dot5
-from cyclonedx.schema import OutputFormat
 
 # Matches `name==version` lines from requirements.txt, ignoring comments,
 # blank lines, and non-pinned/extras-bearing lines (e.g. `-r base.txt`,
@@ -53,10 +53,14 @@ def parse_requirements(path: Path) -> list[tuple[str, str]]:
 
 
 def build_sbom(packages: list[tuple[str, str]]) -> Bom:
-    bom = Bom()
+    # py-serializable's class decorators expose serializer-union return
+    # types to Pyright even though these constructors return the concrete
+    # CycloneDX model classes at runtime.
+    bom = cast(Any, Bom())
+    new_component = cast(Any, Component)
     for name, version in packages:
         bom.components.add(
-            Component(
+            new_component(
                 name=name,
                 version=version,
                 type=ComponentType.LIBRARY,

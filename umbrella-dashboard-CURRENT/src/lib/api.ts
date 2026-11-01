@@ -536,11 +536,12 @@ export class UmbrellaApiClient {
   }
 
   public getServerConsoleWebSocketUrl(serverId: string): string {
-    const wsProtocol = this.baseUrl.startsWith('https') ? 'wss:' : 'ws:';
+    const wsProtocol = this.baseUrl.startsWith('https://') ? 'wss:' : 'ws:';
     const host = this.baseUrl.replace(/^https?:\/\//, '');
-    const tokenParam = this.sessionToken ? `&token=${encodeURIComponent(this.sessionToken)}` : '';
-    const adminParam = this.adminKey ? `&admin_key=${encodeURIComponent(this.adminKey)}` : '';
-    return `${wsProtocol}//${host}/ws/console/${encodeURIComponent(serverId)}?source=dashboard${tokenParam}${adminParam}`;
+    // The Core hosting console authenticates via a session token, not the
+    // long-lived admin key. Never put the admin key into a WebSocket URL.
+    const tokenParam = this.sessionToken ? `?token=${encodeURIComponent(this.sessionToken)}` : '';
+    return `${wsProtocol}//${host}/api/v1/hosting/servers/${encodeURIComponent(serverId)}/console${tokenParam}`;
   }
 
   public async sendServerCommand(serverId: string, command: string): Promise<any> {
@@ -549,6 +550,7 @@ export class UmbrellaApiClient {
       method: 'POST',
       body: JSON.stringify({
         command,
+        server_id: serverId,
         requested_by_discord_id: 'dashboard',
         requested_by_username: 'Dashboard',
       }),
@@ -1197,20 +1199,65 @@ export class UmbrellaApiClient {
   // --------------------------------------------------------------------------
   // Global Broadcast & Shortcuts
   // --------------------------------------------------------------------------
-  public async broadcast(message: string, serverId?: string): Promise<any> {
-    return this.broadcastMessage(message, 'Admin');
+  public async broadcast(
+    message: string,
+    serverId?: string,
+  ): Promise<{ queued_servers: string[]; failed_servers: string[] }> {
+    const trimmed = message.trim();
+    if (!trimmed) throw new ApiError('Broadcast message cannot be empty.', 400);
+
+    // Use vanilla tellraw rather than the chat-bridge persistence endpoint:
+    // CommandPoller is the actual path that reaches a live Minecraft server.
+    // JSON.stringify safely escapes quotes/newlines inside staff-provided text.
+    const command = `tellraw @a ${JSON.stringify({ text: trimmed })}`;
+    if (command.length > 500) {
+      throw new ApiError('Broadcast is too long for the Minecraft command queue.', 400);
+    }
+
+    const targetIds = serverId
+      ? [serverId]
+      : Array.from(new Set((await this.getServers()).map((server) => server.id)));
+
+    if (targetIds.length === 0) {
+      throw new ApiError('No connected Minecraft servers are available.', 503);
+    }
+
+    const results = await Promise.all(
+      targetIds.map(async (id) => {
+        try {
+          await this.sendServerCommand(id, command);
+          return { id, ok: true as const };
+        } catch {
+          return { id, ok: false as const };
+        }
+      }),
+    );
+
+    const queued_servers = results.filter((r) => r.ok).map((r) => r.id);
+    const failed_servers = results.filter((r) => !r.ok).map((r) => r.id);
+    if (queued_servers.length === 0) {
+      throw new ApiError('Broadcast could not be queued on any target server.', 503, {
+        failed_servers,
+      });
+    }
+    return { queued_servers, failed_servers };
   }
 
   public async broadcastMessage(message: string, playerName: string = 'Staff', channelId?: string): Promise<any> {
-    return this.request<any>('/api/v1/bridge/message', {
+    const result = await this.request<any>('/api/v1/bridge/message', {
       method: 'POST',
       body: JSON.stringify({
         source: 'DASHBOARD',
+        scope: 'discord',
         player_name: playerName,
         message,
         ...(channelId ? { channel_id: channelId } : {}),
       }),
     });
+    if (!result?.forwarded || !Array.isArray(result?.targets) || !result.targets.includes('discord')) {
+      throw new ApiError('Discord broadcast was accepted by Core but not delivered to the bot.', 503, result);
+    }
+    return result;
   }
 }
 

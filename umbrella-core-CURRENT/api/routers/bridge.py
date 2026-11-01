@@ -27,7 +27,7 @@ from pydantic import BaseModel
 from datetime import datetime
 
 from database import get_db
-from models import ChatMessage, Setting, PlayerLanguage
+from models import ChatMessage, Setting
 from api.middleware.auth import require_admin_key
 from api.dependencies.permissions import require_permission
 from services.translation_service import translate_message, get_player_language
@@ -116,6 +116,11 @@ async def receive_bridge_message(
             status_code=400,
             detail="Invalid source. Must be 'minecraft', 'discord', or 'DASHBOARD'",
         )
+    if body.scope not in (None, "minecraft", "discord"):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid scope. Must be 'minecraft', 'discord', or omitted",
+        )
 
     if body.source == "minecraft" and not body.player_uuid:
         raise HTTPException(
@@ -146,7 +151,14 @@ async def receive_bridge_message(
     targets: list[str] = []
     translated_message = None
 
-    if bridge_mode == "off":
+    # An explicit dashboard scope is a direct staff dispatch, not an
+    # automatic chat-bridge decision. Discord's dedicated broadcaster uses
+    # this so it works even when the automatic bridge is disabled.
+    if body.source == "DASHBOARD" and body.scope == "discord":
+        forwarded = True
+        targets = ["discord"]
+
+    elif bridge_mode == "off":
         pass
 
     elif bridge_mode == "partial":
@@ -156,7 +168,7 @@ async def receive_bridge_message(
             targets = ["minecraft"]
         elif body.source == "DASHBOARD":
             forwarded = True
-            targets = ["minecraft", "discord"]
+            targets = ["discord"]
 
     elif bridge_mode == "full":
         mc_to_discord_val = await db.scalar(
@@ -191,7 +203,7 @@ async def receive_bridge_message(
 
         elif body.source == "DASHBOARD":
             forwarded = True
-            targets = ["minecraft", "discord"]
+            targets = ["discord"]
 
     await db.commit()
     await db.refresh(chat_message)
@@ -208,7 +220,7 @@ async def receive_bridge_message(
     # ChatMessage row, matching how every other push in this codebase
     # degrades.
     if body.source == "DASHBOARD" and "discord" in targets:
-        await bot_push_service.push_event(
+        delivery_ok = await bot_push_service.push_event(
             "bridge.dashboard_message",
             {
                 "message_id": chat_message.id,
@@ -217,6 +229,12 @@ async def receive_bridge_message(
                 "channel_id": body.channel_id,
             },
         )
+        # push_event returns an explicit False on a real delivery failure.
+        # Preserve compatibility with older/mocked implementations that
+        # returned None by only treating False as a negative acknowledgement.
+        if delivery_ok is False:
+            targets = [target for target in targets if target != "discord"]
+            forwarded = bool(targets)
 
     return BridgeMessageResponse(
         forwarded=forwarded,

@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from database import get_db
 from services import SettingsService
+from services.settings_service import write_env_value
 from services.ai_config_service import sync_task_model_setting
 from api.dependencies.permissions import require_owner, require_permission
 from api.middleware.auth import require_admin_hmac_or_session
@@ -84,7 +85,15 @@ async def create_or_update_setting(
         actor=actor,
         actor_type="staff",
         create_if_missing=True,
+        commit=False,
     )
+    if updated is None:
+        # An upsert must never return an absent setting; avoid persisting
+        # a model configuration with no corresponding setting row.
+        raise HTTPException(status_code=500, detail="Setting upsert returned no result")
+    await sync_task_model_setting(db, key, body.value)
+    await db.commit()
+    write_env_value(key, body.value)
     return updated
 
 
@@ -106,30 +115,15 @@ async def update_setting(
         new_value=body.value,
         actor=actor,
         actor_type="staff",
+        commit=False,
     )
     if updated is None:
         raise HTTPException(status_code=404, detail=f"Setting '{key}' not found")
 
-    # [AI subsystem, 2026-08-31 live copilot fix] If this is an
-    # ai.task.<type>.<slot> key, also upsert the matching ai_model_configs
-    # row so ModelRouter actually uses what was just saved. Before this,
-    # these settings were saved successfully and displayed correctly in the
-    # UI but had ZERO effect on which model the AI subsystem actually called
-    # — ModelRouter only ever reads ai_model_configs, never these keys. See
-    # services/ai_config_service.py::sync_task_model_setting for the full
-    # writeup.
-    #
-    # NOTE: this runs in a SEPARATE transaction from the settings write
-    # above — SettingsService.update() already calls db.commit() internally
-    # before returning, so by the time control reaches here the setting is
-    # already durably saved regardless of what happens next. If this sync
-    # step fails, the setting itself is still correctly saved (matching
-    # what the UI already showed); only the ai_model_configs side would be
-    # out of sync until the operator re-saves or corrects it manually. This
-    # is the safer failure mode of the two — a failed sync silently leaving
-    # the OLD model active is far better than a failed sync somehow rolling
-    # back a settings change the operator was told succeeded.
+    # Save the human-facing setting, its audit row, and the effective
+    # ai_model_configs row in ONE transaction. A failed model sync must not
+    # leave the UI reporting a configuration that the router does not use.
     await sync_task_model_setting(db, key, body.value)
     await db.commit()
-
+    write_env_value(key, body.value)
     return updated

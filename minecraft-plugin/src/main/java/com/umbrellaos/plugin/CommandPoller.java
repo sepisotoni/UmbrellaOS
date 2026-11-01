@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.logging.Level;
 
 /**
- * Periodically polls {@code GET /api/v1/mc/commands/pending}, executes each
+ * Periodically claims via {@code POST /api/v1/mc/commands/claim}, executes each
  * command on the server's main thread (Bukkit command dispatch is not
  * thread-safe), and acknowledges the result via
  * {@code POST /api/v1/mc/commands/{id}/complete}.
@@ -88,14 +88,14 @@ public class CommandPoller {
     }
 
     private void poll() throws Exception {
-        String path = "/api/v1/mc/commands/pending";
+        String path = "/api/v1/mc/commands/claim";
         if (serverId != null) {
             path += "?server_id=" + URLEncoder.encode(serverId, StandardCharsets.UTF_8);
         }
-        HttpResponse<String> response = apiClient.get(path);
+        HttpResponse<String> response = apiClient.post(path, "{}");
         if (response.statusCode() != 200) {
             apiClient.logger().warning(
-                    "Command poll rejected by core: HTTP " + response.statusCode() + " — " + response.body());
+                    "Command claim rejected by core: HTTP " + response.statusCode() + " — " + response.body());
             return;
         }
 
@@ -109,7 +109,7 @@ public class CommandPoller {
     }
 
     /**
-     * Parses a raw {@code GET /api/v1/mc/commands/pending} JSON array body.
+     * Parses a raw {@code POST /api/v1/mc/commands/claim} JSON array body.
      * Package-private, static, and pure (no network, no Bukkit calls)
      * specifically so this parsing logic is unit-testable against fixed JSON
      * fixtures — same pattern as {@link ConfigManager#apply}.
@@ -155,8 +155,10 @@ public class CommandPoller {
         body.put("success", success);
         body.put("output", output);
         try {
-            HttpResponse<String> response = apiClient.post(
-                    "/api/v1/mc/commands/" + commandId + "/complete", body.toString());
+            String path = "/api/v1/mc/commands/" + commandId + "/complete";
+            String effectiveServerId = serverId == null ? "default" : serverId;
+            path += "?server_id=" + URLEncoder.encode(effectiveServerId, StandardCharsets.UTF_8);
+            HttpResponse<String> response = apiClient.post(path, body.toString());
             if (response.statusCode() != 200) {
                 apiClient.logger().warning(
                         "Command completion ack rejected by core: HTTP " + response.statusCode()

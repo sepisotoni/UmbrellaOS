@@ -36,6 +36,31 @@ from registry.spec import CapabilitySpec
 logger = logging.getLogger(__name__)
 
 
+# Never persist credentials supplied through capability arguments. In particular,
+# hosting.template.create accepts an arbitrary default_env dictionary and the
+# registry previously copied its contents verbatim into every audit record.
+_AUDIT_SECRET_KEY_MARKERS = (
+    "password", "passwd", "secret", "token", "api_key", "private_key",
+    "access_key", "authorization", "credential", "cookie",
+)
+
+
+def _redact_audit_params(value: Any) -> Any:
+    """Recursively redact secret-shaped keys while preserving audit context."""
+    if isinstance(value, dict):
+        return {
+            key: (
+                "[REDACTED]"
+                if any(marker in str(key).lower() for marker in _AUDIT_SECRET_KEY_MARKERS)
+                else _redact_audit_params(item)
+            )
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_audit_params(item) for item in value]
+    return value
+
+
 def _resolve_audit_target(params: BaseModel) -> str | None:
     """
     A params model may optionally expose an `audit_target()` method
@@ -44,7 +69,10 @@ def _resolve_audit_target(params: BaseModel) -> str | None:
     natural "target" and simply return None, which is a valid AuditLog.target.
     """
     target_fn = getattr(params, "audit_target", None)
-    return target_fn() if callable(target_fn) else None
+    if not callable(target_fn):
+        return None
+    target = target_fn()
+    return str(target) if target is not None else None
 
 
 class CapabilityNotFoundError(ResourceNotFoundException):
@@ -185,7 +213,7 @@ class CapabilityRegistry:
                     details={
                         "source": ctx.source,
                         "request_id": ctx.request_id,
-                        "params": params.model_dump(mode="json"),
+                        "params": _redact_audit_params(params.model_dump(mode="json")),
                         "outcome": "error",
                     },
                     category=spec.audit_category,
@@ -204,7 +232,7 @@ class CapabilityRegistry:
                 details={
                     "source": ctx.source,
                     "request_id": ctx.request_id,
-                    "params": params.model_dump(mode="json"),
+                    "params": _redact_audit_params(params.model_dump(mode="json")),
                     "outcome": "success",
                 },
                 category=spec.audit_category,

@@ -21,18 +21,21 @@ and the new URL is picked up within 60 s.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import hmac
+import json
 import logging
+import secrets
 import time
-from datetime import datetime, timezone
 
 import httpx
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from urllib.parse import urlparse
 
 from config import get_settings
 from database import AsyncSessionLocal
 from models.bot_registration import BotRegistration
+from services.webhooks.service import WebhookError, _validate_webhook_url
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -57,20 +60,27 @@ async def _get_callback_url() -> str | None:
     return _cached_url
 
 
-def _make_push_headers() -> dict[str, str]:
-    """Derive a PBKDF2-HMAC-SHA256 MAC for authenticating to the bot."""
-    ts = int(time.time())
-    mac = hashlib.pbkdf2_hmac(
-        "sha256",
-        settings.admin_key.encode(),
-        str(ts).encode(),
-        100_000,
-        dklen=32,
-    ).hex()
-    return {"X-Auth-MAC": mac, "X-Auth-Timestamp": str(ts)}
+def _make_push_headers(target: str, body: bytes) -> dict[str, str]:
+    """Create a request-bound v2 MAC for Core -> bot webhook delivery."""
+    timestamp = str(int(time.time()))
+    nonce = secrets.token_hex(16)
+    body_hash = hashlib.sha256(body).hexdigest()
+    canonical = (
+        f"POST\n{target}\n{timestamp}\n{nonce}\n{body_hash}"
+    ).encode("utf-8")
+    mac = hmac.new(
+        settings.admin_key.encode("utf-8"), canonical, hashlib.sha256
+    ).hexdigest()
+    return {
+        "X-Auth-Version": "2",
+        "X-Auth-MAC": mac,
+        "X-Auth-Timestamp": timestamp,
+        "X-Auth-Nonce": nonce,
+        "Content-Type": "application/json",
+    }
 
 
-async def push_event(event: str, payload: dict) -> None:
+async def push_event(event: str, payload: dict) -> bool:
     """
     Fire-and-forget push of an event to the bot's webhook.
 
@@ -78,25 +88,46 @@ async def push_event(event: str, payload: dict) -> None:
     Never raises — failures are logged at WARNING level and the fallback
     poll loop provides eventual delivery.
     """
-    url = await _get_callback_url()
-    if not url:
-        logger.debug("No bot registration found; skipping push for event %s", event)
-        return
-
-    headers = _make_push_headers()
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        # Include registration lookup in the best-effort boundary too: this
+        # function promises never to raise, including transient DB failures.
+        url = await _get_callback_url()
+        if not url:
+            logger.debug("No bot registration found; skipping push for event %s", event)
+            return False
+
+        # Existing DB rows may predate registration validation; never send
+        # a privileged MAC or event payload to a private/internal address.
+        # DNS resolution and PBKDF2 are blocking operations.
+        await asyncio.to_thread(_validate_webhook_url, url)
+        body = json.dumps(
+            {"event": event, "payload": payload},
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+        parsed = urlparse(url)
+        target = parsed.path or "/"
+        if parsed.query:
+            target += "?" + parsed.query
+        headers = _make_push_headers(target, body)
+        async with httpx.AsyncClient(timeout=5.0, follow_redirects=False) as client:
             response = await client.post(
                 url,
-                json={"event": event, "payload": payload},
+                content=body,
                 headers=headers,
             )
         if response.status_code >= 400:
             logger.warning(
                 "Bot push for event %s returned HTTP %s", event, response.status_code
             )
+            return False
+        return True
+    except (WebhookError, ValueError):
+        logger.warning("Bot push blocked: unsafe registered callback for event %s", event)
+        return False
     except Exception:
         logger.warning("Bot push failed for event %s", event, exc_info=True)
+        return False
 
 
 def invalidate_cache() -> None:

@@ -146,7 +146,7 @@ async def test_post_mc_commands_id_complete_marks_completed(
     async with db_session() as db:
         updated_cmd = await db.scalar(select(MCCommand).where(MCCommand.id == cmd.id))
         assert updated_cmd.status == "completed"
-        assert updated_cmd.success == True
+        assert updated_cmd.success is True
         assert updated_cmd.output == "Command executed successfully"
         assert updated_cmd.completed_at is not None
 
@@ -183,7 +183,7 @@ async def test_post_mc_commands_id_complete_marks_failed(
     async with db_session() as db:
         updated_cmd = await db.scalar(select(MCCommand).where(MCCommand.id == cmd.id))
         assert updated_cmd.status == "failed"
-        assert updated_cmd.success == False
+        assert updated_cmd.success is False
 
 
 @pytest.mark.asyncio
@@ -269,8 +269,12 @@ async def test_post_mc_command_creates_audit_log(client: AsyncClient, db_session
         logs = audit_log.scalars().all()
         assert len(logs) > 0
         latest_log = logs[-1]
-        assert "discord:123456789" == latest_log.actor
+        # The actor is the authenticated credential tier, not an untrusted
+        # requested_by_discord_id taken from the JSON body.
+        assert latest_log.actor == "admin-key"
+        assert latest_log.actor_type == "system"
         assert latest_log.details_json
+        assert "claimed_discord_id" in latest_log.details_json
 
 
 @pytest.mark.asyncio
@@ -438,3 +442,39 @@ async def test_get_mc_commands_pending_defaults_to_default_server(
     commands = [c["command"] for c in response.json()]
     assert "say legacy behavior" in commands
     assert "say other server" not in commands
+
+
+@pytest.mark.asyncio
+async def test_plugin_key_cannot_enqueue_mc_commands(client: AsyncClient):
+    """An untrusted server plugin must not gain the bot/admin command tier."""
+    response = await client.post(
+        "/api/v1/mc/command",
+        json={
+            "command": "op unauthorized",
+            "requested_by_discord_id": "spoofed",
+            "requested_by_username": "spoofed",
+            "server_id": "victim-server",
+        },
+        headers={"X-Plugin-Key": "test-secret-key"},
+    )
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_plugin_secret_cannot_impersonate_admin_header(
+    client: AsyncClient, monkeypatch
+):
+    """SECRET_KEY must not be accepted in X-Admin-Key when keys differ."""
+    import api.middleware.auth as auth_module
+
+    monkeypatch.setattr(auth_module.settings, "admin_key", "distinct-admin-secret")
+    response = await client.post(
+        "/api/v1/mc/command",
+        json={
+            "command": "op unauthorized",
+            "requested_by_discord_id": "spoofed",
+            "requested_by_username": "spoofed",
+        },
+        headers={"X-Admin-Key": "test-secret-key"},
+    )
+    assert response.status_code == 401

@@ -6,7 +6,6 @@ import datetime as dt
 
 import pytest
 
-from config import get_settings
 from models.memory import MemoryEntry, MemoryScope
 from services.memory.repository import MemoryRepository
 from services.memory.service import MemoryService
@@ -78,6 +77,7 @@ async def test_server_fact_has_no_expiry(db_session):
         await db.commit()
 
         entry = await MemoryRepository.get(db, MemoryScope.SERVER, "fact:store_url")
+        assert entry is not None
         assert entry.expires_at is None
 
 
@@ -96,6 +96,7 @@ async def test_record_recurring_increments_hit_count_on_repeat(db_session):
         entry = await MemoryRepository.get(
             db, MemoryScope.OPERATIONAL, "recurring:join_issue"
         )
+        assert entry is not None
         assert entry.hit_count == 2
         assert (
             entry.value == "check whitelist status"

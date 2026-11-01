@@ -99,6 +99,8 @@ async def test_draft_postmortem_with_no_crash_history(db_session, monkeypatch):
         exclude_providers=None,
     ):
         assert "No crash has been recorded" in user_prompt
+        assert "what staff should check next" in system_prompt
+        assert "Draft a postmortem" in user_prompt
         return _routed(
             "anthropic", "No incident to report - this server has no recorded crashes."
         )

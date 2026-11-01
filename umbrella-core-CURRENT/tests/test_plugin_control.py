@@ -49,3 +49,24 @@ async def test_plugin_control_rejects_invalid_action(client):
         headers=PLUGIN_HEADERS,
     )
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_plugin_console_history_keeps_legacy_read_access(client):
+    """Plugin credentials may read their existing console API, but not enqueue."""
+    response = await client.get(
+        "/api/v1/plugin/servers/default/console/recent",
+        headers=PLUGIN_HEADERS,
+    )
+    assert response.status_code == 200
+    assert response.json()["server_id"] == "default"
+    assert response.json()["lines"] == []
+
+
+@pytest.mark.asyncio
+async def test_plugin_console_history_rejects_bad_plugin_key(client):
+    response = await client.get(
+        "/api/v1/plugin/servers/default/console/recent",
+        headers={"X-Plugin-Key": "invalid"},
+    )
+    assert response.status_code == 401

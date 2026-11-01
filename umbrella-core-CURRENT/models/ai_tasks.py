@@ -2,7 +2,7 @@
 models/ai_tasks.py — AI moderation task tracking.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from sqlalchemy import DateTime, Float, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column

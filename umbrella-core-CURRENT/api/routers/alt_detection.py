@@ -11,11 +11,12 @@ GET  /api/v1/alts/groups
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select
 from pydantic import BaseModel
 
 from database import get_db
-from models import SuspicionEvent, AltGroup, AltGroupMember, Player
+from models import SuspicionEvent, AltGroup, AltGroupMember, Player, User
+from models.api_key import ApiKey
 from api.middleware.auth import require_admin_key, require_plugin_key
 from api.dependencies.permissions import require_permission
 from services.alt_detection_service import calculate_suspicion, flag_player
@@ -231,7 +232,7 @@ async def get_player_suspicion(
 async def mark_false_positive(
     body: FalsePositiveRequest,
     db: AsyncSession = Depends(get_db),
-    _auth: str = Depends(require_permission("players.manage")),
+    auth = Depends(require_permission("players.manage")),
 ):
     """Mark a suspicion event as false positive."""
     if body.event_id is not None:
@@ -259,7 +260,11 @@ async def mark_false_positive(
 
     event.false_positive = True
     event.reviewed = True
-    event.reviewed_by = body.reviewed_by
+    event.reviewed_by = (
+        f"user:{auth.id}" if isinstance(auth, User)
+        else f"api-key:{auth.id}" if isinstance(auth, ApiKey)
+        else "admin-key"
+    )
 
     # Reduce player suspicion_score by event points
     result = await db.execute(select(Player).where(Player.uuid == event.player_uuid))
@@ -306,7 +311,7 @@ async def list_alt_groups(
     _auth: str = Depends(require_permission("players.view")),
 ) -> list[AltGroupSchema]:
     """List all confirmed alt groups."""
-    result = await db.execute(select(AltGroup).where(AltGroup.confirmed == True))
+    result = await db.execute(select(AltGroup).where(AltGroup.confirmed.is_(True)))
     groups = result.scalars().all()
 
     return [AltGroupSchema.from_orm(g) for g in groups]

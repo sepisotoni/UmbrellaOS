@@ -150,6 +150,16 @@ async def execute_tool_calls(
     results: list[ToolCallResult] = []
     for call in requested:
         tool = call.get("tool")
+        # LLM-generated JSON may contain arrays, objects or null in place
+        # of a tool name. Reject those before dict lookup (unhashable list/
+        # dict values previously raised TypeError outside the safety catch).
+        if not isinstance(tool, str):
+            results.append(
+                ToolCallResult(
+                    tool=str(tool), args=call, result="error: invalid tool name"
+                )
+            )
+            continue
         required_perm = _TOOL_PERMISSIONS.get(tool)
         if required_perm is None:
             results.append(

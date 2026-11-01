@@ -22,30 +22,34 @@ meant for their own server — see models/mc_commands.py's column docstring
 for the bug this fixes ([PLUGIN] subsystem audit).
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime, timezone
 
 from database import get_db
-from models import MCCommand, AuditLog
-from api.middleware.auth import require_admin_hmac_or_session, require_plugin_key
+from models import MCCommand, User
+from models.api_key import ApiKey
+from api.middleware.auth import require_plugin_key
+from api.dependencies.permissions import require_permission
 from api.middleware.audit import create_audit_log, AuditAction
-from uuid import uuid4
 
 router = APIRouter(prefix="/api/v1/mc", tags=["mc-commands"])
 
 
 class MCCommandRequest(BaseModel):
-    command: str
-    requested_by_discord_id: str
-    requested_by_username: str
+    # Keep API validation aligned with the database column widths. Reject
+    # invalid requests here instead of surfacing database truncation errors
+    # as HTTP 500 responses.
+    command: str = Field(min_length=1, max_length=512)
+    requested_by_discord_id: str = Field(min_length=1, max_length=64)
+    requested_by_username: str = Field(min_length=1, max_length=64)
     # FIX ([PLUGIN] audit): default "default" preserves existing behavior
     # for callers that don't specify one (single-server deployments,
     # anything not yet updated) — see models/mc_commands.py for the full
     # fleet-routing rationale.
-    server_id: str = "default"
+    server_id: str = Field(default="default", min_length=1, max_length=64)
 
 
 class MCCommandResponse(BaseModel):
@@ -62,7 +66,9 @@ class MCCommandResponse(BaseModel):
 
 
 class MCCommandCompleteRequest(BaseModel):
-    output: str
+    # Bound plugin-controlled output so a single completion cannot exhaust
+    # request memory or inflate the audit log/database row without limit.
+    output: str = Field(max_length=16_384)
     success: bool
 
 
@@ -70,14 +76,15 @@ class MCCommandCompleteRequest(BaseModel):
 async def create_mc_command(
     body: MCCommandRequest,
     db: AsyncSession = Depends(get_db),
-    _auth: str = Depends(require_admin_hmac_or_session),
+    auth: User | str | ApiKey = Depends(require_permission("server.control")),
 ) -> MCCommandResponse:
     """
     Queue a Minecraft command for execution.
 
-    Auth: require_admin_hmac_or_session — the Discord bot (PBKDF2 MAC),
-    raw X-Admin-Key (dashboard/admin tools), or a session token may enqueue
-    commands. The plugin itself uses X-Plugin-Key only for the poll/ack pair.
+    Auth: requires the explicit server.control permission for dashboard
+    sessions/API keys. The Discord bot HMAC and raw X-Admin-Key bootstrap tier
+    remain trusted system credentials. X-Plugin-Key is restricted to the
+    poll/claim/ack side and cannot enqueue commands.
     """
     if not body.command or not body.command.strip():
         raise HTTPException(status_code=400, detail="Command cannot be empty")
@@ -94,17 +101,34 @@ async def create_mc_command(
     db.add(mc_command)
     await db.flush()
 
-    # Create audit log entry
+    # Attribution must reflect authenticated credentials, not a client-
+    # supplied Discord ID. The latter is only an unverified delegation hint.
+    # Never interpolate a raw admin-key credential into an audit record.
+    if isinstance(auth, User):
+        actor = auth.username
+        actor_type = "staff"
+    elif isinstance(auth, ApiKey):
+        actor = f"apikey:{auth.id}"
+        actor_type = "system"
+    elif auth == "hmac":
+        actor = "bot:hmac"
+        actor_type = "bot"
+    else:
+        # require_permission only returns another string for the raw
+        # admin-key bootstrap tier; never persist the key itself.
+        actor = "admin-key"
+        actor_type = "system"
     await create_audit_log(
         db=db,
         action=AuditAction.MC_COMMAND_REQUESTED,
-        actor=f"discord:{body.requested_by_discord_id}",
-        actor_type="bot",
+        actor=actor,
+        actor_type=actor_type,
         target=str(mc_command.id),
         details={
             "command": body.command,
             "server_id": body.server_id,
             "requested_by": body.requested_by_username,
+            "claimed_discord_id": body.requested_by_discord_id,
         },
     )
 
@@ -152,10 +176,56 @@ async def get_pending_mc_commands(
     return [MCCommandResponse.model_validate(cmd) for cmd in commands]
 
 
+@router.post("/commands/claim", response_model=list[MCCommandResponse])
+async def claim_pending_mc_commands(
+    server_id: str = "default",
+    limit: int = Query(25, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    _auth: str = Depends(require_plugin_key),
+) -> list[MCCommandResponse]:
+    """Atomically claim queued commands for one Minecraft server.
+
+    This is the production poll path for current plugins. Rows move from
+    pending to dispatched before Core returns them, so a lost completion
+    acknowledgement cannot cause the next poll to execute the same arbitrary
+    console command again. The legacy read-only GET endpoint remains for
+    compatibility with older plugin versions.
+
+    A dispatched-but-unacknowledged row is intentionally not automatically
+    requeued: generic Bukkit console commands are not idempotent, so blindly
+    retrying a possibly-executed destructive command is less safe than
+    surfacing it as incomplete for operator review.
+    """
+    result = await db.execute(
+        select(MCCommand)
+        .where(
+            MCCommand.status == "pending",
+            MCCommand.server_id == server_id,
+        )
+        .order_by(MCCommand.id)
+        .limit(limit)
+        .with_for_update(skip_locked=True)
+    )
+    commands = list(result.scalars().all())
+    for command in commands:
+        command.status = "dispatched"
+
+    # Persist the claim before the response leaves Core. If the network drops
+    # afterward, the command remains dispatched rather than being executed a
+    # second time on the next poll.
+    await db.commit()
+    return [MCCommandResponse.model_validate(cmd) for cmd in commands]
+
 @router.post("/commands/{command_id}/complete")
 async def complete_mc_command(
     command_id: int,
     body: MCCommandCompleteRequest,
+    server_id: str = Query(
+        ...,
+        min_length=1,
+        max_length=64,
+        description="Server ID that claimed this command",
+    ),
     db: AsyncSession = Depends(get_db),
     _auth: str = Depends(require_plugin_key),
 ):
@@ -167,16 +237,20 @@ async def complete_mc_command(
     Auth: X-Plugin-Key — see get_pending_mc_commands docstring above for
     why this changed from require_admin_key (Phase 13 Step 2).
     """
-    result = await db.execute(select(MCCommand).where(MCCommand.id == command_id))
+    query = select(MCCommand).where(
+        MCCommand.id == command_id,
+        MCCommand.server_id == server_id,
+    )
+    result = await db.execute(query)
     mc_command = result.scalar_one_or_none()
 
     if not mc_command:
-        raise HTTPException(status_code=404, detail="MC command not found")
+        raise HTTPException(status_code=404, detail="MC command not found for this server")
 
-    if mc_command.status != "pending":
+    if mc_command.status not in {"pending", "dispatched"}:
         raise HTTPException(
             status_code=400,
-            detail=f"Command already has status: {mc_command.status}",
+            detail=f"Command already has terminal status: {mc_command.status}",
         )
 
     # Update command status
@@ -196,6 +270,7 @@ async def complete_mc_command(
             "command": mc_command.command,
             "success": body.success,
             "output": body.output,
+            "server_id": mc_command.server_id,
         },
     )
 

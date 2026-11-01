@@ -40,6 +40,7 @@ os.environ.setdefault("ADMIN_KEY", "test-secret-key-not-the-insecure-default")
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.pool import StaticPool
 
@@ -132,6 +133,18 @@ async def db_session():
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
+    # aiosqlite on Python 3.11 uses legacy transaction control: SAVEPOINT
+    # alone may not start a physical BEGIN, so releasing it can persist
+    # writes even if the outer SQLAlchemy transaction later rolls back.
+    # Explicit BEGIN makes the AI config atomicity tests meaningful.
+    @event.listens_for(engine.sync_engine, "connect")
+    def _configure_sqlite_connection(dbapi_connection, connection_record):
+        dbapi_connection.isolation_level = None
+
+    @event.listens_for(engine.sync_engine, "begin")
+    def _explicit_sqlite_begin(connection):
+        connection.exec_driver_sql("BEGIN")
+
     session_factory = async_sessionmaker(
         bind=engine,
         class_=AsyncSession,
@@ -243,15 +256,29 @@ async def client(db_session, monkeypatch):
                 await session.close()
 
     from main import app
+    from database import get_redis
+    import fakeredis.aioredis
+
+    # Redis clients keep loop-bound asyncio streams internally. A module-level
+    # client reused by pytest-asyncio's per-function loops fails later with
+    # "Future attached to a different loop" / "Event loop is closed".
+    # Test requests receive a fresh in-memory Redis isolated to this fixture.
+    fake_redis = fakeredis.aioredis.FakeRedis()
+
+    async def override_get_redis():
+        yield fake_redis
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_redis] = override_get_redis
 
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as ac:
-        yield ac
-
-    app.dependency_overrides.clear()
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as ac:
+            yield ac
+    finally:
+        app.dependency_overrides.clear()
+        await fake_redis.aclose()
 
 
 # Shorthand headers for convenience

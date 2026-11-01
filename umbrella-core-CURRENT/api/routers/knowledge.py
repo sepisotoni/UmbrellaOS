@@ -1,8 +1,9 @@
 """
 api/routers/knowledge.py — Knowledge base CRUD + search + pending review.
 
-All endpoints require require_admin_hmac_or_session (admin key, HMAC, or
-session token). The dashboard calls these directly; the bot uses the
+Endpoints use fine-grained knowledge permissions. Admin-key and bot HMAC
+remain system tiers; dashboard sessions are authorized by their actual role
+permissions instead of being redundantly restricted to admin/owner. The bot uses the
 search_knowledge() method on UmbrellaCoreClient for the /knowledge_search
 slash command.
 
@@ -31,12 +32,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
 from models import User
+from models.api_key import ApiKey
 from models.audit_log import AuditLog
 from models.knowledge import KnowledgeEntry, KnowledgeReviewStatus
 from services.knowledge.repository import KnowledgeRepository
 from services.knowledge.service import KnowledgeService
 from api.dependencies.permissions import require_permission
-from api.middleware.auth import require_admin_hmac_or_session
 
 router = APIRouter(prefix="/api/v1/knowledge", tags=["knowledge"])
 
@@ -83,12 +84,28 @@ class KnowledgeUpdateRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def _actor_id(auth: User | str) -> str:
-    return str(auth.id) if isinstance(auth, User) else "admin"
+def _actor_id(auth: User | str | ApiKey) -> str:
+    if isinstance(auth, User):
+        return str(auth.id)
+    if isinstance(auth, ApiKey):
+        return f"apikey:{auth.id}"
+    return "bot:hmac" if auth == "hmac" else "admin"
 
 
-def _actor_name(auth: User | str) -> str:
-    return auth.username if isinstance(auth, User) else "admin"
+def _actor_name(auth: User | str | ApiKey) -> str:
+    if isinstance(auth, User):
+        return auth.username
+    if isinstance(auth, ApiKey):
+        return f"API key: {auth.name}"
+    return "Discord bot" if auth == "hmac" else "admin"
+
+
+def _actor_type(auth: User | str | ApiKey) -> str:
+    if isinstance(auth, User):
+        return "staff"
+    if isinstance(auth, ApiKey):
+        return "system"
+    return "bot" if auth == "hmac" else "system"
 
 
 async def _get_or_404(db: AsyncSession, entry_id: str) -> KnowledgeEntry:
@@ -136,8 +153,7 @@ async def list_knowledge(
     status: str | None = Query(
         default=None, description="approved | pending | rejected"
     ),
-    auth: User | str = Depends(require_admin_hmac_or_session),
-    _perm=Depends(require_permission("knowledge.entry.search")),
+    auth: User | str | ApiKey = Depends(require_permission("knowledge.entry.search")),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """
@@ -185,8 +201,7 @@ async def list_knowledge(
 @router.post("", response_model=KnowledgeEntrySchema, status_code=201)
 async def create_knowledge(
     body: KnowledgeCreateRequest,
-    auth: User | str = Depends(require_admin_hmac_or_session),
-    _perm=Depends(require_permission("knowledge.entry.manage")),
+    auth: User | str | ApiKey = Depends(require_permission("knowledge.entry.manage")),
     db: AsyncSession = Depends(get_db),
 ) -> KnowledgeEntrySchema:
     """
@@ -225,7 +240,7 @@ async def create_knowledge(
     await _audit(
         db,
         actor=_actor_name(auth),
-        actor_type="staff" if isinstance(auth, User) else "admin",
+        actor_type=_actor_type(auth),
         action="knowledge.create",
         target=entry.id,
         details={"channel_name": category, "content_length": len(full_content)},
@@ -237,8 +252,7 @@ async def create_knowledge(
 
 @router.get("/pending", response_model=dict)
 async def list_pending(
-    auth: User | str = Depends(require_admin_hmac_or_session),
-    _perm=Depends(require_permission("knowledge.correction.review")),
+    auth: User | str | ApiKey = Depends(require_permission("knowledge.correction.review")),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """List all PENDING entries (corrections awaiting review)."""
@@ -249,8 +263,7 @@ async def list_pending(
 @router.get("/{entry_id}", response_model=dict)
 async def get_knowledge_entry(
     entry_id: str,
-    auth: User | str = Depends(require_admin_hmac_or_session),
-    _perm=Depends(require_permission("knowledge.entry.search")),
+    auth: User | str | ApiKey = Depends(require_permission("knowledge.entry.search")),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Return a single entry by ID plus its full version history."""
@@ -266,8 +279,7 @@ async def get_knowledge_entry(
 async def update_knowledge_entry(
     entry_id: str,
     body: KnowledgeUpdateRequest,
-    auth: User | str = Depends(require_admin_hmac_or_session),
-    _perm=Depends(require_permission("knowledge.entry.manage")),
+    auth: User | str | ApiKey = Depends(require_permission("knowledge.entry.manage")),
     db: AsyncSession = Depends(get_db),
 ) -> KnowledgeEntrySchema:
     """Update entry content. Snapshots the prior content as a version first.
@@ -285,7 +297,7 @@ async def update_knowledge_entry(
         await _audit(
             db,
             actor=_actor_name(auth),
-            actor_type="staff" if isinstance(auth, User) else "admin",
+            actor_type=_actor_type(auth),
             action="knowledge.update",
             target=entry_id,
         )
@@ -297,8 +309,7 @@ async def update_knowledge_entry(
 @router.delete("/{entry_id}", response_model=dict)
 async def delete_knowledge_entry(
     entry_id: str,
-    auth: User | str = Depends(require_admin_hmac_or_session),
-    _perm=Depends(require_permission("knowledge.entry.manage")),
+    auth: User | str | ApiKey = Depends(require_permission("knowledge.entry.manage")),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Hard-delete a knowledge entry.
@@ -311,7 +322,7 @@ async def delete_knowledge_entry(
     await _audit(
         db,
         actor=_actor_name(auth),
-        actor_type="staff" if isinstance(auth, User) else "admin",
+        actor_type=_actor_type(auth),
         action="knowledge.delete",
         target=entry_id,
         details={"channel_name": entry.channel_name},
@@ -325,8 +336,7 @@ async def delete_knowledge_entry(
 @router.post("/{entry_id}/approve", response_model=KnowledgeEntrySchema)
 async def approve_knowledge_entry(
     entry_id: str,
-    auth: User | str = Depends(require_admin_hmac_or_session),
-    _perm=Depends(require_permission("knowledge.correction.review")),
+    auth: User | str | ApiKey = Depends(require_permission("knowledge.correction.review")),
     db: AsyncSession = Depends(get_db),
 ) -> KnowledgeEntrySchema:
     """Approve a pending correction.
@@ -354,7 +364,7 @@ async def approve_knowledge_entry(
     await _audit(
         db,
         actor=_actor_name(auth),
-        actor_type="staff" if isinstance(auth, User) else "admin",
+        actor_type=_actor_type(auth),
         action="knowledge.approve",
         target=entry_id,
     )
@@ -366,8 +376,7 @@ async def approve_knowledge_entry(
 @router.post("/{entry_id}/reject", response_model=KnowledgeEntrySchema)
 async def reject_knowledge_entry(
     entry_id: str,
-    auth: User | str = Depends(require_admin_hmac_or_session),
-    _perm=Depends(require_permission("knowledge.correction.review")),
+    auth: User | str | ApiKey = Depends(require_permission("knowledge.correction.review")),
     db: AsyncSession = Depends(get_db),
 ) -> KnowledgeEntrySchema:
     """Reject a pending correction.
@@ -395,7 +404,7 @@ async def reject_knowledge_entry(
     await _audit(
         db,
         actor=_actor_name(auth),
-        actor_type="staff" if isinstance(auth, User) else "admin",
+        actor_type=_actor_type(auth),
         action="knowledge.reject",
         target=entry_id,
     )

@@ -12,7 +12,6 @@ from sqlalchemy import (
     BigInteger,
     DateTime,
     Date,
-    Index,
     String,
     Text,
     func,

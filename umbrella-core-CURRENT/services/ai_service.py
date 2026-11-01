@@ -21,7 +21,6 @@ On any AI failure: raise AIServiceError (caller returns 503) — never fabricate
 a result.
 """
 
-import asyncio
 import json
 from collections import defaultdict, Counter
 from datetime import datetime, timedelta, timezone
@@ -40,13 +39,10 @@ from models import (
 from services.ai.orchestrator import Orchestrator
 from services.ai.model_router import NoAvailableModelError
 
-# AnticheatViolation is provided by Backend A.
-try:
-    from models.anticheat_violation import AnticheatViolation
+# AnticheatViolation is a required Core model (migration 009+).
+from models.anticheat_violation import AnticheatViolation
 
-    _HAS_ANTICHEAT = True
-except ImportError:
-    _HAS_ANTICHEAT = False
+_HAS_ANTICHEAT = True
 
 
 class AIServiceError(Exception):
@@ -112,18 +108,15 @@ async def _orchestrate(
 
     Raises AIServiceError on orchestrator failure or non-JSON response.
     """
-    # The constitution's system prompt wraps the task prompt automatically
-    # inside Orchestrator.run() via ConstitutionService.build_system_prompt().
-    # For review tasks we supply a structured JSON-enforcing prompt as the
-    # task prompt so the constitution appears before it in the final system
-    # prompt (tier ordering: PLATFORM_SAFETY < CORE_PLATFORM < TASK).
-    combined_prompt = f"{system_prompt}\n\n{user_content}"
-
+    # Preserve the trust boundary: staff-authored instructions stay in the
+    # constitutional system message; player chat/appeal/anticheat evidence
+    # must remain user-level content and cannot override that message.
     try:
         result = await Orchestrator.run(
             db=db,
             task_type=task_type,
-            task_prompt=combined_prompt,
+            task_prompt=user_content,
+            system_instructions=system_prompt,
             requested_by=requested_by,
             require_dual_review=False,  # review tasks are staff-confirmed; no need for dual review
         )
@@ -211,11 +204,9 @@ async def review_flagged_player(
         )
         return list(result.scalars().all())
 
-    punishments, suspicion_events, violations = await asyncio.gather(
-        _fetch_punishments(),
-        _fetch_suspicion(),
-        _fetch_anticheat(),
-    )
+    punishments = await _fetch_punishments()
+    suspicion_events = await _fetch_suspicion()
+    violations = await _fetch_anticheat()
 
     # Build punishment breakdown
     ptype_counts = Counter(p.type for p in punishments)
@@ -246,6 +237,17 @@ async def review_flagged_player(
 
     anticheat_section = _build_anticheat_summary(violations)
 
+    # Previously fetched then discarded: include staff-reviewed false positives
+    # so the risk assessor can distinguish cleared triggers from active ones.
+    suspicion_section = (
+        "\n".join(
+            f"  {_fmt_dt(evt.created_at)}: {evt.trigger} (+{evt.points} points, "
+            f"false_positive={bool(evt.false_positive)}, reviewed={bool(evt.reviewed)})"
+            for evt in suspicion_events
+        )
+        or "  none"
+    )
+
     context_str = f"""PLAYER REVIEW CONTEXT
 =====================
 Player: {player.username} ({player.uuid})
@@ -261,6 +263,9 @@ GrimAC History (last 30 days):
 
 Punishment History:
 - {len(punishments)} total | {punishment_breakdown}
+
+Suspicion Events (latest {len(suspicion_events)}):
+{suspicion_section}
 """
 
     system_prompt = (
@@ -295,6 +300,16 @@ Punishment History:
         },
         "anticheat_flags_30d": len(violations),
         "punishment_count": len(punishments),
+        "suspicion_events": [
+            {
+                "id": event.id,
+                "trigger": event.trigger,
+                "points": event.points,
+                "false_positive": bool(event.false_positive),
+                "reviewed": bool(event.reviewed),
+            }
+            for event in suspicion_events
+        ],
         "ai_result": ai_result,
     }
 
@@ -388,12 +403,10 @@ async def _do_appeal_review(appeal: Appeal, db: AsyncSession) -> AITask:
         )
         return list(result.scalars().all())
 
-    punishment, player, all_punishments, prev_appeals = await asyncio.gather(
-        _fetch_punishment(),
-        _fetch_player(),
-        _fetch_all_punishments(),
-        _fetch_previous_appeals(),
-    )
+    punishment = await _fetch_punishment()
+    player = await _fetch_player()
+    all_punishments = await _fetch_all_punishments()
+    prev_appeals = await _fetch_previous_appeals()
 
     # GrimAC ±72hr window around punishment issued date
     anticheat_section = "No GrimAC flags in this window."

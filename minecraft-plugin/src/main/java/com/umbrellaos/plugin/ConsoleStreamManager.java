@@ -16,6 +16,7 @@ import java.util.logging.Formatter;
 import java.util.logging.Handler;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.SimpleFormatter;
 
 /**
@@ -33,6 +34,8 @@ public class ConsoleStreamManager {
     private Handler logHandler;
     /** The repeating task scheduled by startPushing(), cancelled in stopPushing(). */
     private volatile BukkitTask pushTask;
+    /** Prevent overlapping async deliveries from sending the same batch. */
+    private final AtomicBoolean pushInFlight = new AtomicBoolean(false);
     /** Total lines ever appended — used for delta tracking so we only push new lines. */
     private long totalAppended = 0;
     /** Total lines that have been pushed to core — only send lines after this index. */
@@ -170,44 +173,66 @@ public class ConsoleStreamManager {
      * {@code maxLines}. Advances {@code totalPushed} so subsequent calls don't
      * resend already-sent lines.
      */
-    /** Package-private for testing. Production callers use startPushing(). */
+    private record PendingBatch(List<String> lines, long nextCursor) {}
+
+    /** Called only while holding lock. No delivery cursor is changed here. */
+    private PendingBatch pendingBatchLocked(int maxLines) {
+        if (maxLines <= 0 || totalAppended <= totalPushed) {
+            return new PendingBatch(Collections.emptyList(), totalPushed);
+        }
+        long oldestRetainedIndex = totalAppended - buffer.size();
+        long firstUnsentIndex = Math.max(totalPushed, oldestRetainedIndex);
+        int fromIndex = (int) (firstUnsentIndex - oldestRetainedIndex);
+        int take = Math.min(maxLines, buffer.size() - fromIndex);
+        if (take == 0) {
+            return new PendingBatch(Collections.emptyList(), firstUnsentIndex);
+        }
+        List<String> all = new ArrayList<>(buffer);
+        List<String> lines = new ArrayList<>(all.subList(fromIndex, fromIndex + take));
+        return new PendingBatch(lines, firstUnsentIndex + take);
+    }
+
+    /** Package-private legacy destructive drain, retained for local consumers. */
     List<String> drainNewLines(int maxLines) {
         synchronized (lock) {
-            long newCount = totalAppended - totalPushed;
-            if (newCount <= 0) return Collections.emptyList();
-            int take = (int) Math.min(newCount, maxLines);
-            // Lines are in the buffer oldest-first; we want the newest `take` that haven't been sent.
-            // totalPushed tracks how many have been sent; buffer may have evicted oldest under capacity.
-            List<String> all = new ArrayList<>(buffer);
-            int fromIndex = Math.max(0, all.size() - take);
-            List<String> result = new ArrayList<>(all.subList(fromIndex, all.size()));
-            totalPushed += result.size();
-            return result;
+            PendingBatch batch = pendingBatchLocked(maxLines);
+            totalPushed = batch.nextCursor();
+            return batch.lines();
         }
     }
 
     public void startPushing(JavaPlugin plugin, CoreApiClient client, String serverId, long intervalTicks) {
         if (pushTask != null) return; // already started
         pushTask = plugin.getServer().getScheduler().runTaskTimerAsynchronously(plugin, () -> {
-            // Only send lines we haven't sent yet (delta tracking).
-            List<String> lines = drainNewLines(50);
-            if (lines.isEmpty()) return;
-
-            // Build JSON array using JSONArray so all control chars are
-            // correctly escaped (DESIGN-3 fix — org.json is already shaded in).
-            JSONArray arr = new JSONArray(lines);
-            String body = "{\"lines\": " + arr.toString() + "}";
-
+            if (!pushInFlight.compareAndSet(false, true)) return;
             try {
-                HttpResponse<String> resp = client.post(
-                        "/api/v1/plugin/servers/" + serverId + "/console/lines", body);
-                if (resp.statusCode() != 200) {
-                    client.logger().warning("[ConsoleStreamManager] Push returned HTTP "
-                            + resp.statusCode() + " — " + resp.body());
+                PendingBatch batch;
+                synchronized (lock) {
+                    batch = pendingBatchLocked(50);
                 }
-            } catch (IOException | InterruptedException e) {
-                if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-                client.logger().warning("[ConsoleStreamManager] Push failed: " + e.getMessage());
+                if (batch.lines().isEmpty()) return;
+
+                // Peek without advancing totalPushed: a failed HTTP attempt
+                // must be retried instead of silently dropping console output.
+                JSONArray arr = new JSONArray(batch.lines());
+                String body = "{\"lines\": " + arr.toString() + "}";
+                try {
+                    HttpResponse<String> resp = client.post(
+                            "/api/v1/plugin/servers/" + serverId + "/console/lines", body);
+                    if (resp.statusCode() == 200) {
+                        synchronized (lock) {
+                            totalPushed = Math.max(totalPushed, batch.nextCursor());
+                        }
+                    } else {
+                        client.logger().warning("[ConsoleStreamManager] Push returned HTTP "
+                                + resp.statusCode() + " — " + resp.body());
+                    }
+                } catch (IOException | InterruptedException e) {
+                    if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+                    client.logger().warning("[ConsoleStreamManager] Push failed: " + e.getMessage());
+                }
+            } finally {
+                pushInFlight.set(false);
             }
         }, intervalTicks, intervalTicks);
     }

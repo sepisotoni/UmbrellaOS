@@ -8,6 +8,7 @@ before this fix. First tests this endpoint has ever had.
 """
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.conftest import ADMIN_HEADERS, PLUGIN_HEADERS
 
@@ -91,3 +92,104 @@ async def test_invalid_action_rejected(client):
         headers=ADMIN_HEADERS,
     )
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_configured_process_timeout_is_reaped(monkeypatch):
+    """Timeout must terminate AND wait for the child rather than orphan it."""
+    import asyncio
+    from unittest.mock import AsyncMock
+    import services.server_control_service as ctrl
+
+    async def lookup(db, key):
+        return "fake-command" if key.endswith("_cmd") else None
+
+    class Process:
+        returncode = None
+        kill_called = False
+        wait_called = False
+
+        async def communicate(self):
+            await asyncio.sleep(2.0)
+
+        def kill(self):
+            self.kill_called = True
+            self.returncode = -9
+
+        async def wait(self):
+            self.wait_called = True
+            return -9
+
+    proc = Process()
+    monkeypatch.setattr(ctrl.SettingsService, "get_value", lookup)
+    monkeypatch.setattr(ctrl, "COMMAND_TIMEOUT_SEC", 0.001)
+    monkeypatch.setattr(
+        ctrl.asyncio, "create_subprocess_exec", AsyncMock(return_value=proc)
+    )
+
+    with pytest.raises(ctrl.ServerControlError) as raised:
+        await ctrl._run_configured_command(AsyncMock(spec=AsyncSession), "server.control.restart_cmd")
+    assert raised.value.status_code == 504
+    assert proc.kill_called
+    assert proc.wait_called
+
+
+@pytest.mark.asyncio
+async def test_configured_process_is_reaped_on_request_cancellation(monkeypatch):
+    import asyncio
+    from unittest.mock import AsyncMock
+    import services.server_control_service as ctrl
+
+    entered = asyncio.Event()
+
+    async def lookup(db, key):
+        return "fake-command" if key.endswith("_cmd") else None
+
+    class Process:
+        returncode = None
+        kill_called = False
+        wait_called = False
+
+        async def communicate(self):
+            entered.set()
+            await asyncio.Event().wait()
+
+        def kill(self):
+            self.kill_called = True
+            self.returncode = -9
+
+        async def wait(self):
+            self.wait_called = True
+
+    proc = Process()
+    monkeypatch.setattr(ctrl.SettingsService, "get_value", lookup)
+    monkeypatch.setattr(
+        ctrl.asyncio, "create_subprocess_exec", AsyncMock(return_value=proc)
+    )
+    task = asyncio.create_task(
+        ctrl._run_configured_command(AsyncMock(spec=AsyncSession), "server.control.restart_cmd")
+    )
+    await asyncio.wait_for(entered.wait(), timeout=2.0)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert proc.kill_called
+    assert proc.wait_called
+
+
+@pytest.mark.asyncio
+async def test_missing_configured_command_returns_control_error(monkeypatch):
+    from unittest.mock import AsyncMock
+    import services.server_control_service as ctrl
+
+    async def lookup(db, key):
+        return "nonexistent-command" if key.endswith("_cmd") else None
+
+    monkeypatch.setattr(ctrl.SettingsService, "get_value", lookup)
+    monkeypatch.setattr(
+        ctrl.asyncio, "create_subprocess_exec",
+        AsyncMock(side_effect=FileNotFoundError("not found")),
+    )
+    with pytest.raises(ctrl.ServerControlError) as raised:
+        await ctrl._run_configured_command(AsyncMock(spec=AsyncSession), "server.control.restart_cmd")
+    assert raised.value.status_code == 503

@@ -4,7 +4,6 @@ api/routers/ai_config.py — AI Configuration API endpoints.
 Handles AI-powered configuration requests and approvals.
 """
 
-import json
 import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession

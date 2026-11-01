@@ -6,7 +6,7 @@ GET  /api/v1/translation/language/{uuid}  — Get player language preference
 POST /api/v1/translation/translate       — Translate a message
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel

@@ -174,7 +174,67 @@ No application code changed.
 **No application code modified.**
 
 
-## Systematic remediation tracker (2026-11-01)
+## Continuous Core audit checkpoint — 2026-11-01 (PR #7 review follow-up)
+
+**Reference state:** PR #7 head `a4236fa4`; change branch `audit/phase1-pr7-regressions-20261101`. See [CORE_AUDIT_COVERAGE.md](CORE_AUDIT_COVERAGE.md) for the full file-level checklist. **This is a partial repair pass, not a production-readiness sign-off.**
+
+**Coverage:** 413/413 Core tracked files inventoried; all 390 Python files were fetched and subjected to an initial static/metadata pass (224 non-migration/non-test support and app modules, 57 migration Python files including one `__init__.py`, 108 `tests/` Python files, and standalone `test_phase4.py`). Source scans looked for risky concurrency/exec/unfinished markers; migrations checked revision declarations and tests enumerated declarations. This is **not** equivalent to manual end-to-end review of every file. Remaining 23 non-Python files were inventoried but not fully audited.
+
+### Confirmed defects addressed on the follow-up branch (pending runtime validation)
+
+| Key | Severity | Evidence / root cause | Fix on branch | Status |
+| --- | --- | --- | --- | --- |
+| UOS-PR7-001 | High | PR #7 `api/routers/alt_detection.py:mark_false_positive` declares `_auth` but uses undefined `auth`; requests with an existing event raise `NameError` | Bind the actual permission-check principal; add non-skipping API regression test checking persisted reviewer and spoofed client value | Source fix committed; tests not run |
+| UOS-PR7-002 | Medium | PR #7 attributes AI review actions to `User.username` although `users.username` is not unique/immutable | Persist `user:<UUID>` for authenticated User, retain `api-key:<id>` and `admin-key` sentinels; fix stale tests that expected body-supplied reviewer | Source fix committed; tests not run |
+| UOS-PR7-003 | High | `ConsoleView.tsx` sends JSON text frames and assumes text responses; Core console proxy calls `receive_bytes()` and `send_bytes()` | Send binary encoded command lines and decode received binary frames | Source fix committed; browser/daemon test not run |
+| UOS-002 | High | Console proxy only checks `hosting.server.view` then permits console input, allowing view-only users to send daemon commands | Permit console input only with already-seeded `hosting.server.control`; deny unauthorized frames and add proxy regression test | Source fix committed; live RBAC test not run |
+| UOS-CORE-010 | Medium | `/health` intentionally returns HTTP 200 on degraded DB/Redis, unsuitable as strict readiness signal | Preserve existing `/health` contract, add `/ready` with HTTP 503 on degraded dependencies and unit regression tests | Source fix committed; tests not run |
+
+### PR #7 review / unchanged or not fully verified
+
+- **UOS-CORE-001 and UOS-CORE-029:** PR #7 removes observed shared-AsyncSession `asyncio.gather` uses in AI service, profile, and analytics. Change is reasonable by static inspection; no Postgres concurrency regression run. More complete async-session ownership verification remains.
+- **UOS-CORE-003:** PR #7 changes Alembic migration failures to fail startup. Source improvement confirmed; boot failure-injection test outstanding.
+- **UOS-CORE-019 and UOS-CORE-020:** PR #7 replaces body-supplied review attribution; branch additionally corrects undefined binding and stable User IDs. Existing test assumptions needed revision.
+- **UOS-CORE-025:** PR #7 uses `db.begin_nested()` (SAVEPOINT). `SettingsService.set_value()` flushes, not commits, which supports atomicity for correctly configured DB transactions. **SQLite legacy transaction mode** can release a SAVEPOINT without a parent BEGIN; test engine configuration and rollback under SQLite and Postgres before calling this complete.
+- **UOS-001:** PR #7 corrects the dashboard WebSocket URL, while this follow-up fixes binary framing. **UOS-004 remains:** long-lived *session* token is still in query and may be logged; design short-lived, single-use WS tickets before production.
+- **UOS-CORE-013/014:** legacy server control executes local configured processes, not Minecraft commands; the plugin command queue has an unimplemented consumer. These are still unresolved functional design mismatches.
+- **UOS-CORE-002 (config), UOS-006:** `cors_origins` remains ineffective against wildcard CORS middleware; no verified exploit, but configuration mismatch remains.
+- **Unused/unfinished integration candidates:** unused `auto_action_confidence_threshold` (pending dynamic-setting check), AI orchestrator without automated tool dispatch, Discord nickname sync responsibility, `PluginCommand` unconsumed queue, and AI-proposed `dashboard.layout.*` / `discord.config.*` consumer validation.
+
+### Unresolved highest-risk items
+
+1. **P0 issue #1:** Minecraft plugin queue has globally shared plugin credential and caller-selected `server_id`; cross-server completion authorization not proven. The command enqueue authorization matrix is also unresolved. Do not deploy to mutually untrusted servers without server-scoped credentials and tests.
+2. **High:** WebSocket bearer tokens in URLs; dedicated short-lived tickets, proxy log redaction, reconnect and expiration tests required.
+3. **High:** `dev_auth` session minting when debug=true; test low-privilege registry access and prohibit exposed debug deployments.
+4. **High:** Local host-process server control path, unconsumed plugin command queue, and AI configuration SQLite SAVEPOINT parent-transaction semantics.
+5. **Medium:** Outbound webhook SSRF and redirect/DNS behavior, capability request-param secret redaction, dashboard/Discord/Java OpenAPI contract diff, event/delivery semantics, database and Redis failure behavior, configuration key mismatch and dead-code proof remain unverified.
+
+### Actual validation status
+
+- GitHub source fetch, file inventory, and static marker/revision/test-declaration scans: **performed**.
+- Local clone into test container: **failed** (network DNS resolution of github.com unavailable).
+- `pytest` / `compileall` on complete repo: **NOT RUN**; source not present in runtime.
+- `ruff`, `pyright`, Postgres integration, browser WebSocket, dependency vulnerability checks: **NOT RUN**.
+- **PR #7 CI (actual GitHub Actions run [41246881461](https://github.com/sepisotoni/UmbrellaOS/actions/runs/41246881461), completed 2026-10-31 22:11 UTC):** backend pytest stopped at 1 failed / 413 passed / 33 warnings; failure `tests/test_ai_tasks.py::test_post_ai_tasks_id_approve_updates_status`, expecting attacker-controlled `staff123` but receiving correct authenticated `admin-key`. The follow-up branch updates this and the corresponding deny assertion. The original PR #7 dashboard, bot, and plugin CI workflows succeeded; these are **not** verification of PR #8.
+- **PR #8 validation at checkpoint:** No GitHub Actions runs were visible for its new branch yet; only Vercel deployment statuses reported success. PR #8 is draft; do **not** merge without backend, dashboard and security regression validation.
+
+**No modification to the Minecraft plugin implementation.** Full production sign-off remains **blocked**.
+
+
+### Additional confirmed configuration defect (2026-11-01)
+
+| Key | Severity | Root cause and verified source path | Resolution | Validation |
+| --- | --- | --- | --- | --- |
+| UOS-CORE-032 | Medium | `process_ai_config_request()` may persist invalid AI output as `{"raw_response": "..."}`; `apply_config_action()` previously accepted that JSON as valid `plugin_config` and wrote the `raw_response` setting, or marked unsupported/empty types as `applied` despite making no valid changes. This is verified against the actual producer and switch branches, not a runtime exploitation claim. | Validate action type, nonempty JSON structure and scalar plugin setting values; reject generated raw-response placeholders before entering the settings SAVEPOINT. Preserve pending/rejected audit history and the endpoint response shape. | Added parameterized regression cases, NOT YET RUN. |
+
+**Pull requests:** [PR #7](https://github.com/sepisotoni/UmbrellaOS/pull/7) is the upstream partially corrected patch. [Draft PR #8](https://github.com/sepisotoni/UmbrellaOS/pull/8) contains this pass's follow-up fixes, coverage document and tests. Neither is merged by this audit.
+
+**Next precise continuation point:** Start by verifying PR #8 GitHub Actions/backend pytest outcomes and run the new AI-config malformed-input tests. Next, add SQLite/Postgres rollback fault-injection and server-scoped Minecraft command authentication tests (#1/#2), then continue the route/service call-graph pass. The initial static source inventory is complete; deep E2E checks remain unchecked in `CORE_AUDIT_COVERAGE.md`.
+
+
+## Pre-existing main-branch remediation notes (preserved during merge)
+
+### Systematic remediation tracker (2026-11-01)
 
 | Workstream | GitHub task | Status |
 |---|---|---|
@@ -198,3 +258,132 @@ No application code changed.
 - UOS-CORE-025 atomic multi-setting AI configuration using a savepoint.
 
 **Not fixed:** Minecraft command/server-bound authorization, console-write authorization, local-vs-remote server-control design, disabled plugin command queue, health/readiness split, secret exposure audit, every incomplete/unused feature, remaining API naming consistency checks. The attempted console-write change was blocked during the source write and is *not* present in the PR. This is an incomplete remediation pass, **not a claim all Core findings are fixed**. No CI or integration tests run in the audit environment. Keep PR unmerged until validated.
+
+
+### Critical command-auth boundary correction (2026-11-01)
+
+| Key | Severity | Concrete evidence | Resolution | Status |
+| --- | --- | --- | --- | --- |
+| UOS-CORE-033 | **Critical** | `require_admin_hmac_or_session` accepted either `X-Plugin-Key` or `X-Admin-Key`, then matched the supplied value to **SECRET_KEY or ADMIN_KEY**, returning the plugin's credential as successful admin-tier authentication. `POST /api/v1/mc/command` depends on that function, so a plugin with the shared secret could enqueue arbitrary commands, including those targeted to a different server. Other admin/HMAC-protected endpoints also inherited the same credential confusion. | Removed plugin-key and SECRET_KEY acceptance from the admin/HMAC dependency. Legitimate HMAC, full admin-key and owner/admin sessions remain accepted. Added regression tests for `X-Plugin-Key` and for `X-Admin-Key` containing SECRET_KEY when the two configured secrets differ. | Code/test committed in draft PR #8; targeted regressions still need CI. |
+
+**Residual critical risk (issue #1):** Plugin polling and completion still use `require_plugin_key`, a globally shared unscoped secret, with caller-supplied `server_id` or command ID. This patch prevents a plugin credential from *queuing* commands through the admin tier; it does not enforce per-server plugin identity on poll/complete. Rollout of per-server scoped plugin credentials, server-binding on completion, and end-to-end migration tests is required before treating fleets as isolated.
+
+
+
+### Async performance correction (2026-11-01)
+
+| Key | Severity | Source-level evidence | Resolution | Validation |
+| --- | --- | --- | --- | --- |
+| UOS-CORE-034 | Medium | `_validate_webhook_url` uses synchronous `socket.getaddrinfo()` DNS resolution. It was called directly within three async entrypoints: `WebhookService.create()`, `WebhookService.update()` and `WebhookDeliveryService.deliver()`. Slow DNS could therefore block the asyncio event loop and unrelated API/dispatch tasks. | Offload exactly those validation calls to `asyncio.to_thread`; keep SSRF address policy and redirect behavior unchanged. | Added worker-thread regression test, NOT YET RUN. DNS resolution and network connect still have a TOCTOU rebinding risk, not closed by this concurrency patch. |
+
+
+**Compatibility check for UOS-CORE-033:** `GET /api/v1/plugin/servers/{server_id}/console/recent` historically allows a plugin key for **read-only** console history. Narrowing the general admin/HMAC dependency would have removed that documented access. Added a dedicated `require_console_read_auth` dependency *only* to the read endpoint, retaining plugin key access there without accepting it on admin/HMAC mutation endpoints, plus positive/negative API tests. The shared key still provides visibility across server IDs until per-server credential scoping is implemented.
+
+
+### PR #8 backend CI failure triage — 2026-11-01
+
+GitHub Actions backend run [41248752765](https://github.com/sepisotoni/UmbrellaOS/actions/runs/41248752765), on an intermediate PR #8 commit, ran actual PostgreSQL/Redis-backed GitHub Actions test infrastructure. `pytest -x` stopped at **1 failed, 663 passed, 35 warnings**: `tests/test_health.py::test_health_returns_200` threw `RuntimeError: Event loop is closed`, with underlying Redis `Future attached to a different loop`. The module-global `redis_client` in `database/redis_client.py` is appropriate for one production event loop but was incorrectly reused by requests in multiple pytest-asyncio function-scoped event loops. **Fix committed:** `tests/conftest.py` now creates and closes a per-client-fixture `fakeredis.aioredis.FakeRedis` and overrides `get_redis` alongside `get_db`; new regression test asserts healthy response with default isolated fake. This repairs test hermeticity without changing production Redis pooling. **Retest pending on the newest head.**
+
+Important: This intermediate-run failure occurred *after* the old test expectation fix; the 663 passed tests cannot be presented as the complete test suite, because `-x` stopped early. No claim of a fully green backend suite is justified without rerun.
+
+
+### Latest PR #8 validation checkpoint (2026-11-01)
+
+At commit `ad0bc37a9a544c6344293449ef031d9650f721a8` (before this documentation-only update): GitHub Actions Dashboard CI **passed**, Bot CI **passed**; Backend CI and Plugin CI were **still running**. Vercel `umbrella-dashboard` and `umbrella-os` returned failure statuses with URLs that explicitly identify `upgradeToPro=build-rate-limit` (deployment quota/rate limitation, **not evidence of a compilation failure**). Treat deployment verification as blocked until the build limit is cleared. Checks from earlier commits do not validate later code changes.
+
+
+### Confirmed audit-log credential exposure (2026-11-01)
+
+| Key | Severity | Actual producer/consumer chain | Resolution | Status |
+| --- | --- | --- | --- | --- |
+| UOS-CORE-035 | High | `capabilities/hosting.py:CreateTemplateParams.default_env` accepts arbitrary environment variables such as `DB_PASSWORD` and `DISCORD_BOT_TOKEN`; the capability has default audit logging enabled. `registry/registry.py:CapabilityRegistry.call` formerly wrote `params.model_dump(mode="json")` verbatim into `AuditLog.details_json` on both success and failure. Secret-bearing template arguments could therefore persist in plaintext audit rows. | Central recursive audit-param redactor masks secret/password/token/key/credential/cookie-shaped dict keys on both success and failure; safe operational fields remain visible. Added unit and persisted-log regression tests. | Source/test changes committed, runtime CI required. |
+
+**Limit:** Key-based redaction cannot detect arbitrary secret values under harmless-looking field names, historical audit rows remain unchanged, and direct logging by non-registry services requires a separate review. Historical exposure must be examined and, if present, credentials rotated and retained logs handled securely.
+
+
+### Actual Core quality-gate findings — 2026-11-01
+
+The added [Core Quality Gates run 41249238973](https://github.com/sepisotoni/UmbrellaOS/actions/runs/41249238973) ran `ruff check umbrella-core-CURRENT --select E4,E7,E9,F` and `pip-audit -r umbrella-core-CURRENT/requirements.txt`. Both **FAILED** on the pre-remediation dependency versions and current source. Pyright did **NOT** run in that workflow attempt because Ruff failed first; the next workflow revision sets Pyright to run independently of earlier failure.
+
+- Ruff: **162 errors** across **61 files**. Diagnostics classified as **81 F401 unused imports, 39 E402 late imports, 32 E712 comparisons with bool literals, 6 F841 unused variables, 2 E711 None comparisons, 1 E401 multi-import, and 1 F811 duplicate import**. No F821 undefined name appeared in this initial run. Some late imports in `main.py` intentionally support startup sequencing/dynamic registration; do not automatically remove or reorder them without proving effect. Full lint remains unresolved; no claim that Ruff passed.
+- Dependency audit: **18 advisories across 3 packages**. `pyjwt==2.13.0` had 15 reported advisories (most fixed in 2.14.0, some 2.15.0, one listed without fix); `anyio==4.7.0` had 2, fix listed as 4.14.2; `opentelemetry-api==1.44.0` had CVE-2026-114603, fix 1.45.1.
+- Remediation proposed: bump `pyjwt` to **2.15.0**, `anyio` to **4.14.2**, and align the `opentelemetry-api`, `opentelemetry-sdk`, and `opentelemetry-exporter-otlp-proto-http` trio to **1.45.1**. **Retest dependency resolver and pip-audit before resolving the issue**, especially the advisory with no fix listed. No dependency vulnerability is claimed resolved until CI reports a clean scan.
+- Deployment blockers: Vercel showed an explicit **build rate limit** (build-rate-limit URL), not a proven source compile error. This is separate from GitHub Actions' Dashboard CI.
+
+
+### Additional backend CI and cryptographic protocol checkpoint — 2026-11-01
+
+- **Actual backend run [41249238778](https://github.com/sepisotoni/UmbrellaOS/actions/runs/41249238778):** 679 passed, 1 failed, 35 warnings, stopped via `pytest -x`. The failure was the *new* `test_pipe_console_view_only_cannot_forward_commands` test; its `FakeClientWS.close(code=...)` double omitted Starlette WebSocket's supported `reason` parameter. Production closes with `code=1008, reason=...`; the test double raised `TypeError`, which the forwarding helper deliberately swallowed, making `closed=False`. Corrected FakeClientWS signature to accept `reason`. **Rerun pending; this is evidence of a test-double mismatch, not proof console RBAC is vulnerable.**
+- **UOS-CORE-036 (High protocol-design finding, unpatched):** Bot HMAC auth computes `PBKDF2-HMAC-SHA256(admin_key, str(timestamp), 100_000)` and checks a ±30-second timestamp window. The HMAC covers **only the timestamp**, not the HTTP method, path, body, nonce, or caller identity. Anyone obtaining a valid transient signature can replay it during the window for different privileged requests. HTTPS limits observation but does not cryptographically bind a command to its signed intent. The same HMAC validation logic appears in `api/middleware/auth.py` and `api/middleware/api_key_auth.py`; migrate the Discord bot and Core together to a versioned, request-bound MAC with replay detection after adding negative tests. Do not silently break existing bot callers in this Core-only phase.
+
+
+## Continued source-grounded findings — 2026-11-01
+
+| ID | Severity | Evidence and root cause | Fix / verification |
+|---|---|---|---|
+| UOS-CORE-011 | **High data integrity** | `SettingsService.update()` committed the settings row and audit log before `PATCH /api/v1/settings/{key}` called `sync_task_model_setting()`. A failure in the second write left the displayed setting inconsistent with the model routing table. POST upsert did not synchronize matching AI task keys at all. | Added opt-in `commit=False` to the service while preserving immediate-commit behavior for other callers. Both POST and PATCH now flush settings, sync model rows, then perform one commit and write .env afterward. Added failure-injection tests checking setting, model and audit rollback. Source fix committed; fresh CI pending. |
+| UOS-CORE-039 | **Medium functional** | `analyze_report()`, `answer_operational_query()` and `draft_postmortem()` built `system_prompt` via `ConstitutionService.build_system_prompt()` but then discarded it and only passed the raw task prompt into `Orchestrator.run()`. Report JSON schema and operational evidence-grounding instructions did not reach either AI model. | Added backwards-compatible `system_instructions` parameter on the orchestrator; callers now pass the domain requirements while preserving the original evidence prompt. Added regression assertions in the three domain tests. Not yet runtime validated. |
+| UOS-CORE-040 | **Medium reporting correctness** | `review_flagged_player()` queried 10 `SuspicionEvent` records but never consumed `suspicion_events`, despite its docstring promising suspicion history. AI assessment omitted both suspicion triggers and staff-reviewed false positives. | Include bounded suspicion history in model context and structured AITask evidence, including review/false-positive status. Added regression fixture. Not yet runtime validated. |
+| UOS-CORE-041 | **High AI trust-boundary** | `Orchestrator.run()` previously promoted the complete `task_prompt` (including untrusted report text and server logs) into the model's system prompt. Moderation, operational/postmortem, player/appeal/chat reviews and AI config now separate trusted instructions from untrusted evidence; remaining legacy callers still need review. | The optional `system_instructions` argument is used in the audited workflows and tested with deliberately adversarial task content. **Partial mitigation, not a complete prompt-injection fix.** |
+| UOS-CORE-042 | **High security investigation** | `/api/v1/bot/register` permits arbitrary `http(s)` callback URLs; `bot_push_service.push_event()` sends timestamp-only `X-Auth-MAC` to that registered endpoint. Verify bot callback origin authentication, SSRF protection and replay exposure before declaring service secure. | No fix applied yet: an allowlist or versioned body/path-bound MAC requires checking real Discord bot callback deployment compatibility. |
+
+**Quality gate status:** GitHub Actions static analysis on [run 41249324177](https://github.com/sepisotoni/UmbrellaOS/actions/runs/41249324177) reported **162 Ruff findings** (primarily F401, E402 and E712). Some E712 findings are SQLAlchemy expressions and **must not be auto-converted to Python truthiness**. The dependency-audit job reported 18 advisories covering PyJWT, AnyIO and OpenTelemetry; the branch now includes version updates, subject to a clean rerun. Pyright results had not yet completed in that failed run. Do not merge without a passing validation run.
+
+**Precise next step:** run the newer CI head; review the new atomic settings and AI prompt/evidence tests; continue server-scoped Minecraft credential isolation, HMAC replay hardening, bot callback URL validation, static lint/type cleanup, and PostgreSQL transaction fault injection. No Minecraft Java implementation changes have been made.
+
+
+### CI-verified dependency remediation and serialization bug (2026-11-01)
+
+- **Dependency audit resolved:** GitHub Actions Core Quality Gates run [41249547413](https://github.com/sepisotoni/UmbrellaOS/actions/runs/41249547413) reports **"No known vulnerabilities found"**, after upgrading PyJWT to 2.15.0, AnyIO to 4.14.2 and the three OpenTelemetry runtime packages to 1.45.1. This is a verified **requirements** scan, not proof transitive production infrastructure and supply chain are vulnerability-free.
+- **Static typing:** Pyright **ran** and returned **134 errors**, Ruff **ran** and returned **162 errors**, hence the static-analysis job **failed**. The result_model contract in `registry/decorator.py` and `registry/spec.py` only allowed `type[BaseModel]` despite nearly 20 registered `list[TypedModel]` results; widened the annotation to `type[Any]`, which reflects current live result types. Also corrected `get_db` / `get_redis` yield return annotations and nullable audit target normalization. Follow-up Pyright validation is pending. Do not call these entire tools green.
+- **UOS-CORE-037 (High: database runtime failure, fix pending retest):** Backend GitHub Actions [41249547402](https://github.com/sepisotoni/UmbrellaOS/actions/runs/41249547402) stopped after **483 passed and 1 failed** in `test_audit_total_reflects_real_count_not_page_size`. Full traceback shows `services/settings_service.py:SettingsService._to_dict` reading SQLAlchemy `Setting.updated_at` after `flush()` invalidated the server-managed `onupdate=func.now()` value. Under AsyncSession this triggers `MissingGreenlet` from implicit IO in attribute access. Fixed at the source: refresh Setting asynchronously before serializing, while respecting `commit=False` and existing transaction scope. Added `test_settings_async_refresh.py` covering repeated PATCH and uncommitted update. Latest CI run remains the source of truth, tests unverified until rerun.
+- **UOS-CORE-038 (Medium: API response mismatch, fix pending retest):** `models/anticheat_violation.py:AnticheatViolation.player_uuid` is nullable, with `ON DELETE SET NULL` expressly preserving flags when player records are removed; `api/routers/anticheat.py:ViolationRecord.player_uuid` wrongly declared a nonnullable `str`. Listing saved flags for a deleted player could fail response validation. Widened API response to `str | None`; added `test_anticheat_nullable.py` verifying the retained flag remains serializable.
+
+
+### AI trust-boundary follow-up (2026-11-01)
+
+The source fix for UOS-CORE-041 now also covers `services/ai_service.py:_orchestrate` (player/appeal/chat evidence) and `services/ai_config_service.py:process_ai_config_request` (operator natural-language request). Those paths had placed user text inside the same string used to build the constitutional system message. They now forward trusted guidance using `Orchestrator.run(..., system_instructions=...)`, keeping raw input as `task_prompt`. Existing callers without that parameter retain prior behavior for compatibility, so this remains a **partial** trust-boundary audit, not a platform-wide guarantee. Added/updated tests in `tests/test_ai_service.py`, `tests/test_ai_config.py`, and `tests/test_orchestrator.py`; latest CI validation is pending.
+
+
+## Anticheat AI provider integration — 2026-11-01
+
+| ID | Severity | Evidence / root cause | Resolution and validation |
+|---|---|---|---|
+| UOS-CORE-043 | **High configuration and reliability** | `services/anticheat_service.py:_ai_confidence_review()` used a hardcoded Anthropic Messages API endpoint, a fixed Claude model string, and direct `os.environ['ANTHROPIC_API_KEY']` instead of Core's DB-configured provider/model routing. It is a **live** function called by `handle_cheat_flag()`, not dead code. Changing AI provider in settings therefore had no effect on this feature. The direct import also caused Ruff E401/F811. | Routed confidence review through `Orchestrator.run(task_type='moderation_review', system_instructions=...)`, preserving per-flag deterministic VL fallback on provider/unparseable output. Validate finite confidences, and re-raise SQLAlchemy errors instead of masking a broken transaction. Added `tests/test_anticheat_ai_review.py` for provider selection, input trust boundary, fallback, and database-error propagation. Source committed, CI still pending. |
+
+**Compatibility:** The anticheat endpoint request/response contract and AITask fields are unchanged. Deployments that previously set only the environment variable but have no `ai_model_configs` provider row will use VL fallback until a `moderation_review` provider is configured; this is an operational configuration migration and must be documented before rollout.
+
+
+### Copilot trust-boundary continuation — 2026-11-01
+
+The `api/routers/ai_copilot.py` two-pass inference pipeline retained the legacy `Orchestrator.run(task_prompt=...)` behavior, which incorporated the user question, optional dashboard context, and tool-returned content into the high-priority system message. Both model passes now explicitly use `system_instructions=COPILOT_SYSTEM_PROMPT + trusted guidance`, leaving request text and tool-returned evidence in the lower-trust user prompt. Added `tests/test_copilot_prompt_boundary.py` for direct answer and tool-result synthesis paths. Source change committed to draft PR #8; test status pending fresh CI. This hardens the prompt trust boundary but does not make external tool content or model output inherently safe. Other AI callers still require independent review.
+
+
+## Further data-integrity validation — 2026-11-01
+
+| Finding | Severity | Evidence / fix | Test and state |
+|---|---|---|---|
+| UOS-CORE-044 | Medium audit integrity | `POST /api/v1/mc/command` previously persisted `AuditLog.actor="discord:<requested_by_discord_id>"`, using a fully client-controlled JSON value even when authenticated with the admin key. A caller could impersonate another Discord identity in the audit log. The request/response contract is left unchanged, but audit actor is now the independently authenticated credential tier (`bot:hmac`, `admin-session`, or `admin-key`) and `claimed_discord_id` remains labeled an unverified client claim. | Updated `tests/test_mc_commands.py`; real HMAC request binding and Discord user assertion remain out of scope pending coordinated bot protocol migration. CI pending. |
+| UOS-CORE-025 SQLite verification | High data integrity check | Python 3.11 `aiosqlite` legacy transaction handling does not guarantee a physical parent BEGIN before a SAVEPOINT. Changed the in-memory SQLite test fixture to explicitly emit BEGIN on SQLAlchemy transaction start so a released SAVEPOINT cannot silently persist outside the outer rollback. Production still uses PostgreSQL. | Added `tests/test_ai_config_atomicity.py` injecting failure after first of two writes and verifying no partial Settings rows persist while the AI action is rejected. **Test committed but not yet confirmed passing**. Still require Postgres failure-injection before claiming portability. |
+
+**CI checkpoints:** Backend CI [41250122505](https://github.com/sepisotoni/UmbrellaOS/actions/runs/41250122505) passed on the earlier `8c8e73f` revision of PR #8, **not** on the latest branch head. Later commits touch AI prompts, command audit, SQLite fixture and tests, so a new green backend run is mandatory. Static-analysis quality gates remain failing (Ruff/Pyright). Keep draft PR #8 unmerged until confirmed successful checks.
+
+
+## Local process-control lifecycle repair — 2026-11-01
+
+| ID | Severity | Evidence/root cause | Resolution/status |
+|---|---|---|---|
+| UOS-CORE-045 | High resource cleanup | `services/server_control_service.py:_run_configured_command()` used local `asyncio.create_subprocess_exec()`; on a 60s timeout it only issued `proc.kill()` without `await proc.wait()`, risking unreaped children. If the request task was cancelled, it left the child running. A failed `create_subprocess_exec` raised an unhandled `OSError` (500). | Now stop and reap the process on timeout or coroutine cancellation, re-raise cancellation correctly, and return a 503 `ServerControlError` for launch failures. Added timeout/cancel/launch-failure regressions in `tests/test_server_control.py`. Tests committed, latest CI unverified. |
+| UOS-CORE-013 | High deployment misrepresentation | `api/routers/server_control.py` explicitly claimed power/restart used Minecraft plugin queue with no local shell; actual service executes configured commands **on Core's host** and does not target remote servers. | Corrected endpoint docstring to state local-only behavior, privilege requirements, and separate remote hosting control mechanism. **Remote plugin queue integration remains unimplemented** and must not be assumed to work. |
+
+As of this revision, PR #8 is still **draft**, not merged. Do not treat branch changes as released, and do not approve until runtime tests and security isolation checks complete.
+
+
+## Follow-up regression fixes and static-analysis progress — 2026-11-01
+
+| Finding | Severity | Verified source issue | Branch fix / testing |
+|---|---|---|---|
+| UOS-CORE-046 | Medium availability | `services/ai/copilot_tools.py:execute_tool_calls` used `dict.get(tool)` for a tool name supplied by model-generated JSON before validating its type. `tool=[]` or `tool={}` caused an uncaught `TypeError: unhashable type`, aborting the complete Copilot request. | Type-check tool names and return structured invalid-tool results; add malformed JSON tool-name regression cases in `tests/test_copilot_tools.py`. Pending latest CI. |
+| UOS-CORE-047 | Medium forensic data integrity | `services/snapshot_service.py:create_snapshot` used `json.dumps(value) if value else None`, silently collapsing empty arrays/objects to NULL; the API expressly accepts array-shaped inventory/armor, while the service incorrectly annotated dict-only. | Preserve `[]` and `{}` when explicitly provided, keep true missing values as NULL, and widen inventory/armor type annotations. Added API POST→GET round-trip test in `tests/test_snapshots.py`. Pending latest CI. |
+
+**Quality gate progression:** On the pre-fix [Core Quality Gates run 41251084284](https://github.com/sepisotoni/UmbrellaOS/actions/runs/41251084284), Pyright reported **93 errors** (down from the earlier 113), and Ruff reported **155 findings**. Replacing obsolete optional anticheat model imports, correcting async HTTP transport types, annotating the permission cache, and adopting `ConfigDict` for player schemas reduced typing errors. Neither gate is yet passing. Backward-compatibility and current-head CI remain mandatory before merge.

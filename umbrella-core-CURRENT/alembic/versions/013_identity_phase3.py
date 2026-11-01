@@ -64,6 +64,8 @@ def upgrade() -> None:
     # Add MFA columns if they don't exist (idempotent for create_all-bootstrapped DBs).
     # Use op.get_context().connection — op.get_bind() is deprecated in Alembic 2.x.
     conn = op.get_context().connection
+    if conn is None:
+        raise RuntimeError("Identity migration requires an online database connection")
     existing_cols = {
         row[0]
         for row in conn.execute(

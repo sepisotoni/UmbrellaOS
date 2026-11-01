@@ -6,7 +6,6 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
-from database import AsyncSessionLocal
 from models import AIConfigAction, Setting
 from datetime import datetime, timezone
 
@@ -28,9 +27,13 @@ async def test_post_ai_config_request_creates_pending_action(
     from services.ai.orchestrator import OrchestrationResult
 
     async def fake_run(
-        *, db, task_type, task_prompt, requested_by, require_dual_review=False
+        *, db, task_type, task_prompt, requested_by, require_dual_review=False, system_instructions=None
     ):
         assert task_type == "copilot"
+        assert system_instructions is not None
+        assert "You are configuring UmbrellaOS" in system_instructions
+        assert "Set bridge mode to full" in task_prompt
+        assert "Set bridge mode to full" not in system_instructions
         return OrchestrationResult(
             text='{"test": "value"}',
             confidence=1.0,
@@ -194,3 +197,46 @@ async def test_ai_config_unauthenticated_returns_401(client: AsyncClient):
         json={"action_type": "plugin_config", "natural_language": "Test"},
     )
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("action_type", "proposal"),
+    [
+        ("plugin_config", "[]"),
+        ("plugin_config", '{"raw_response": "malformed model output"}'),
+        ("plugin_config", '{"enabled": {"unexpected": true}}'),
+        ("dashboard_layout", '"not an action"'),
+        ("discord_config", "[]"),
+        ("unknown_legacy_type", '{"key": "value"}'),
+    ],
+)
+async def test_ai_config_rejects_malformed_proposals_without_writing_settings(
+    client: AsyncClient, db_session, action_type, proposal
+):
+    """A syntactically valid JSON proposal must have the right action shape."""
+    async with db_session() as db:
+        action = AIConfigAction(
+            action_type=action_type,
+            natural_language_input="Test rejection",
+            ai_interpretation="Test",
+            proposed_changes=proposal,
+            status="pending",
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(action)
+        await db.commit()
+        action_id = action.id
+
+    response = await client.post(
+        f"/api/v1/ai/config/{action_id}/approve",
+        headers={"X-Admin-Key": "test-secret-key"},
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "rejected"
+    assert response.json()["error_message"]
+
+    async with db_session() as db:
+        assert await db.scalar(
+            select(Setting).where(Setting.key == "raw_response")
+        ) is None

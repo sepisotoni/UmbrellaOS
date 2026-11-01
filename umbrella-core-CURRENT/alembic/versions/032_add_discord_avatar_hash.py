@@ -22,8 +22,6 @@ neutered — same approach as 011_add_suspicion_score.py's fix for the
 identical bug pattern.
 """
 
-import sqlalchemy as sa
-from alembic import op
 
 revision = "032_add_discord_avatar_hash"
 down_revision = "031_add_bot_registration"

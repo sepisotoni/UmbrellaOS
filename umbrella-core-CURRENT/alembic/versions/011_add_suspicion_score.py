@@ -23,8 +23,6 @@ separate duplicate-column break) needs this revision id to keep existing
 in the chain. Only the upgrade()/downgrade() bodies are neutered.
 """
 
-from alembic import op
-import sqlalchemy as sa
 
 
 revision = "011_add_suspicion_score"

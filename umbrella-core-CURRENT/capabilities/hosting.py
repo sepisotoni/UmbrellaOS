@@ -515,7 +515,7 @@ class BackupResult(BaseModel):
     status: str
     size_bytes: int | None
     error_message: str | None
-    created_at: str
+    created_at: str | None
     completed_at: str | None
 
     @classmethod

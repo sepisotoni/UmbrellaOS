@@ -30,7 +30,7 @@ Rules:
 - If already in target language, return the original text"""
 
 
-async def _get_anthropic_api_key(db: AsyncSession) -> str:
+async def _get_anthropic_api_key(db: AsyncSession) -> str | None:
     """Get Anthropic API key from settings. Returns None if not set."""
     api_key = await SettingsService.get_value(db, "ai.anthropic_api_key")
     return api_key

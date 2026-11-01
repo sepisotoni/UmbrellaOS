@@ -352,3 +352,67 @@ def test_list_returns_sorted_specs(fresh_registry):
     )
     names = [s.name for s in fresh_registry.list()]
     assert names == ["aaa.first", "zzz.last"]
+
+
+def test_audit_redaction_masks_nested_secret_fields():
+    """Template env variables and nested tokens must not reach audit JSON."""
+    from registry.registry import _redact_audit_params
+
+    original = {
+        "default_env": {
+            "DB_PASSWORD": "private-db-password",
+            "DISCORD_BOT_TOKEN": "private-discord-token",
+            "GAME_PORT": "25565",
+        },
+        "items": [{"api_key": "private-api-key", "name": "safe"}],
+        "server_id": "server-1",
+    }
+    redacted = _redact_audit_params(original)
+    assert redacted["default_env"]["DB_PASSWORD"] == "[REDACTED]"
+    assert redacted["default_env"]["DISCORD_BOT_TOKEN"] == "[REDACTED]"
+    assert redacted["default_env"]["GAME_PORT"] == "25565"
+    assert redacted["items"] == [{"api_key": "[REDACTED]", "name": "safe"}]
+    assert redacted["server_id"] == "server-1"
+    assert original["default_env"]["DB_PASSWORD"] == "private-db-password"
+
+
+@pytest.mark.asyncio
+async def test_capability_audit_persists_redacted_params(fresh_registry, db_session):
+    import json
+    from pydantic import BaseModel, Field
+    from sqlalchemy import select
+    from registry.spec import CapabilitySpec
+
+    class TemplateParams(BaseModel):
+        default_env: dict[str, str] = Field(default_factory=dict)
+
+    async def handle(ctx, params):
+        return {"ok": True}
+
+    fresh_registry.register(
+        CapabilitySpec(
+            name="test.template.redacted",
+            summary="Test secret-safe audit",
+            params_model=TemplateParams,
+            handler=handle,
+            required_permission=None,
+            audited=True,
+        )
+    )
+    async with db_session() as db:
+        await fresh_registry.call(
+            "test.template.redacted",
+            _make_ctx(db, is_superuser=True),
+            {"default_env": {"DB_PASSWORD": "should-never-appear", "PORT": "25565"}},
+        )
+        rows = (
+            await db.execute(
+                select(AuditLog).where(AuditLog.action == "test.template.redacted")
+            )
+        ).scalars().all()
+        assert len(rows) == 1
+        detail = json.loads(rows[0].details_json)
+        assert detail["params"]["default_env"] == {
+            "DB_PASSWORD": "[REDACTED]",
+            "PORT": "25565",
+        }

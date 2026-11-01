@@ -36,7 +36,7 @@ class BridgeCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    async def handle_dashboard_message_push(self, payload: dict[str, Any]) -> None:
+    async def handle_dashboard_message_push(self, payload: dict[str, Any]) -> bool:
         """Called by WebhookCog when core pushes a bridge.dashboard_message
         event. Posts the broadcast to the channel the operator selected."""
         channel_id_raw = payload.get("channel_id")
@@ -45,7 +45,7 @@ class BridgeCog(commands.Cog):
                 "Push: dashboard broadcast (message_id=%s) has no channel_id — nothing to post to.",
                 payload.get("message_id"),
             )
-            return
+            return False
 
         try:
             channel_id = int(channel_id_raw)
@@ -55,24 +55,28 @@ class BridgeCog(commands.Cog):
                 payload.get("message_id"),
                 channel_id_raw,
             )
-            return
+            return False
 
         channel = self.bot.get_channel(channel_id)
         if channel is None:
-            logger.warning(
-                "Push: dashboard broadcast channel_id=%s isn't a channel this bot can see.",
-                channel_id,
-            )
-            return
+            try:
+                channel = await self.bot.fetch_channel(channel_id)
+            except discord.HTTPException:
+                logger.exception(
+                    "Unable to resolve dashboard broadcast channel %s.", channel_id
+                )
+                return False
 
         try:
             await channel.send(embed=self._format_broadcast(payload))
+            return True
         except discord.HTTPException:
             logger.exception(
                 "Failed to post dashboard broadcast (message_id=%s) to channel %s.",
                 payload.get("message_id"),
                 channel_id,
             )
+            return False
 
     @staticmethod
     def _format_broadcast(payload: dict[str, Any]) -> discord.Embed:

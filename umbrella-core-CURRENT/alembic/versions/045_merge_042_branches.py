@@ -25,7 +25,6 @@ Revises: 042_add_reduced_appeal_status, 044_widen_knowledge_discord_message_id
 Create Date: 2026-08-29
 """
 
-from alembic import op
 
 revision = "045_merge_042_branches"
 down_revision = (
