@@ -225,7 +225,7 @@ async def complete_mc_command(
 
     if mc_command.status not in {"pending", "dispatched"}:
         raise HTTPException(
-            status_code=409,
+            status_code=400,
             detail=f"Command already has terminal status: {mc_command.status}",
         )
 
