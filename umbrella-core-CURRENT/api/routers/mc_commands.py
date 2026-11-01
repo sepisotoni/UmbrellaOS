@@ -22,7 +22,7 @@ meant for their own server — see models/mc_commands.py's column docstring
 for the bug this fixes ([PLUGIN] subsystem audit).
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
@@ -162,6 +162,46 @@ async def get_pending_mc_commands(
     return [MCCommandResponse.model_validate(cmd) for cmd in commands]
 
 
+@router.post("/commands/claim", response_model=list[MCCommandResponse])
+async def claim_pending_mc_commands(
+    server_id: str = "default",
+    limit: int = Query(25, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    _auth: str = Depends(require_plugin_key),
+) -> list[MCCommandResponse]:
+    """Atomically claim queued commands for one Minecraft server.
+
+    This is the production poll path for current plugins. Rows move from
+    pending to dispatched before Core returns them, so a lost completion
+    acknowledgement cannot cause the next poll to execute the same arbitrary
+    console command again. The legacy read-only GET endpoint remains for
+    compatibility with older plugin versions.
+
+    A dispatched-but-unacknowledged row is intentionally not automatically
+    requeued: generic Bukkit console commands are not idempotent, so blindly
+    retrying a possibly-executed destructive command is less safe than
+    surfacing it as incomplete for operator review.
+    """
+    result = await db.execute(
+        select(MCCommand)
+        .where(
+            MCCommand.status == "pending",
+            MCCommand.server_id == server_id,
+        )
+        .order_by(MCCommand.id)
+        .limit(limit)
+        .with_for_update(skip_locked=True)
+    )
+    commands = list(result.scalars().all())
+    for command in commands:
+        command.status = "dispatched"
+
+    # Persist the claim before the response leaves Core. If the network drops
+    # afterward, the command remains dispatched rather than being executed a
+    # second time on the next poll.
+    await db.commit()
+    return [MCCommandResponse.model_validate(cmd) for cmd in commands]
+
 @router.post("/commands/{command_id}/complete")
 async def complete_mc_command(
     command_id: int,
@@ -183,10 +223,10 @@ async def complete_mc_command(
     if not mc_command:
         raise HTTPException(status_code=404, detail="MC command not found")
 
-    if mc_command.status != "pending":
+    if mc_command.status not in {"pending", "dispatched"}:
         raise HTTPException(
-            status_code=400,
-            detail=f"Command already has status: {mc_command.status}",
+            status_code=409,
+            detail=f"Command already has terminal status: {mc_command.status}",
         )
 
     # Update command status

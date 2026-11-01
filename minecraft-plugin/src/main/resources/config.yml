@@ -21,8 +21,8 @@ heartbeat:
   interval-seconds: 30
 
 commands:
-  # How often to GET /api/v1/mc/commands/pending, in seconds. Matches
-  # core's own doc comment ("plugin calls this every 5 seconds").
+  # How often to atomically claim queued commands from core, in seconds.
+  # Claimed rows are not re-issued if a completion acknowledgement is lost.
   poll-interval-seconds: 5
 
 server:
