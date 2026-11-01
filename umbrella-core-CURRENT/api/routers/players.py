@@ -19,6 +19,7 @@ from typing import Any
 from database import get_db
 from models import Player, Punishment, Appeal, AltGroupMember, AltGroup, DiscordAccount
 from api.dependencies.permissions import require_permission
+from api.middleware.auth import require_plugin_key
 
 # A required Core model, not an optional integration.
 from models.anticheat_violation import AnticheatViolation
@@ -404,9 +405,6 @@ class PlayerSnapshotRequest(BaseModel):
     protocol_version: int | None = None
     event: str | None = None  # "join" | "quit" | "snapshot"
     action: str | None = None
-
-
-from api.middleware.auth import require_plugin_key
 
 
 @router.post("/{uuid}/snapshot", status_code=200)

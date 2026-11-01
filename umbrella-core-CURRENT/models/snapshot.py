@@ -7,7 +7,7 @@ PlayerSnapshot: Represents a point-in-time capture of a player's state.
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, Text, Integer, Float, DateTime, ForeignKey, func
+from sqlalchemy import String, Text, Integer, Float, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 
 from database.engine import Base

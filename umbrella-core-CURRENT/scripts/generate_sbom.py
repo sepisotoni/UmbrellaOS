@@ -25,6 +25,7 @@ import argparse
 import re
 import sys
 from pathlib import Path
+from typing import cast
 
 from cyclonedx.model.bom import Bom
 from cyclonedx.model.component import Component, ComponentType
@@ -52,10 +53,14 @@ def parse_requirements(path: Path) -> list[tuple[str, str]]:
 
 
 def build_sbom(packages: list[tuple[str, str]]) -> Bom:
-    bom = Bom()
+    # py-serializable's class decorators expose serializer-union return
+    # types to Pyright even though these constructors return the concrete
+    # CycloneDX model classes at runtime.
+    bom = cast(Bom, Bom())
+    new_component = cast(type[Component], Component)
     for name, version in packages:
         bom.components.add(
-            Component(
+            new_component(
                 name=name,
                 version=version,
                 type=ComponentType.LIBRARY,

@@ -5,11 +5,10 @@ DiscordAccount: Links Discord users to Minecraft players
 ChatMessage: Stores chat messages for the MC-Discord bridge
 """
 
-import uuid
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from database.engine import Base
 
