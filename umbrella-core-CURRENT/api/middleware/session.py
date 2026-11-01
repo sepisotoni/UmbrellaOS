@@ -2,7 +2,7 @@
 api/middleware/session.py — Session token authentication.
 
 Validates Bearer tokens issued by the Discord OAuth flow.
-Used by dashboard users; plugin-to-core traffic continues to use X-Admin-Key.
+Used by dashboard users and the raw admin-key bootstrap tier. Plugin traffic uses explicit X-Plugin-Key dependencies on plugin-facing routes.
 """
 
 import hmac
@@ -15,7 +15,7 @@ from sqlalchemy.orm import selectinload
 from config import get_settings
 from database import get_db
 from models import Session, User
-from api.middleware.auth import admin_key_header, plugin_key_header
+from api.middleware.auth import admin_key_header
 
 settings = get_settings()
 
@@ -74,26 +74,24 @@ async def require_session(
 
 async def require_admin_key_or_session(
     x_admin_key: str | None = Security(admin_key_header),
-    x_plugin_key: str | None = Security(plugin_key_header),
     authorization: str | None = Header(None),
     db: AsyncSession = Depends(get_db),
 ) -> User | str:
     """
-    Dependency: accepts X-Admin-Key, X-Plugin-Key, or Bearer session token.
-    Admin/plugin keys are checked first and bypass role-permission checks (they
-    return a str sentinel, which require_permission treats as pre-authorised).
-    Session auth is used when no valid key is present.
+    Dependency: accepts the raw X-Admin-Key bootstrap credential or a Bearer
+    staff session. Minecraft X-Plugin-Key credentials are deliberately NOT
+    accepted here: plugin access is granted only by explicit require_plugin_key
+    dependencies on the small set of routes intended for Minecraft servers.
 
-    Uses hmac.compare_digest for all secret comparisons to prevent timing attacks.
+    This separation is security-critical because require_permission treats the
+    raw admin-key string as a superuser. Letting the shared plugin key enter
+    this dependency would turn every RBAC-protected endpoint into a plugin
+    superuser endpoint.
+
+    Uses hmac.compare_digest for secret comparisons to prevent timing attacks.
     """
     if x_admin_key and hmac.compare_digest(x_admin_key, settings.admin_key):
         return x_admin_key
-
-    # Plugin key (sent by the Minecraft plugin as X-Plugin-Key) gets the same
-    # bypass as admin key so plugin-facing endpoints like /ai/copilot work without
-    # a user session or role assignment.
-    if x_plugin_key and hmac.compare_digest(x_plugin_key, settings.secret_key):
-        return x_plugin_key
 
     if authorization and authorization.startswith("Bearer "):
         token = authorization.removeprefix("Bearer ").strip()

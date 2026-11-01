@@ -29,8 +29,10 @@ from pydantic import BaseModel
 from datetime import datetime, timezone
 
 from database import get_db
-from models import MCCommand
-from api.middleware.auth import require_admin_hmac_or_session, require_plugin_key
+from models import MCCommand, User
+from models.api_key import ApiKey
+from api.middleware.auth import require_plugin_key
+from api.dependencies.permissions import require_permission
 from api.middleware.audit import create_audit_log, AuditAction
 
 router = APIRouter(prefix="/api/v1/mc", tags=["mc-commands"])
@@ -69,14 +71,15 @@ class MCCommandCompleteRequest(BaseModel):
 async def create_mc_command(
     body: MCCommandRequest,
     db: AsyncSession = Depends(get_db),
-    auth: str = Depends(require_admin_hmac_or_session),
+    auth: User | str | ApiKey = Depends(require_permission("server.control")),
 ) -> MCCommandResponse:
     """
     Queue a Minecraft command for execution.
 
-    Auth: require_admin_hmac_or_session — the Discord bot (PBKDF2 MAC),
-    raw X-Admin-Key (dashboard/admin tools), or a session token may enqueue
-    commands. The plugin itself uses X-Plugin-Key only for the poll/ack pair.
+    Auth: requires the explicit server.control permission for dashboard
+    sessions/API keys. The Discord bot HMAC and raw X-Admin-Key bootstrap tier
+    remain trusted system credentials. X-Plugin-Key is restricted to the
+    poll/claim/ack side and cannot enqueue commands.
     """
     if not body.command or not body.command.strip():
         raise HTTPException(status_code=400, detail="Command cannot be empty")
@@ -96,14 +99,20 @@ async def create_mc_command(
     # Attribution must reflect authenticated credentials, not a client-
     # supplied Discord ID. The latter is only an unverified delegation hint.
     # Never interpolate a raw admin-key credential into an audit record.
-    actor = (
-        "bot:hmac" if auth == "hmac"
-        else "admin-session" if auth == "session"
-        else "admin-key"
-    )
-    actor_type = "bot" if auth == "hmac" else (
-        "staff" if auth == "session" else "system"
-    )
+    if isinstance(auth, User):
+        actor = auth.username
+        actor_type = "staff"
+    elif isinstance(auth, ApiKey):
+        actor = f"apikey:{auth.id}"
+        actor_type = "system"
+    elif auth == "hmac":
+        actor = "bot:hmac"
+        actor_type = "bot"
+    else:
+        # require_permission only returns another string for the raw
+        # admin-key bootstrap tier; never persist the key itself.
+        actor = "admin-key"
+        actor_type = "system"
     await create_audit_log(
         db=db,
         action=AuditAction.MC_COMMAND_REQUESTED,

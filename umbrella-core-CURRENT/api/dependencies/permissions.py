@@ -2,7 +2,7 @@
 api/dependencies/permissions.py — Role-based permission dependencies.
 
 Checks permission keys against the authenticated user's role.
-X-Admin-Key auth bypasses all permission checks (plugin god mode).
+X-Admin-Key and authenticated Discord-bot HMAC are bootstrap/system tiers that bypass role checks. Minecraft X-Plugin-Key is never accepted by this dependency and must be opted into per route.
 
 Permission *resolution* (role -> permission keys, plus extra_permissions)
 lives in services/permission_resolution.py and is shared with the
