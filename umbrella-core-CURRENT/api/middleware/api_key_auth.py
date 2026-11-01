@@ -76,7 +76,7 @@ async def require_capability_auth(
             return "hmac"
         if x_api_key is not None:
             return await ApiKeyService.verify_api_key(db, x_api_key)
-        return await require_admin_key_or_session(x_admin_key, None, authorization, db)
+        return await require_admin_key_or_session(x_admin_key, authorization, db)
     except (HTTPException, AppException) as exc:
         if exc.status_code == 401:
             await threat_detection_service.record(
