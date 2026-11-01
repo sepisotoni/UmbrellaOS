@@ -112,12 +112,12 @@ class WebhookCog(commands.Cog):
         is simply dropped rather than delayed."""
         bridge_cog = self.bot.cogs.get("BridgeCog")
         if bridge_cog is None:
-            logger.warning(
+            logger.error(
                 "Received bridge.dashboard_message push but BridgeCog is not loaded — "
-                "message %s will not be delivered.",
+                "message %s was not delivered.",
                 payload.get("message_id"),
             )
-            return
+            raise RuntimeError("BridgeCog is unavailable; broadcast was not delivered")
 
         try:
             delivered = await bridge_cog.handle_dashboard_message_push(payload)
