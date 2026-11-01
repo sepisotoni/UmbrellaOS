@@ -50,12 +50,23 @@ export const BroadcastModal: React.FC<BroadcastModalProps> = ({ isOpen, onClose 
     setErrorMessage(null);
 
     try {
-      await api.broadcast(message.trim(), targetServerId === 'GLOBAL' ? undefined : targetServerId);
-      addToast({
-        type: 'success',
-        title: 'Broadcast Dispatched',
-        message: `Alert transmitted across ${targetServerId === 'GLOBAL' ? 'all nodes' : targetServerId}.`,
-      });
+      const result = await api.broadcast(
+        message.trim(),
+        targetServerId === 'GLOBAL' ? undefined : targetServerId,
+      );
+      if (result.failed_servers.length > 0) {
+        addToast({
+          type: 'warning',
+          title: 'Broadcast Partially Queued',
+          message: `Queued on ${result.queued_servers.length} server(s); failed on ${result.failed_servers.join(', ')}.`,
+        });
+      } else {
+        addToast({
+          type: 'success',
+          title: 'Broadcast Queued',
+          message: `Queued for ${result.queued_servers.length} Minecraft server(s).`,
+        });
+      }
       onClose();
       setMessage('');
     } catch (err: any) {
@@ -77,7 +88,7 @@ export const BroadcastModal: React.FC<BroadcastModalProps> = ({ isOpen, onClose 
             <div>
               <h2 className="text-sm font-bold text-white font-mono">Broadcast Network Announcement</h2>
               <p className="text-xs text-slate-400 font-sans">
-                Dispatch alerts to online Minecraft players via MiniMessage bridge
+                Queue alerts for online Minecraft players through the server command channel
               </p>
             </div>
           </div>
@@ -121,7 +132,7 @@ export const BroadcastModal: React.FC<BroadcastModalProps> = ({ isOpen, onClose 
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               rows={3}
-              placeholder="Enter announcement text (supports MiniMessage format e.g. <gradient:red:gold>Alert</gradient>)..."
+              placeholder="Enter announcement text for online Minecraft players..."
               required
               className="w-full rounded-xl border border-[#141d3d] bg-[#02040a] p-3 text-white placeholder-slate-500 focus:border-indigo-500 focus:outline-none font-sans"
             />

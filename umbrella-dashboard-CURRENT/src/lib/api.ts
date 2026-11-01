@@ -1199,8 +1199,48 @@ export class UmbrellaApiClient {
   // --------------------------------------------------------------------------
   // Global Broadcast & Shortcuts
   // --------------------------------------------------------------------------
-  public async broadcast(message: string, serverId?: string): Promise<any> {
-    return this.broadcastMessage(message, 'Admin');
+  public async broadcast(
+    message: string,
+    serverId?: string,
+  ): Promise<{ queued_servers: string[]; failed_servers: string[] }> {
+    const trimmed = message.trim();
+    if (!trimmed) throw new ApiError('Broadcast message cannot be empty.', 400);
+
+    // Use vanilla tellraw rather than the chat-bridge persistence endpoint:
+    // CommandPoller is the actual path that reaches a live Minecraft server.
+    // JSON.stringify safely escapes quotes/newlines inside staff-provided text.
+    const command = `tellraw @a ${JSON.stringify({ text: trimmed })}`;
+    if (command.length > 500) {
+      throw new ApiError('Broadcast is too long for the Minecraft command queue.', 400);
+    }
+
+    const targetIds = serverId
+      ? [serverId]
+      : Array.from(new Set((await this.getServers()).map((server) => server.id)));
+
+    if (targetIds.length === 0) {
+      throw new ApiError('No connected Minecraft servers are available.', 503);
+    }
+
+    const results = await Promise.all(
+      targetIds.map(async (id) => {
+        try {
+          await this.sendServerCommand(id, command);
+          return { id, ok: true as const };
+        } catch {
+          return { id, ok: false as const };
+        }
+      }),
+    );
+
+    const queued_servers = results.filter((r) => r.ok).map((r) => r.id);
+    const failed_servers = results.filter((r) => !r.ok).map((r) => r.id);
+    if (queued_servers.length === 0) {
+      throw new ApiError('Broadcast could not be queued on any target server.', 503, {
+        failed_servers,
+      });
+    }
+    return { queued_servers, failed_servers };
   }
 
   public async broadcastMessage(message: string, playerName: string = 'Staff', channelId?: string): Promise<any> {
