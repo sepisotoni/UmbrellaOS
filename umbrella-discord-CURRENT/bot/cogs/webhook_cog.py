@@ -120,12 +120,17 @@ class WebhookCog(commands.Cog):
             return
 
         try:
-            await bridge_cog.handle_dashboard_message_push(payload)
+            delivered = await bridge_cog.handle_dashboard_message_push(payload)
+            if not delivered:
+                raise RuntimeError(
+                    f"Discord broadcast {payload.get('message_id')} was not delivered"
+                )
         except Exception:
             logger.exception(
-                "BridgeCog.handle_dashboard_message_push raised for message %s",
+                "BridgeCog.handle_dashboard_message_push failed for message %s",
                 payload.get("message_id"),
             )
+            raise
 
 
 async def setup(bot: commands.Bot) -> None:
