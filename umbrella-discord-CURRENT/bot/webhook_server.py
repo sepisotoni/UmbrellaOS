@@ -184,9 +184,10 @@ class WebhookServer:
             await handler(payload)
         except Exception:
             logger.exception("Handler for event %s raised an exception", event)
-            # Still return 200: core's fire-and-forget doesn't retry, so a
-            # 500 would just silence the error without helping anyone.
-            return web.Response(status=200, text="OK (handler error, check logs)")
+            # Do not acknowledge an event the handler failed to process.
+            # Core must be able to distinguish delivery from consumption;
+            # returning 200 here silently discarded failed broadcasts.
+            return web.Response(status=500, text="Event handler failed")
 
         return web.Response(status=200, text="OK")
 

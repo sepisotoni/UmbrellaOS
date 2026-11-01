@@ -88,12 +88,14 @@ async def push_event(event: str, payload: dict) -> bool:
     Never raises — failures are logged at WARNING level and the fallback
     poll loop provides eventual delivery.
     """
-    url = await _get_callback_url()
-    if not url:
-        logger.debug("No bot registration found; skipping push for event %s", event)
-        return False
-
     try:
+        # Include registration lookup in the best-effort boundary too: this
+        # function promises never to raise, including transient DB failures.
+        url = await _get_callback_url()
+        if not url:
+            logger.debug("No bot registration found; skipping push for event %s", event)
+            return False
+
         # Existing DB rows may predate registration validation; never send
         # a privileged MAC or event payload to a private/internal address.
         # DNS resolution and PBKDF2 are blocking operations.
