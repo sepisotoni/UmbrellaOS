@@ -7,20 +7,17 @@ keys; see services/api_key_service.py for why a key can never carry
 superuser/wildcard access).
 """
 
-import asyncio
-import hashlib
-import hmac
-import time
-
 from fastapi import Depends, Header, Security
 from fastapi.exceptions import HTTPException
 from starlette.requests import Request
 from sqlalchemy.ext.asyncio import AsyncSession
+from redis.asyncio import Redis
 
 from api.middleware.errors import AppException
 from api.middleware.session import admin_key_header, require_admin_key_or_session
 from config import get_settings
-from database import get_db
+from database import get_db, get_redis
+from api.middleware.bot_mac import verify_bot_mac
 from models import User
 from models.api_key import ApiKey
 from services.api_key_service import ApiKeyService
@@ -33,8 +30,11 @@ async def require_capability_auth(
     x_admin_key: str | None = Security(admin_key_header),
     x_auth_mac: str | None = Header(default=None),
     x_auth_timestamp: str | None = Header(default=None),
+    x_auth_version: str | None = Header(default=None),
+    x_auth_nonce: str | None = Header(default=None),
     authorization: str | None = Header(default=None),
     db: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(get_redis),
 ) -> User | str | ApiKey:
     """
     If an `X-Api-Key` header is present, authenticate via it exclusively —
@@ -61,25 +61,18 @@ async def require_capability_auth(
     """
     client_ip = request.client.host if request.client else None
     try:
-        # PBKDF2 MAC from the Discord bot (Phase 16B) — checked first so the
-        # bot never needs an API key or session token to call capabilities.
-        if x_auth_mac and x_auth_timestamp:
-            try:
-                ts = int(x_auth_timestamp)
-            except ValueError:
-                raise HTTPException(status_code=401, detail="Invalid timestamp")
-            if abs(time.time() - ts) > 30:
-                raise HTTPException(status_code=401, detail="Timestamp out of window")
-            expected = (await asyncio.to_thread(
-                hashlib.pbkdf2_hmac,
-                "sha256",
-                get_settings().admin_key.encode(),
-                str(ts).encode(),
-                100_000,
-                dklen=32,
-            )).hex()
-            if not hmac.compare_digest(expected, x_auth_mac):
-                raise HTTPException(status_code=401, detail="Invalid MAC")
+        # Versioned request-bound MAC from the Discord bot. Legacy v1 is
+        # accepted by verify_bot_mac only for rolling-upgrade compatibility.
+        if any((x_auth_mac, x_auth_timestamp, x_auth_version, x_auth_nonce)):
+            await verify_bot_mac(
+                request=request,
+                mac=x_auth_mac,
+                timestamp=x_auth_timestamp,
+                version=x_auth_version,
+                nonce=x_auth_nonce,
+                secret=get_settings().admin_key,
+                redis=redis,
+            )
             return "hmac"
         if x_api_key is not None:
             return await ApiKeyService.verify_api_key(db, x_api_key)

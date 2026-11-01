@@ -27,8 +27,10 @@ prevent replay attacks.
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
+import hmac
+import json
+import secrets
 import time
 from typing import Any
 
@@ -57,32 +59,87 @@ class UmbrellaCoreClient:
         api_key: str,
         *,
         timeout: float = 30.0,
-        transport: httpx.BaseTransport | None = None,
+        transport: httpx.AsyncBaseTransport | None = None,
     ):
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
         self._timeout = timeout
         self._transport = transport
 
-    def _make_auth_headers(self) -> dict[str, str]:
-        """Synchronous MAC derivation — only call from _make_auth_headers_async.
-        Kept separate so asyncio.to_thread can run it without capturing self."""
-        ts = int(time.time())
-        mac = hashlib.pbkdf2_hmac(
-            "sha256",
-            self._api_key.encode(),
-            str(ts).encode(),
-            100_000,
-            dklen=32,
-        ).hex()
-        return {"X-Auth-MAC": mac, "X-Auth-Timestamp": str(ts)}
+    def _make_auth_headers(
+        self,
+        method: str,
+        target: str,
+        body: bytes = b"",
+    ) -> dict[str, str]:
+        """Create a request-bound v2 MAC.
 
-    async def _make_auth_headers_async(self) -> dict[str, str]:
-        """Offload the blocking PBKDF2 computation to a thread so it cannot
-        stall the event loop and block Discord heartbeats (100k iterations
-        takes ~500ms on low-power containers — long enough to trigger
-        'heartbeat blocked' warnings and gateway disconnects)."""
-        return await asyncio.to_thread(self._make_auth_headers)
+        The signature covers method, exact path/query, body hash, timestamp
+        and a random nonce, so a captured credential cannot be replayed for
+        another endpoint or payload.
+        """
+        timestamp = str(int(time.time()))
+        nonce = secrets.token_hex(16)
+        body_hash = hashlib.sha256(body).hexdigest()
+        canonical = (
+            f"{method.upper()}\n{target}\n{timestamp}\n{nonce}\n{body_hash}"
+        ).encode("utf-8")
+        mac = hmac.new(
+            self._api_key.encode("utf-8"), canonical, hashlib.sha256
+        ).hexdigest()
+        return {
+            "X-Auth-Version": "2",
+            "X-Auth-MAC": mac,
+            "X-Auth-Timestamp": timestamp,
+            "X-Auth-Nonce": nonce,
+        }
+
+    async def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        json_body: Any | None = None,
+        params: dict[str, Any] | None = None,
+        discord_user_id: str | None = None,
+    ) -> httpx.Response:
+        target = path
+        if params:
+            query = str(httpx.QueryParams(params))
+            if query:
+                target += ("&" if "?" in target else "?") + query
+
+        body = (
+            json.dumps(
+                json_body,
+                separators=(",", ":"),
+                ensure_ascii=False,
+            ).encode("utf-8")
+            if json_body is not None
+            else b""
+        )
+        headers = self._make_auth_headers(method, target, body)
+        headers["Accept"] = "application/json"
+        if body:
+            headers["Content-Type"] = "application/json"
+        if discord_user_id is not None:
+            headers["X-Discord-User-Id"] = discord_user_id
+
+        try:
+            async with httpx.AsyncClient(
+                timeout=self._timeout,
+                transport=self._transport,
+            ) as http:
+                return await http.request(
+                    method,
+                    f"{self._base_url}{target}",
+                    headers=headers,
+                    content=body if body else None,
+                )
+        except httpx.RequestError as exc:
+            raise UmbrellaCoreError(
+                f"Could not reach umbrella-core: {exc}"
+            ) from exc
 
     @staticmethod
     def _parse_error(response: httpx.Response) -> tuple[str, str | None]:
@@ -131,18 +188,12 @@ class UmbrellaCoreClient:
         here; omitting it (the default) preserves the pre-Phase-6 behavior
         exactly, so this is purely additive.
         """
-        url = f"{self._base_url}/api/v1/capabilities/{capability_name}/invoke"
-        headers = await self._make_auth_headers_async()
-        if discord_user_id is not None:
-            headers["X-Discord-User-Id"] = discord_user_id
-
-        try:
-            async with httpx.AsyncClient(
-                timeout=self._timeout, transport=self._transport
-            ) as client:
-                response = await client.post(url, headers=headers, json=params)
-        except httpx.RequestError as exc:
-            raise UmbrellaCoreError(f"Could not reach umbrella-core: {exc}") from exc
+        response = await self._request(
+            "POST",
+            f"/api/v1/capabilities/{capability_name}/invoke",
+            json_body=params,
+            discord_user_id=discord_user_id,
+        )
 
         if response.status_code >= 400:
             message, code = UmbrellaCoreClient._parse_error(response)
@@ -161,16 +212,7 @@ class UmbrellaCoreClient:
         """Lists every capability this API key is permitted to see -
         useful for a cog building help text or validating a capability
         name exists before invoking it."""
-        url = f"{self._base_url}/api/v1/capabilities"
-        headers = await self._make_auth_headers_async()
-
-        try:
-            async with httpx.AsyncClient(
-                timeout=self._timeout, transport=self._transport
-            ) as client:
-                response = await client.get(url, headers=headers)
-        except httpx.RequestError as exc:
-            raise UmbrellaCoreError(f"Could not reach umbrella-core: {exc}") from exc
+        response = await self._request("GET", "/api/v1/capabilities")
 
         if response.status_code >= 400:
             raise UmbrellaCoreError(
@@ -183,18 +225,11 @@ class UmbrellaCoreClient:
     async def register_bot(self, callback_url: str) -> None:
         """Register this bot's webhook URL with umbrella-core so it can
         receive push events (Phase 16B Task B). Called once on startup."""
-        url = f"{self._base_url}/api/v1/bot/register"
-        headers = await self._make_auth_headers_async()
-
-        try:
-            async with httpx.AsyncClient(
-                timeout=self._timeout, transport=self._transport
-            ) as client:
-                response = await client.post(
-                    url, headers=headers, json={"callback_url": callback_url}
-                )
-        except httpx.RequestError as exc:
-            raise UmbrellaCoreError(f"Could not reach umbrella-core: {exc}") from exc
+        response = await self._request(
+            "POST",
+            "/api/v1/bot/register",
+            json_body={"callback_url": callback_url},
+        )
 
         if response.status_code >= 400:
             raise UmbrellaCoreError(
@@ -206,18 +241,11 @@ class UmbrellaCoreClient:
         """POST /api/v1/bot/commands — push slash command manifest to core.
         Called once on startup after tree.sync() so the dashboard can read
         real command data without hardcoding."""
-        url = f"{self._base_url}/api/v1/bot/commands"
-        headers = await self._make_auth_headers_async()
-
-        try:
-            async with httpx.AsyncClient(
-                timeout=self._timeout, transport=self._transport
-            ) as client:
-                response = await client.post(
-                    url, headers=headers, json={"commands": commands}
-                )
-        except httpx.RequestError as exc:
-            raise UmbrellaCoreError(f"Could not reach umbrella-core: {exc}") from exc
+        response = await self._request(
+            "POST",
+            "/api/v1/bot/commands",
+            json_body={"commands": commands},
+        )
 
         if response.status_code >= 400:
             raise UmbrellaCoreError(
@@ -230,16 +258,7 @@ class UmbrellaCoreClient:
         path (e.g. '/api/v1/settings/some_key') and returns the parsed JSON
         response. Uses the same PBKDF2 auth headers as every other method.
         Raises UmbrellaCoreError on non-2xx responses or network failures."""
-        url = f"{self._base_url}{path}"
-        headers = await self._make_auth_headers_async()
-
-        try:
-            async with httpx.AsyncClient(
-                timeout=self._timeout, transport=self._transport
-            ) as client:
-                response = await client.get(url, headers=headers)
-        except httpx.RequestError as exc:
-            raise UmbrellaCoreError(f"Could not reach umbrella-core: {exc}") from exc
+        response = await self._request("GET", path)
 
         if response.status_code >= 400:
             message, code = UmbrellaCoreClient._parse_error(response)
@@ -259,19 +278,14 @@ class UmbrellaCoreClient:
         AI copilot and return the parsed response dict (keys: response,
         model_used, latency_ms). Uses the same PBKDF2 auth headers as every
         other method. Raises UmbrellaCoreError on failure."""
-        url = f"{self._base_url}/api/v1/ai/copilot"
-        headers = await self._make_auth_headers_async()
         payload: dict[str, Any] = {"message": message}
         if context is not None:
             payload["context"] = context
-
-        try:
-            async with httpx.AsyncClient(
-                timeout=self._timeout, transport=self._transport
-            ) as client:
-                response = await client.post(url, headers=headers, json=payload)
-        except httpx.RequestError as exc:
-            raise UmbrellaCoreError(f"Could not reach umbrella-core: {exc}") from exc
+        response = await self._request(
+            "POST",
+            "/api/v1/ai/copilot",
+            json_body=payload,
+        )
 
         if response.status_code >= 400:
             message, code = UmbrellaCoreClient._parse_error(response)
@@ -294,18 +308,11 @@ class UmbrellaCoreClient:
         Uses the same PBKDF2 auth headers as every other method.
         Raises UmbrellaCoreError on non-2xx or network failure.
         """
-        url = f"{self._base_url}/api/v1/knowledge"
-        headers = await self._make_auth_headers_async()
-
-        try:
-            async with httpx.AsyncClient(
-                timeout=self._timeout, transport=self._transport
-            ) as client:
-                response = await client.get(
-                    url, params={"query": query, "limit": limit}, headers=headers
-                )
-        except httpx.RequestError as exc:
-            raise UmbrellaCoreError(f"Could not reach umbrella-core: {exc}") from exc
+        response = await self._request(
+            "GET",
+            "/api/v1/knowledge",
+            params={"query": query, "limit": limit},
+        )
 
         if response.status_code >= 400:
             message, code = UmbrellaCoreClient._parse_error(response)
@@ -325,18 +332,11 @@ class UmbrellaCoreClient:
         Called on startup (and again in on_ready if guild cache was cold in
         setup_hook). Dashboard reads this to populate the broadcaster dropdown.
         """
-        url = f"{self._base_url}/api/v1/bot/channels"
-        headers = await self._make_auth_headers_async()
-
-        try:
-            async with httpx.AsyncClient(
-                timeout=self._timeout, transport=self._transport
-            ) as client:
-                response = await client.post(
-                    url, headers=headers, json={"channels": channels}
-                )
-        except httpx.RequestError as exc:
-            raise UmbrellaCoreError(f"Could not reach umbrella-core: {exc}") from exc
+        response = await self._request(
+            "POST",
+            "/api/v1/bot/channels",
+            json_body={"channels": channels},
+        )
 
         if response.status_code >= 400:
             raise UmbrellaCoreError(
@@ -349,18 +349,11 @@ class UmbrellaCoreClient:
         Called on startup (and again in on_ready). Dashboard reads this to
         populate the broadcaster role-mention dropdown.
         """
-        url = f"{self._base_url}/api/v1/bot/roles"
-        headers = await self._make_auth_headers_async()
-
-        try:
-            async with httpx.AsyncClient(
-                timeout=self._timeout, transport=self._transport
-            ) as client:
-                response = await client.post(
-                    url, headers=headers, json={"roles": roles}
-                )
-        except httpx.RequestError as exc:
-            raise UmbrellaCoreError(f"Could not reach umbrella-core: {exc}") from exc
+        response = await self._request(
+            "POST",
+            "/api/v1/bot/roles",
+            json_body={"roles": roles},
+        )
 
         if response.status_code >= 400:
             raise UmbrellaCoreError(

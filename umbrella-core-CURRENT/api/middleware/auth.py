@@ -14,16 +14,17 @@ Three auth tiers, in order of trust:
 All secret comparisons use hmac.compare_digest to prevent timing attacks.
 """
 
-import asyncio
-import hashlib
 import hmac
 import time
 
 from fastapi import Depends, HTTPException, Security, Header
+from redis.asyncio import Redis
+from starlette.requests import Request
 from fastapi.security import APIKeyHeader
 from sqlalchemy.ext.asyncio import AsyncSession
 from config import get_settings
-from database import get_db
+from database import get_db, get_redis
+from api.middleware.bot_mac import verify_bot_mac
 
 settings = get_settings()
 
@@ -106,29 +107,26 @@ async def require_admin_key(
 
 
 async def require_admin_hmac_or_session(
+    request: Request,
     x_auth_mac: str | None = Header(default=None),
     x_auth_timestamp: str | None = Header(default=None),
+    x_auth_version: str | None = Header(default=None),
+    x_auth_nonce: str | None = Header(default=None),
     x_admin_key: str | None = Security(admin_key_header),
     authorization: str | None = Header(None),
     db: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(get_redis),
 ) -> str:
-    if x_auth_mac and x_auth_timestamp:
-        try:
-            ts = int(x_auth_timestamp)
-        except ValueError:
-            raise HTTPException(status_code=401, detail="Invalid timestamp")
-        if abs(time.time() - ts) > 30:
-            raise HTTPException(status_code=401, detail="Timestamp out of window")
-        expected = (await asyncio.to_thread(
-            hashlib.pbkdf2_hmac,
-            "sha256",
-            settings.admin_key.encode(),
-            str(ts).encode(),
-            100_000,
-            dklen=32,
-        )).hex()
-        if not hmac.compare_digest(expected, x_auth_mac):
-            raise HTTPException(status_code=401, detail="Invalid MAC")
+    if any((x_auth_mac, x_auth_timestamp, x_auth_version, x_auth_nonce)):
+        await verify_bot_mac(
+            request=request,
+            mac=x_auth_mac,
+            timestamp=x_auth_timestamp,
+            version=x_auth_version,
+            nonce=x_auth_nonce,
+            secret=settings.admin_key,
+            redis=redis,
+        )
         return "hmac"
     # Only the admin key (or an owner/admin session) may authorize this tier.
     # A plugin credential is deliberately insufficient: treating SECRET_KEY
@@ -137,12 +135,16 @@ async def require_admin_hmac_or_session(
 
 
 async def require_console_read_auth(
+    request: Request,
     x_plugin_key: str | None = Security(plugin_key_header),
     x_admin_key: str | None = Security(admin_key_header),
     x_auth_mac: str | None = Header(default=None),
     x_auth_timestamp: str | None = Header(default=None),
+    x_auth_version: str | None = Header(default=None),
+    x_auth_nonce: str | None = Header(default=None),
     authorization: str | None = Header(None),
     db: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(get_redis),
 ) -> str:
     """Preserve legacy plugin read access to console history, not admin writes.
 
@@ -155,5 +157,13 @@ async def require_console_read_auth(
         raise HTTPException(status_code=401, detail="Invalid plugin key")
 
     return await require_admin_hmac_or_session(
-        x_auth_mac, x_auth_timestamp, x_admin_key, authorization, db
+        request,
+        x_auth_mac,
+        x_auth_timestamp,
+        x_auth_version,
+        x_auth_nonce,
+        x_admin_key,
+        authorization,
+        db,
+        redis,
     )

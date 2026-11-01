@@ -23,10 +23,14 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import hmac
+import json
 import logging
+import secrets
 import time
 
 import httpx
+from urllib.parse import urlparse
 
 from config import get_settings
 from database import AsyncSessionLocal
@@ -56,17 +60,24 @@ async def _get_callback_url() -> str | None:
     return _cached_url
 
 
-def _make_push_headers() -> dict[str, str]:
-    """Derive a PBKDF2-HMAC-SHA256 MAC for authenticating to the bot."""
-    ts = int(time.time())
-    mac = hashlib.pbkdf2_hmac(
-        "sha256",
-        settings.admin_key.encode(),
-        str(ts).encode(),
-        100_000,
-        dklen=32,
-    ).hex()
-    return {"X-Auth-MAC": mac, "X-Auth-Timestamp": str(ts)}
+def _make_push_headers(target: str, body: bytes) -> dict[str, str]:
+    """Create a request-bound v2 MAC for Core -> bot webhook delivery."""
+    timestamp = str(int(time.time()))
+    nonce = secrets.token_hex(16)
+    body_hash = hashlib.sha256(body).hexdigest()
+    canonical = (
+        f"POST\n{target}\n{timestamp}\n{nonce}\n{body_hash}"
+    ).encode("utf-8")
+    mac = hmac.new(
+        settings.admin_key.encode("utf-8"), canonical, hashlib.sha256
+    ).hexdigest()
+    return {
+        "X-Auth-Version": "2",
+        "X-Auth-MAC": mac,
+        "X-Auth-Timestamp": timestamp,
+        "X-Auth-Nonce": nonce,
+        "Content-Type": "application/json",
+    }
 
 
 async def push_event(event: str, payload: dict) -> bool:
@@ -87,11 +98,20 @@ async def push_event(event: str, payload: dict) -> bool:
         # a privileged MAC or event payload to a private/internal address.
         # DNS resolution and PBKDF2 are blocking operations.
         await asyncio.to_thread(_validate_webhook_url, url)
-        headers = await asyncio.to_thread(_make_push_headers)
+        body = json.dumps(
+            {"event": event, "payload": payload},
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+        parsed = urlparse(url)
+        target = parsed.path or "/"
+        if parsed.query:
+            target += "?" + parsed.query
+        headers = _make_push_headers(target, body)
         async with httpx.AsyncClient(timeout=5.0, follow_redirects=False) as client:
             response = await client.post(
                 url,
-                json={"event": event, "payload": payload},
+                content=body,
                 headers=headers,
             )
         if response.status_code >= 400:
