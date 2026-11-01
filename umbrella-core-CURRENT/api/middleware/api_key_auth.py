@@ -71,6 +71,7 @@ async def require_capability_auth(
             if abs(time.time() - ts) > 30:
                 raise HTTPException(status_code=401, detail="Timestamp out of window")
             expected = (await asyncio.to_thread(
+                hashlib.pbkdf2_hmac,
                 "sha256",
                 get_settings().admin_key.encode(),
                 str(ts).encode(),
