@@ -550,6 +550,7 @@ export class UmbrellaApiClient {
       method: 'POST',
       body: JSON.stringify({
         command,
+        server_id: serverId,
         requested_by_discord_id: 'dashboard',
         requested_by_username: 'Dashboard',
       }),
