@@ -155,8 +155,10 @@ public class CommandPoller {
         body.put("success", success);
         body.put("output", output);
         try {
-            HttpResponse<String> response = apiClient.post(
-                    "/api/v1/mc/commands/" + commandId + "/complete", body.toString());
+            String path = "/api/v1/mc/commands/" + commandId + "/complete";
+            String effectiveServerId = serverId == null ? "default" : serverId;
+            path += "?server_id=" + URLEncoder.encode(effectiveServerId, StandardCharsets.UTF_8);
+            HttpResponse<String> response = apiClient.post(path, body.toString());
             if (response.statusCode() != 200) {
                 apiClient.logger().warning(
                         "Command completion ack rejected by core: HTTP " + response.statusCode()

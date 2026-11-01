@@ -206,6 +206,10 @@ async def claim_pending_mc_commands(
 async def complete_mc_command(
     command_id: int,
     body: MCCommandCompleteRequest,
+    server_id: str | None = Query(
+        default=None,
+        description="Claiming server ID; omitted only for legacy plugin compatibility",
+    ),
     db: AsyncSession = Depends(get_db),
     _auth: str = Depends(require_plugin_key),
 ):
@@ -217,11 +221,14 @@ async def complete_mc_command(
     Auth: X-Plugin-Key — see get_pending_mc_commands docstring above for
     why this changed from require_admin_key (Phase 13 Step 2).
     """
-    result = await db.execute(select(MCCommand).where(MCCommand.id == command_id))
+    query = select(MCCommand).where(MCCommand.id == command_id)
+    if server_id is not None:
+        query = query.where(MCCommand.server_id == server_id)
+    result = await db.execute(query)
     mc_command = result.scalar_one_or_none()
 
     if not mc_command:
-        raise HTTPException(status_code=404, detail="MC command not found")
+        raise HTTPException(status_code=404, detail="MC command not found for this server")
 
     if mc_command.status not in {"pending", "dispatched"}:
         raise HTTPException(
@@ -246,6 +253,7 @@ async def complete_mc_command(
             "command": mc_command.command,
             "success": body.success,
             "output": body.output,
+            "server_id": mc_command.server_id,
         },
     )
 
