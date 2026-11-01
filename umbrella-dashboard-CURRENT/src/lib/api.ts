@@ -1244,15 +1244,20 @@ export class UmbrellaApiClient {
   }
 
   public async broadcastMessage(message: string, playerName: string = 'Staff', channelId?: string): Promise<any> {
-    return this.request<any>('/api/v1/bridge/message', {
+    const result = await this.request<any>('/api/v1/bridge/message', {
       method: 'POST',
       body: JSON.stringify({
         source: 'DASHBOARD',
+        scope: 'discord',
         player_name: playerName,
         message,
         ...(channelId ? { channel_id: channelId } : {}),
       }),
     });
+    if (!result?.forwarded || !Array.isArray(result?.targets) || !result.targets.includes('discord')) {
+      throw new ApiError('Discord broadcast was accepted by Core but not delivered to the bot.', 503, result);
+    }
+    return result;
   }
 }
 

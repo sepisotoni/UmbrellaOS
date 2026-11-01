@@ -69,7 +69,7 @@ def _make_push_headers() -> dict[str, str]:
     return {"X-Auth-MAC": mac, "X-Auth-Timestamp": str(ts)}
 
 
-async def push_event(event: str, payload: dict) -> None:
+async def push_event(event: str, payload: dict) -> bool:
     """
     Fire-and-forget push of an event to the bot's webhook.
 
@@ -80,7 +80,7 @@ async def push_event(event: str, payload: dict) -> None:
     url = await _get_callback_url()
     if not url:
         logger.debug("No bot registration found; skipping push for event %s", event)
-        return
+        return False
 
     try:
         # Existing DB rows may predate registration validation; never send
@@ -98,10 +98,14 @@ async def push_event(event: str, payload: dict) -> None:
             logger.warning(
                 "Bot push for event %s returned HTTP %s", event, response.status_code
             )
+            return False
+        return True
     except (WebhookError, ValueError):
         logger.warning("Bot push blocked: unsafe registered callback for event %s", event)
+        return False
     except Exception:
         logger.warning("Bot push failed for event %s", event, exc_info=True)
+        return False
 
 
 def invalidate_cache() -> None:
