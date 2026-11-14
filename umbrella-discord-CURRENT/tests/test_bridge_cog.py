@@ -69,6 +69,39 @@ def test_format_broadcast_includes_message_and_sender():
     assert "AdminBob" in embed.footer.text
 
 
+def test_format_broadcast_applies_custom_embed_appearance():
+    embed = BridgeCog._format_broadcast(
+        {
+            "message": "Service update",
+            "embed_title": "Maintenance notice",
+            "embed_color": 0x123456,
+            "icon_url": "https://example.com/icon.png",
+            "image_url": "https://example.com/banner.png",
+        }
+    )
+
+    assert embed.title == "Maintenance notice"
+    assert embed.color.value == 0x123456
+    assert embed.thumbnail.url == "https://example.com/icon.png"
+    assert embed.image.url == "https://example.com/banner.png"
+
+
+def test_format_broadcast_ignores_invalid_custom_appearance_values():
+    embed = BridgeCog._format_broadcast(
+        {
+            "embed_title": "",
+            "embed_color": 0x1000000,
+            "icon_url": "http://example.com/icon.png",
+            "image_url": "javascript:alert(1)",
+        }
+    )
+
+    assert embed.title == "📢 Staff Broadcast"
+    assert embed.color.value == 0x9B59B6
+    assert embed.thumbnail.url is None
+    assert embed.image.url is None
+
+
 def test_format_broadcast_falls_back_to_staff_when_no_sender():
     payload = {"message": "Test message"}
     embed = BridgeCog._format_broadcast(payload)

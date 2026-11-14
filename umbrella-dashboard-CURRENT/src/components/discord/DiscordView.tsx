@@ -72,6 +72,19 @@ function fullDate(value: string | null | undefined): string {
     : 'Unknown';
 }
 
+const DEFAULT_BROADCAST_TITLE = '📢 Staff Broadcast';
+const DEFAULT_BROADCAST_COLOR = '#9B59B6';
+
+function isHttpsUrl(value: string): boolean {
+  if (!value.trim()) return true;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && !url.username && !url.password;
+  } catch {
+    return false;
+  }
+}
+
 function Card({
   children,
   className = '',
@@ -161,6 +174,10 @@ export const DiscordView: React.FC = () => {
   const [savingField, setSavingField] = useState<string | null>(null);
   const [targetChannelId, setTargetChannelId] = useState('');
   const [broadcastText, setBroadcastText] = useState('');
+  const [broadcastTitle, setBroadcastTitle] = useState(DEFAULT_BROADCAST_TITLE);
+  const [broadcastColor, setBroadcastColor] = useState(DEFAULT_BROADCAST_COLOR);
+  const [broadcastIconUrl, setBroadcastIconUrl] = useState('');
+  const [broadcastImageUrl, setBroadcastImageUrl] = useState('');
   const [sending, setSending] = useState(false);
 
   const selectedGuild = guilds.find(
@@ -297,6 +314,14 @@ export const DiscordView: React.FC = () => {
       });
       return;
     }
+    if (!isHttpsUrl(broadcastIconUrl) || !isHttpsUrl(broadcastImageUrl)) {
+      addToast({
+        type: 'error',
+        title: 'Image URL must use HTTPS',
+        message: 'Use a valid HTTPS URL for the thumbnail icon and banner image.',
+      });
+      return;
+    }
 
     setSending(true);
     try {
@@ -304,6 +329,12 @@ export const DiscordView: React.FC = () => {
         message,
         'Staff',
         targetChannelId,
+        {
+          embedTitle: broadcastTitle.trim() || DEFAULT_BROADCAST_TITLE,
+          embedColor: Number.parseInt(broadcastColor.slice(1), 16),
+          iconUrl: broadcastIconUrl.trim() || undefined,
+          imageUrl: broadcastImageUrl.trim() || undefined,
+        },
       );
       if (!result.forwarded || !result.targets.includes('discord')) {
         addToast({
@@ -701,7 +732,7 @@ export const DiscordView: React.FC = () => {
               Dashboard announcement
             </CardTitle>
             <p className="-mt-2 text-xs text-slate-500">
-              Sends the standard Staff Broadcast embed through Core to the
+              Customize the announcement embed and send it through Core to the
               selected server's text channel.
             </p>
           </div>
@@ -758,6 +789,52 @@ export const DiscordView: React.FC = () => {
                   {broadcastText.length}/4000
                 </span>
               </label>
+              <div className="space-y-3 rounded-xl border border-[#293252] bg-[#090e20] p-3">
+                <p className="text-xs font-semibold text-slate-200">Embed appearance</p>
+                <label className="block">
+                  <span className="mb-1.5 block text-xs text-slate-400">Title</span>
+                  <input
+                    value={broadcastTitle}
+                    onChange={event => setBroadcastTitle(event.target.value)}
+                    maxLength={256}
+                    placeholder="📢 Staff Broadcast"
+                    className="w-full rounded-lg border border-[#293252] bg-[#070b18] px-3 py-2 text-sm text-white outline-none placeholder:text-slate-600 focus:border-indigo-400"
+                  />
+                </label>
+                <label className="flex items-center justify-between gap-3">
+                  <span className="text-xs text-slate-400">Accent color</span>
+                  <span className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={broadcastColor}
+                      onChange={event => setBroadcastColor(event.target.value)}
+                      aria-label="Embed accent color"
+                      className="h-8 w-10 cursor-pointer rounded border border-[#293252] bg-transparent p-0.5"
+                    />
+                    <span className="font-mono text-xs text-slate-300">{broadcastColor}</span>
+                  </span>
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-xs text-slate-400">Thumbnail icon URL (HTTPS)</span>
+                  <input
+                    type="url"
+                    value={broadcastIconUrl}
+                    onChange={event => setBroadcastIconUrl(event.target.value)}
+                    placeholder="https://example.com/icon.png"
+                    className="w-full rounded-lg border border-[#293252] bg-[#070b18] px-3 py-2 text-xs text-white outline-none placeholder:text-slate-600 focus:border-indigo-400"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-xs text-slate-400">Banner image URL (HTTPS)</span>
+                  <input
+                    type="url"
+                    value={broadcastImageUrl}
+                    onChange={event => setBroadcastImageUrl(event.target.value)}
+                    placeholder="https://example.com/banner.png"
+                    className="w-full rounded-lg border border-[#293252] bg-[#070b18] px-3 py-2 text-xs text-white outline-none placeholder:text-slate-600 focus:border-indigo-400"
+                  />
+                </label>
+              </div>
               <button
                 type="button"
                 onClick={() => void handleBroadcast()}
@@ -772,17 +849,35 @@ export const DiscordView: React.FC = () => {
             <div className="rounded-xl border border-[#293252] bg-[#070b18] p-4">
               <div className="mb-3 flex items-center justify-between text-xs">
                 <span className="font-medium text-slate-300">Message preview</span>
-                <span className="text-slate-500">Staff Broadcast</span>
+                <span className="text-slate-500">Discord embed</span>
               </div>
               <div className="flex min-h-32 overflow-hidden rounded-lg bg-[#2b2d31]">
-                <div className="w-1 shrink-0 bg-indigo-400" />
-                <div className="min-w-0 p-4">
-                  <div className="mb-2 text-sm font-semibold text-white">
-                    Staff Broadcast
+                <div className="w-1 shrink-0" style={{ backgroundColor: broadcastColor }} />
+                <div className="min-w-0 flex-1 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="mb-2 text-sm font-semibold text-white">
+                      {broadcastTitle.trim() || DEFAULT_BROADCAST_TITLE}
+                    </div>
+                    {broadcastIconUrl.trim() && isHttpsUrl(broadcastIconUrl) && (
+                      <img
+                        src={broadcastIconUrl}
+                        alt="Embed thumbnail preview"
+                        referrerPolicy="no-referrer"
+                        className="h-12 w-12 shrink-0 rounded-md object-cover"
+                      />
+                    )}
                   </div>
                   <p className="whitespace-pre-wrap break-words text-sm text-[#dbdee1]">
                     {broadcastText.trim() || 'Your announcement will appear here.'}
                   </p>
+                  {broadcastImageUrl.trim() && isHttpsUrl(broadcastImageUrl) && (
+                    <img
+                      src={broadcastImageUrl}
+                      alt="Embed banner preview"
+                      referrerPolicy="no-referrer"
+                      className="mt-3 max-h-48 w-full rounded-md object-cover"
+                    />
+                  )}
                   <p className="mt-4 text-[11px] text-[#949ba4]">
                     Sent by Staff via UmbrellaOS Dashboard
                   </p>

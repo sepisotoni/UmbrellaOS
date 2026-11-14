@@ -149,6 +149,8 @@ async def test_bot_runtime_state_sends_revisions_and_returns_changes():
         return httpx.Response(
             200,
             json={
+                "ok": True,
+                "changed": True,
                 "config_revision": "config-v2",
                 "token_revision": "token-v1",
                 "config": {"remote": {}, "guilds": []},
@@ -175,7 +177,15 @@ async def test_bot_runtime_state_sends_revisions_and_returns_changes():
 async def test_bot_runtime_state_returns_none_when_unchanged():
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v1/bot/runtime-state"
-        return httpx.Response(204)
+        return httpx.Response(
+            200,
+            json={
+                "ok": True,
+                "changed": False,
+                "config_revision": "config-v1",
+                "token_revision": "token-v1",
+            },
+        )
 
     client = UmbrellaCoreClient(
         "https://core.example.com",

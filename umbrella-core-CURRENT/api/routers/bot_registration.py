@@ -367,6 +367,8 @@ async def get_bot_runtime_state(
     ).hexdigest()
 
     changes: dict = {
+        "ok": True,
+        "changed": False,
         "config_revision": current_config_revision,
         "token_revision": current_token_revision,
     }
@@ -376,8 +378,7 @@ async def get_bot_runtime_state(
     if token_revision != current_token_revision:
         changes["discord_token"] = token or None
 
-    if len(changes) == 2:
-        return Response(status_code=204, headers={"Cache-Control": "no-store"})
+    changes["changed"] = "config" in changes or "discord_token" in changes
     return changes
 
 

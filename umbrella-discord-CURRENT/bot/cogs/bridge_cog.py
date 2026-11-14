@@ -32,6 +32,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from typing import Any
+from urllib.parse import urlsplit
 
 import discord
 from discord.ext import commands
@@ -39,6 +40,23 @@ from discord.ext import commands
 logger = logging.getLogger(__name__)
 
 _SEND_RETRY_DELAYS = (0.25, 0.5)
+_DEFAULT_EMBED_TITLE = "📢 Staff Broadcast"
+_DEFAULT_EMBED_COLOR = 0x9B59B6
+
+
+def _is_https_url(value: Any) -> bool:
+    if not isinstance(value, str):
+        return False
+    try:
+        parsed = urlsplit(value)
+        return (
+            parsed.scheme == "https"
+            and bool(parsed.hostname)
+            and parsed.username is None
+            and parsed.password is None
+        )
+    except ValueError:
+        return False
 
 
 class BridgeCog(commands.Cog):
@@ -100,11 +118,27 @@ class BridgeCog(commands.Cog):
 
     @staticmethod
     def _format_broadcast(payload: dict[str, Any]) -> discord.Embed:
+        title = payload.get("embed_title")
+        if not isinstance(title, str) or not title.strip():
+            title = _DEFAULT_EMBED_TITLE
+        try:
+            color_value = int(payload.get("embed_color", _DEFAULT_EMBED_COLOR))
+        except (TypeError, ValueError):
+            color_value = _DEFAULT_EMBED_COLOR
+        if not 0 <= color_value <= 0xFFFFFF:
+            color_value = _DEFAULT_EMBED_COLOR
+
         embed = discord.Embed(
-            title="📢 Staff Broadcast",
+            title=title[:256],
             description=payload.get("message", ""),
-            color=discord.Color.purple(),
+            color=discord.Color(color_value),
         )
+        icon_url = payload.get("icon_url")
+        if _is_https_url(icon_url):
+            embed.set_thumbnail(url=icon_url)
+        image_url = payload.get("image_url")
+        if _is_https_url(image_url):
+            embed.set_image(url=image_url)
         sender = payload.get("player_name") or "Staff"
         embed.set_footer(text=f"Sent by {sender} via UmbrellaOS Dashboard")
         return embed

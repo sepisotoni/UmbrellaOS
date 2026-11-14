@@ -23,8 +23,9 @@ audits and syncs .env) and preserves the \"true\"/\"false\" normalisation on wri
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
+from urllib.parse import urlsplit
 
 from database import get_db
 from models import ChatMessage, Setting, PlayerLanguage
@@ -47,6 +48,26 @@ class BridgeMessageRequest(BaseModel):
     scope: str | None = (
         None  # "minecraft", "discord", or None (both) for DASHBOARD broadcasts
     )
+    embed_title: str | None = Field(default=None, max_length=256)
+    embed_color: int | None = Field(default=None, ge=0, le=0xFFFFFF)
+    icon_url: str | None = Field(default=None, max_length=2048)
+    image_url: str | None = Field(default=None, max_length=2048)
+
+    @field_validator("icon_url", "image_url")
+    @classmethod
+    def validate_embed_image_url(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
+        value = value.strip()
+        parsed = urlsplit(value)
+        if (
+            parsed.scheme != "https"
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+        ):
+            raise ValueError("embed image URLs must use HTTPS")
+        return value
 
 
 class BridgeMessageResponse(BaseModel):
@@ -208,15 +229,17 @@ async def receive_bridge_message(
     # ChatMessage row, matching how every other push in this codebase
     # degrades.
     if body.source == "DASHBOARD" and "discord" in targets:
-        await bot_push_service.push_event(
-            "bridge.dashboard_message",
-            {
-                "message_id": chat_message.id,
-                "message": body.message,
-                "player_name": body.player_name,
-                "channel_id": body.channel_id,
-            },
-        )
+        push_payload = {
+            "message_id": chat_message.id,
+            "message": body.message,
+            "player_name": body.player_name,
+            "channel_id": body.channel_id,
+        }
+        for field in ("embed_title", "embed_color", "icon_url", "image_url"):
+            value = getattr(body, field)
+            if value is not None:
+                push_payload[field] = value
+        await bot_push_service.push_event("bridge.dashboard_message", push_payload)
 
     return BridgeMessageResponse(
         forwarded=forwarded,

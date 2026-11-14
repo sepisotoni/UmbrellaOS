@@ -128,6 +128,8 @@ async def test_bot_runtime_state_sends_only_changed_config_and_token(
     assert response.status_code == 200
     assert response.headers["cache-control"] == "no-store"
     initial = response.json()
+    assert initial["ok"] is True
+    assert initial["changed"] is True
     assert initial["discord_token"] == "initial-token"
     assert initial["config"]["remote"]["command_prefix"] == "!"
 
@@ -139,8 +141,10 @@ async def test_bot_runtime_state_sends_only_changed_config_and_token(
             "token_revision": initial["token_revision"],
         },
     )
-    assert response.status_code == 204
+    assert response.status_code == 200
     assert response.headers["cache-control"] == "no-store"
+    assert response.json()["ok"] is True
+    assert response.json()["changed"] is False
 
     response = await client.post(
         "/api/v1/bot/guilds/sync",
@@ -168,6 +172,8 @@ async def test_bot_runtime_state_sends_only_changed_config_and_token(
     )
     assert response.status_code == 200
     config_update = response.json()
+    assert config_update["ok"] is True
+    assert config_update["changed"] is True
     assert "config" in config_update
     assert "discord_token" not in config_update
     assert config_update["config"]["guilds"][0]["guild_id"] == "100"
@@ -187,6 +193,8 @@ async def test_bot_runtime_state_sends_only_changed_config_and_token(
     )
     assert response.status_code == 200
     token_update = response.json()
+    assert token_update["ok"] is True
+    assert token_update["changed"] is True
     assert token_update["discord_token"] == "rotated-token"
     assert "config" not in token_update
 

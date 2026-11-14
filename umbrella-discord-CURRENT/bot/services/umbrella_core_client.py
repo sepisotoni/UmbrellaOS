@@ -297,6 +297,14 @@ class UmbrellaCoreClient:
             raise UmbrellaCoreError(
                 "umbrella-core returned an invalid bot runtime state"
             )
+        if payload.get("ok") is not True or not isinstance(
+            payload.get("changed"), bool
+        ):
+            raise UmbrellaCoreError(
+                "umbrella-core returned an invalid bot runtime state acknowledgement"
+            )
+        if not payload["changed"]:
+            return None
         return payload
 
     async def ask_ai(self, message: str, context: str | None = None) -> dict[str, Any]:

@@ -257,6 +257,10 @@ async def test_dashboard_broadcast_pushes_to_bot_webhook(client, monkeypatch):
         "player_name": "TestStaffer",
         "message": "Server maintenance in 10 minutes",
         "channel_id": "555444333",
+        "embed_title": "Maintenance alert",
+        "embed_color": 0x123456,
+        "icon_url": "https://example.com/icon.png",
+        "image_url": "https://example.com/banner.png",
     }
     response = await client.post(
         "/api/v1/bridge/message", json=payload, headers=ADMIN_HEADERS
@@ -272,6 +276,38 @@ async def test_dashboard_broadcast_pushes_to_bot_webhook(client, monkeypatch):
     assert pushed_payload["message"] == "Server maintenance in 10 minutes"
     assert pushed_payload["channel_id"] == "555444333"
     assert pushed_payload["player_name"] == "TestStaffer"
+    assert pushed_payload["embed_title"] == "Maintenance alert"
+    assert pushed_payload["embed_color"] == 0x123456
+    assert pushed_payload["icon_url"] == "https://example.com/icon.png"
+    assert pushed_payload["image_url"] == "https://example.com/banner.png"
+
+
+@pytest.mark.asyncio
+async def test_dashboard_broadcast_rejects_non_https_image_urls(client):
+    response = await client.post(
+        "/api/v1/bridge/message",
+        json={
+            "source": "DASHBOARD",
+            "message": "Maintenance",
+            "icon_url": "http://example.com/icon.png",
+        },
+        headers=ADMIN_HEADERS,
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_dashboard_broadcast_rejects_out_of_range_embed_color(client):
+    response = await client.post(
+        "/api/v1/bridge/message",
+        json={
+            "source": "DASHBOARD",
+            "message": "Maintenance",
+            "embed_color": 0x1000000,
+        },
+        headers=ADMIN_HEADERS,
+    )
+    assert response.status_code == 422
 
 
 @pytest.mark.asyncio

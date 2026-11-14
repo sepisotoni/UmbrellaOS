@@ -1235,7 +1235,12 @@ export class UmbrellaApiClient {
     return this.broadcastMessage(message, 'Admin');
   }
 
-  public async broadcastMessage(message: string, playerName: string = 'Staff', channelId?: string): Promise<BridgeMessageResponse> {
+  public async broadcastMessage(
+    message: string,
+    playerName: string = 'Staff',
+    channelId?: string,
+    options: DiscordBroadcastOptions = {},
+  ): Promise<BridgeMessageResponse> {
     return this.request<BridgeMessageResponse>('/api/v1/bridge/message', {
       method: 'POST',
       body: JSON.stringify({
@@ -1243,6 +1248,10 @@ export class UmbrellaApiClient {
         player_name: playerName,
         message,
         ...(channelId ? { channel_id: channelId } : {}),
+        ...(options.embedTitle ? { embed_title: options.embedTitle } : {}),
+        ...(options.embedColor !== undefined ? { embed_color: options.embedColor } : {}),
+        ...(options.iconUrl ? { icon_url: options.iconUrl } : {}),
+        ...(options.imageUrl ? { image_url: options.imageUrl } : {}),
       }),
     });
   }
@@ -1263,6 +1272,13 @@ export interface BridgeMessageResponse {
   targets: string[];
   message_id: number;
   translated_message: string | null;
+}
+
+export interface DiscordBroadcastOptions {
+  embedTitle?: string;
+  embedColor?: number;
+  iconUrl?: string;
+  imageUrl?: string;
 }
 
 export interface BotCommand {

@@ -5,45 +5,63 @@ import { DisconnectedBanner } from '../common/DisconnectedBanner';
 import {
   Terminal,
   Send,
-  RefreshCw,
   AlertCircle,
   Server,
   Trash2,
-  CheckCircle2,
-  XCircle,
 } from 'lucide-react';
 
 export const ConsoleView: React.FC = () => {
   const { selectedServerId, setSelectedServerId } = useDashboard();
   const [servers, setServers] = useState<ServerRecord[]>([]);
-  const [activeServerId, setActiveServerId] = useState<string>(selectedServerId || 'survival-01');
+  const [activeServerId, setActiveServerId] = useState<string>('');
+  const [serversLoading, setServersLoading] = useState(true);
+  const [serverLoadError, setServerLoadError] = useState<string | null>(null);
   const [commandInput, setCommandInput] = useState<string>('');
   const [logs, setLogs] = useState<string[]>([]);
-  const [wsStatus, setWsStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error'>('connecting');
+  const [wsStatus, setWsStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error'>('disconnected');
   const [streamMode, setStreamMode] = useState<'live' | 'plugin' | 'none'>('none');
   const wsRef = useRef<WebSocket | null>(null);
   const terminalEndRef = useRef<HTMLDivElement | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const seenLinesRef = useRef<Set<string>>(new Set());
 
-  // Sync selectedServerId if passed from navigation
-  useEffect(() => {
-    if (selectedServerId) {
-      setActiveServerId(selectedServerId);
-    }
-  }, [selectedServerId]);
-
   // Fetch servers list for selector
   useEffect(() => {
-    api.getServers().then((res) => {
-      if (res && res.length > 0) {
-        setServers(res);
-        if (!selectedServerId) {
-          setActiveServerId(res[0].id);
-        }
-      }
-    }).catch(() => {});
+    let mounted = true;
+    api.getServers()
+      .then((result) => {
+        if (!mounted) return;
+        const availableServers = Array.isArray(result) ? result : [];
+        setServers(availableServers);
+        setServerLoadError(null);
+        const preferred = availableServers.some(
+          server => server.id === selectedServerId,
+        )
+          ? selectedServerId
+          : availableServers[0]?.id ?? '';
+        setActiveServerId(preferred);
+        setSelectedServerId(preferred);
+      })
+      .catch((error: unknown) => {
+        if (!mounted) return;
+        setServerLoadError(
+          error instanceof Error ? error.message : 'Unexpected API error',
+        );
+      })
+      .finally(() => {
+        if (mounted) setServersLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
   }, []);
+
+  useEffect(() => {
+    if (selectedServerId && servers.some(server => server.id === selectedServerId)) {
+      setActiveServerId(selectedServerId);
+    }
+  }, [selectedServerId, servers]);
 
   // Start plugin-log polling fallback (called when WS is error/disconnected)
   const startPolling = (serverId: string) => {
@@ -81,7 +99,10 @@ export const ConsoleView: React.FC = () => {
 
   // Connect WebSocket on mount & when activeServerId changes; disconnect on unmount
   useEffect(() => {
-    if (!activeServerId) return;
+    if (
+      serversLoading
+      || !servers.some(server => server.id === activeServerId)
+    ) return;
 
     stopPolling();
     seenLinesRef.current = new Set();
@@ -93,6 +114,7 @@ export const ConsoleView: React.FC = () => {
     setWsStatus('connecting');
     setStreamMode('none');
 
+    let disposed = false;
     const wsUrl = api.getServerConsoleWebSocketUrl(activeServerId);
     let ws: WebSocket;
     try {
@@ -100,6 +122,7 @@ export const ConsoleView: React.FC = () => {
       wsRef.current = ws;
 
       ws.onopen = () => {
+        if (disposed) return;
         setWsStatus('connected');
         setStreamMode('live');
         stopPolling();
@@ -110,10 +133,12 @@ export const ConsoleView: React.FC = () => {
       };
 
       ws.onmessage = (event) => {
+        if (disposed) return;
         setLogs((prev) => [...prev, event.data]);
       };
 
       ws.onerror = () => {
+        if (disposed) return;
         setWsStatus('error');
         setLogs((prev) => [
           ...prev,
@@ -123,6 +148,7 @@ export const ConsoleView: React.FC = () => {
       };
 
       ws.onclose = () => {
+        if (disposed) return;
         setWsStatus('disconnected');
         setLogs((prev) => [
           ...prev,
@@ -131,6 +157,7 @@ export const ConsoleView: React.FC = () => {
         startPolling(activeServerId);
       };
     } catch (err: any) {
+      if (disposed) return;
       setWsStatus('error');
       setLogs((prev) => [
         ...prev,
@@ -140,13 +167,14 @@ export const ConsoleView: React.FC = () => {
     }
 
     return () => {
+      disposed = true;
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;
       }
       stopPolling();
     };
-  }, [activeServerId]);
+  }, [activeServerId, servers, serversLoading]);
 
   // Auto scroll to bottom
   useEffect(() => {
@@ -155,7 +183,10 @@ export const ConsoleView: React.FC = () => {
 
   const handleSendCommand = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!commandInput.trim()) return;
+    if (
+      !servers.some(server => server.id === activeServerId)
+      || !commandInput.trim()
+    ) return;
 
     const cmd = commandInput.trim();
     setCommandInput('');
@@ -225,7 +256,11 @@ export const ConsoleView: React.FC = () => {
             <select
               id="console-server-select"
               value={activeServerId}
-              onChange={(e) => setActiveServerId(e.target.value)}
+              onChange={(e) => {
+                setActiveServerId(e.target.value);
+                setSelectedServerId(e.target.value);
+              }}
+              disabled={serversLoading || servers.length === 0}
               className="rounded-lg border border-[#1e1b4b] bg-[#0d1127] px-3 py-1.5 text-xs font-mono text-white focus:border-purple-500 focus:outline-none cursor-pointer"
             >
               {servers.length > 0 ? (
@@ -235,7 +270,9 @@ export const ConsoleView: React.FC = () => {
                   </option>
                 ))
               ) : (
-                <option value="survival-01">survival-01</option>
+                <option value="">
+                  {serversLoading ? 'Loading servers…' : 'No connected servers'}
+                </option>
               )}
             </select>
           </div>
@@ -250,9 +287,26 @@ export const ConsoleView: React.FC = () => {
         </div>
       </div>
 
+      {serverLoadError && (
+        <div role="alert" className="flex items-center gap-2 rounded-lg border border-rose-500/30 bg-rose-950/30 px-3 py-2 text-xs text-rose-200">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span>Could not load servers: {serverLoadError}</span>
+        </div>
+      )}
+      {!serversLoading && !serverLoadError && servers.length === 0 && (
+        <div className="rounded-lg border border-[#293252] bg-[#0d1127] px-3 py-2 text-xs text-slate-400">
+          No connected servers are available. The console will appear after a server registers with Core.
+        </div>
+      )}
+
       {/* Terminal Display */}
       <div className="rounded-xl border border-[#1e1b4b] bg-[#04060c] p-4 shadow-2xl font-mono text-xs text-slate-200">
         <div className="h-[520px] overflow-y-auto space-y-1 select-text scrollbar-thin scrollbar-thumb-purple-900 scrollbar-track-transparent">
+          {!activeServerId && (
+            <div className="flex h-full items-center justify-center text-slate-500">
+              {serversLoading ? 'Loading server console…' : 'Select a connected server to view its console.'}
+            </div>
+          )}
           {logs.map((log, index) => {
             const isCommand = log.startsWith('>');
             const isError = log.toLowerCase().includes('error') || log.toLowerCase().includes('exception');
@@ -292,13 +346,14 @@ export const ConsoleView: React.FC = () => {
             type="text"
             value={commandInput}
             onChange={(e) => setCommandInput(e.target.value)}
-            placeholder={`Execute Minecraft command on ${activeServerId} (e.g. list, kick player, grim alerts)...`}
+            placeholder={activeServerId ? `Execute Minecraft command on ${activeServerId}...` : 'Connect a server to enable commands'}
+            disabled={!servers.some(server => server.id === activeServerId)}
             className="flex-1 bg-transparent text-white placeholder-slate-600 focus:outline-none text-xs font-mono"
           />
           <button
             id="submit-console-command"
             type="submit"
-            disabled={!commandInput.trim()}
+            disabled={!servers.some(server => server.id === activeServerId) || !commandInput.trim()}
             className="inline-flex items-center gap-1.5 rounded-lg border border-purple-500/50 bg-purple-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-purple-500 transition disabled:opacity-50 cursor-pointer"
           >
             <Send className="h-3.5 w-3.5" />
