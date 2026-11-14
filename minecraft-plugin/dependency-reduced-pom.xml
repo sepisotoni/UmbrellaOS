@@ -70,7 +70,7 @@
     <dependency>
       <groupId>io.papermc.paper</groupId>
       <artifactId>paper-api</artifactId>
-      <version>1.21.4-R0.1-SNAPSHOT</version>
+      <version>26.2.build.135-stable</version>
       <scope>provided</scope>
     </dependency>
     <dependency>
@@ -133,13 +133,13 @@
     </dependency>
   </dependencies>
   <properties>
-    <maven.compiler.source>21</maven.compiler.source>
+    <maven.compiler.target>25</maven.compiler.target>
+    <maven.compiler.source>25</maven.compiler.source>
     <grimapi.version>1.1.0.0</grimapi.version>
     <json.version>20240303</json.version>
-    <mockito.version>5.14.2</mockito.version>
-    <maven.compiler.target>21</maven.compiler.target>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <junit.version>5.10.2</junit.version>
-    <paper.api.version>1.21.4-R0.1-SNAPSHOT</paper.api.version>
+    <mockito.version>5.14.2</mockito.version>
+    <paper.api.version>26.2.build.135-stable</paper.api.version>
   </properties>
 </project>

@@ -9,8 +9,8 @@ Discord bot, and Paper plugin working together.
 |---|---|---|
 | Core API | FastAPI + PostgreSQL | Render |
 | Dashboard | React + Vite + Tailwind | Vercel |
-| Discord Bot | discord.py | HeavenCloud |
-| Minecraft Plugin | Java + Paper 1.21.4 | BisectHosting |
+| Discord Bot | discord.py | VPS |
+| Minecraft Plugin | Java 25 + Paper 26.2 | Minecraft hosting |
 | Database | Supabase PostgreSQL | Supabase |
 
 ## Live URLs

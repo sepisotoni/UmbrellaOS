@@ -3,8 +3,8 @@
 ## Stack
 - Core API: FastAPI + PostgreSQL (Render `srv-da3k11f10e5c73eka6o0`)
 - Dashboard: React + Vite + Tailwind (Vercel `umbrella-os`, team `team_jxYs3eCsymnBsVpR7sBO1ueu`)
-- Bot: discord.py on HeavenCloud (`e3f69e73`), bot name Moon-Bot#4491
-- Plugin: Java + Paper 1.21.4 on BisectHosting
+- Bot: discord.py on a VPS
+- Plugin: Java 25 + Paper 26.2
 - DB: Supabase PostgreSQL (`isofkwkivftnssorqzkd`)
 - Dashboard URL: https://umbrella-os-phi.vercel.app
 
