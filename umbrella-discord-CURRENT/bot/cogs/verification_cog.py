@@ -246,22 +246,14 @@ class VerificationCog(commands.Cog):
                 )
 
     async def _assign_verified_role(self, user: discord.User) -> None:
-        """Assign the verified role from RemoteConfig.  Best-effort only.
-
-        FIX (HIGH): was reading self.bot.settings.discord_verified_role_id, which
-        does not exist on Settings (which only carries the Core URL and API key).
-        getattr() silently returned 0 every time, so verified-role assignment
-        was always silently skipped.
-        Corrected to self.bot.remote.verified_role_id, the RemoteConfig field
-        populated from core's discord.verified_role_id setting at startup.
-        """
-        remote = getattr(self.bot, "remote", None)
-        role_id: int = getattr(remote, "verified_role_id", 0) or 0
-        if not role_id:
-            return
+        """Assign each guild's configured verified role. Best-effort only."""
         for guild in self.bot.guilds:
             member = guild.get_member(user.id)
             if member is None:
+                continue
+            config = self.bot.guild_configs.get(guild.id)
+            role_id = config.verified_role_id if config else None
+            if not role_id:
                 continue
             verified_role = guild.get_role(role_id)
             if verified_role is None:

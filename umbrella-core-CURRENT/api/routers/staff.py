@@ -3,7 +3,7 @@
 from typing import Literal
 import uuid as uuid_lib
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +13,7 @@ from database import get_db
 from api.dependencies.permissions import require_permission
 from api.middleware.auth import require_plugin_key
 from models import User
+from models.bot_guild import BotGuild
 from models.discord import DiscordAccount
 from models.permissions import Role
 from services.staff_service import (
@@ -90,6 +91,7 @@ async def staff_add(
 
 @router.get("/discord-members")
 async def discord_members(
+    guild_id: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
     auth: User | str = Depends(require_permission("roles.manage")),
 ) -> list[dict]:
@@ -98,10 +100,21 @@ async def discord_members(
     from models.setting import Setting
 
     settings = get_settings()
-    guild_id_setting = await db.scalar(
-        select(Setting).where(Setting.key == "discord.guild_id")
-    )
-    guild_id = guild_id_setting.value if guild_id_setting else ""
+    if guild_id:
+        guild = await db.get(BotGuild, guild_id)
+        if guild is None or not guild.is_active:
+            raise HTTPException(status_code=404, detail="Active Discord guild not found")
+    else:
+        guild_id = await db.scalar(
+            select(BotGuild.guild_id)
+            .where(BotGuild.is_active.is_(True))
+            .order_by(BotGuild.name)
+        )
+        if not guild_id:
+            guild_id_setting = await db.scalar(
+                select(Setting).where(Setting.key == "discord.guild_id")
+            )
+            guild_id = guild_id_setting.value if guild_id_setting else ""
     bot_token_setting = await db.scalar(
         select(Setting).where(Setting.key == "discord.bot_token")
     )

@@ -38,6 +38,7 @@ from discord.ext import commands
 
 from bot.config import (
     BotTokenUnavailable,
+    GuildConfig,
     RemoteConfig,
     Settings,
     fetch_bot_config,
@@ -101,6 +102,7 @@ class UmbrellaBot(commands.Bot):
         )
         # Populated by setup_hook after fetching from core's settings API.
         self.remote: RemoteConfig | None = None
+        self.guild_configs: dict[int, GuildConfig] = {}
         self._token_watch_task: asyncio.Task[None] | None = None
 
     async def setup_hook(self) -> None:
@@ -108,9 +110,8 @@ class UmbrellaBot(commands.Bot):
         # can access self.bot.remote (via self.bot) from their __init__.
         self.remote = await fetch_bot_config(self.core)
         logger.info(
-            "RemoteConfig loaded — guild_id=%s staff_alert_channel_id=%s",
-            self.remote.guild_id,
-            self.remote.staff_alert_channel_id,
+            "Bot-wide RemoteConfig loaded — callback_port=%s",
+            self.remote.callback_port,
         )
 
         for extension in EXTENSIONS:
@@ -120,30 +121,12 @@ class UmbrellaBot(commands.Bot):
             except Exception:
                 logger.exception("Failed to load extension: %s", extension)
 
-        guild_id = self.remote.guild_id
-        if guild_id:
-            guild = discord.Object(id=guild_id)
-            # Cogs declare commands globally. Copy them before clearing that
-            # tree so guild commands stay available immediately while syncing
-            # an empty global tree removes stale global registrations.
-            self.tree.copy_global_to(guild=guild)
-            await self.tree.sync(guild=guild)
-            self.tree.clear_commands(guild=None)
-            await self.tree.sync(guild=None)
-            logger.info(
-                "Slash commands synced to guild %s; global registrations cleared.",
-                guild_id,
-            )
-        else:
-            await self.tree.sync()
-            logger.info(
-                "Slash commands synced globally (up to 1hr propagation — set discord.guild_id in core settings for instant registration)."
-            )
+        await self.tree.sync()
+        logger.info("Slash commands synced globally.")
 
         # Push command manifest to core so the dashboard can read real command data.
         try:
-            guild_obj_for_cmds = discord.Object(id=guild_id) if guild_id else None
-            tree_commands = self.tree.get_commands(guild=guild_obj_for_cmds)
+            tree_commands = self.tree.get_commands()
             manifest = []
             for cmd in tree_commands:
                 manifest.append(
@@ -165,9 +148,6 @@ class UmbrellaBot(commands.Bot):
         except Exception as exc:  # noqa: BLE001
             logger.warning("Failed to push command manifest: %s", exc)
 
-        # Push guild channels + roles — guild cache may be cold in setup_hook
-        # (GUILD_CREATE not received yet), so also retry in on_ready.
-        await self._push_guild_data()
         self._token_watch_task = asyncio.create_task(self._watch_discord_token())
 
     async def close(self) -> None:
@@ -203,61 +183,115 @@ class UmbrellaBot(commands.Bot):
                 logger.info("Discord bot token changed in Core; reconnecting.")
                 await self.close()
                 return
+            await self._refresh_guild_configs()
 
-    async def _push_guild_data(self) -> None:
-        """Push guild text channels and mentionable roles to core.
-
-        Safe to call multiple times — upserts to id=1 each time. Called from
-        both setup_hook (optimistic, guild cache may be cold) and on_ready
-        (guaranteed cache warm) so the dashboard always gets real data.
-        """
-        guild_id = self.remote.guild_id if self.remote else None
-        guild_obj = self.get_guild(guild_id) if guild_id else None
-
-        if guild_obj is None:
-            logger.warning(
-                "_push_guild_data: guild %s not in cache yet — will retry in on_ready.",
-                guild_id,
-            )
-            return
-
-        # Channels
+    async def _refresh_guild_configs(self) -> None:
         try:
-            channels = [
-                {
-                    "id": str(ch.id),
-                    "name": ch.name,
-                    "category": ch.category.name if ch.category else None,
-                }
-                for ch in guild_obj.text_channels
-            ]
-            await self.core.push_guild_channels(channels)
-            logger.info("Pushed %d guild channels to core.", len(channels))
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Failed to push guild channels: %s", exc)
+            data = await self.core.get_guilds()
+            configs = {
+                config.guild_id: config for config in map(GuildConfig.from_api, data)
+            }
+            if set(configs) != {guild.id for guild in self.guilds}:
+                await self._sync_guilds_with_core()
+            else:
+                self.guild_configs = configs
+        except (UmbrellaCoreError, KeyError, TypeError, ValueError):
+            logger.exception("Failed to refresh per-guild Discord configuration.")
 
-        # Roles — mentionable only (includes @everyone which is always mentionable)
+    async def _sync_guilds_with_core(self) -> None:
+        """Publish all joined guilds and load each guild's saved configuration."""
+        guilds = self.guilds
+        payload = [
+            {
+                "guild_id": str(guild.id),
+                "name": guild.name,
+                "channels": [
+                    {
+                        "id": str(channel.id),
+                        "name": channel.name,
+                        "category": channel.category.name if channel.category else None,
+                    }
+                    for channel in guild.text_channels
+                ],
+                "roles": [
+                    {
+                        "id": str(role.id),
+                        "name": role.name,
+                        "color": role.color.value,
+                        "mentionable": role.mentionable,
+                    }
+                    for role in guild.roles
+                ],
+            }
+            for guild in guilds
+        ]
+
         try:
-            roles = [
-                {"id": str(r.id), "name": r.name, "color": r.color.value}
-                for r in guild_obj.roles
-                if r.mentionable or r.name == "@everyone"
-            ]
-            await self.core.push_guild_roles(roles)
-            logger.info("Pushed %d mentionable guild roles to core.", len(roles))
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Failed to push guild roles: %s", exc)
+            data = await self.core.sync_guilds(payload)
+            self.guild_configs = {
+                config.guild_id: config for config in map(GuildConfig.from_api, data)
+            }
+            logger.info("Synchronized %d Discord guild(s) with Core.", len(guilds))
+        except (UmbrellaCoreError, KeyError, TypeError, ValueError):
+            logger.exception("Failed to synchronize Discord guilds with Core.")
+
+    async def _sync_guild_commands(self, guild: discord.Guild) -> None:
+        guild_ref = discord.Object(id=guild.id)
+        self.tree.clear_commands(guild=guild_ref)
+        self.tree.copy_global_to(guild=guild_ref)
+        await self.tree.sync(guild=guild_ref)
+
+    async def on_guild_join(self, guild: discord.Guild) -> None:
+        await self._sync_guild_commands(guild)
+        await self._sync_guilds_with_core()
+
+    async def on_guild_remove(self, guild: discord.Guild) -> None:
+        logger.info("Removed from Discord guild %s (%s).", guild.name, guild.id)
+        await self._sync_guilds_with_core()
+
+    async def on_guild_update(
+        self, before: discord.Guild, after: discord.Guild
+    ) -> None:
+        if before.name != after.name:
+            await self._sync_guilds_with_core()
+
+    async def on_guild_channel_create(
+        self, channel: discord.abc.GuildChannel
+    ) -> None:
+        await self._sync_guilds_with_core()
+
+    async def on_guild_channel_delete(
+        self, channel: discord.abc.GuildChannel
+    ) -> None:
+        await self._sync_guilds_with_core()
+
+    async def on_guild_channel_update(
+        self, before: discord.abc.GuildChannel, after: discord.abc.GuildChannel
+    ) -> None:
+        await self._sync_guilds_with_core()
+
+    async def on_guild_role_create(self, role: discord.Role) -> None:
+        await self._sync_guilds_with_core()
+
+    async def on_guild_role_delete(self, role: discord.Role) -> None:
+        await self._sync_guilds_with_core()
+
+    async def on_guild_role_update(
+        self, before: discord.Role, after: discord.Role
+    ) -> None:
+        await self._sync_guilds_with_core()
 
     async def on_ready(self) -> None:
         logger.info("Logged in as %s (id=%s)", self.user, getattr(self.user, "id", "?"))
         await self.change_presence(
             status=discord.Status.online,
             activity=discord.Activity(
-                type=discord.ActivityType.watching, name="the server | /investigate"
+                type=discord.ActivityType.watching, name="your servers | /investigate"
             ),
         )
-        # Retry channel + role push now that guild cache is guaranteed warm.
-        await self._push_guild_data()
+        await self._sync_guilds_with_core()
+        for guild in self.guilds:
+            await self._sync_guild_commands(guild)
 
     async def on_message(self, message: discord.Message) -> None:
         """Single global on_message — dispatches to cog listeners then

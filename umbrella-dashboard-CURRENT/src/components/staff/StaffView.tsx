@@ -1,5 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { api, StaffMember, DiscordGuildMember, RoleSchema } from '../../lib/api';
+import {
+  api,
+  StaffMember,
+  DiscordGuildMember,
+  RoleSchema,
+  BotGuildConfig,
+} from '../../lib/api';
 import { useDashboard } from '../../context/DashboardContext';
 import { DisconnectedBanner } from '../common/DisconnectedBanner';
 import {
@@ -19,6 +25,8 @@ export const StaffView: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [discordMembersFailed, setDiscordMembersFailed] = useState<boolean>(false);
+  const [botGuilds, setBotGuilds] = useState<BotGuildConfig[]>([]);
+  const [selectedGuildId, setSelectedGuildId] = useState('');
 
   // Add staff modal state
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
@@ -26,13 +34,13 @@ export const StaffView: React.FC = () => {
   const [newRole, setNewRole] = useState<string>('moderator');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
-  const fetchStaffData = async () => {
+  const fetchStaffData = async (guildId = selectedGuildId) => {
     setIsLoading(true);
     setError(null);
     try {
       const [staffRes, discordRes, rolesRes] = await Promise.allSettled([
         api.getStaffMembers(),
-        api.getDiscordGuildMembers(),
+        api.getDiscordGuildMembers(guildId || undefined),
         api.getRoles(),
       ]);
 
@@ -65,8 +73,21 @@ export const StaffView: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchStaffData();
+    api.getBotGuilds()
+      .then(({ guilds }) => {
+        setBotGuilds(guilds);
+        setSelectedGuildId(current =>
+          guilds.some(guild => guild.guild_id === current)
+            ? current
+            : guilds[0]?.guild_id ?? '',
+        );
+      })
+      .catch(() => setBotGuilds([]));
   }, []);
+
+  useEffect(() => {
+    fetchStaffData(selectedGuildId);
+  }, [selectedGuildId]);
 
   const handleSetRole = async (memberId: string, targetRole: string) => {
     try {
@@ -220,6 +241,19 @@ export const StaffView: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          <select
+            value={selectedGuildId}
+            onChange={event => setSelectedGuildId(event.target.value)}
+            disabled={botGuilds.length === 0}
+            aria-label="Select Discord server for member lookup"
+            className="max-w-56 rounded-lg border border-[#1e1b4b] bg-[#0d1127] px-3 py-1.5 text-xs text-white disabled:opacity-50"
+          >
+            {botGuilds.length === 0 ? (
+              <option value="">No servers connected</option>
+            ) : botGuilds.map(guild => (
+              <option key={guild.guild_id} value={guild.guild_id}>{guild.name}</option>
+            ))}
+          </select>
           <button
             id="add-staff-btn"
             onClick={() => setIsAddModalOpen(true)}
@@ -231,7 +265,7 @@ export const StaffView: React.FC = () => {
 
           <button
             id="staff-refresh-btn"
-            onClick={fetchStaffData}
+            onClick={() => fetchStaffData()}
             disabled={isLoading}
             className="inline-flex items-center gap-1.5 rounded-lg border border-[#1e1b4b] bg-[#0d1127] px-3 py-1.5 text-xs font-medium text-slate-300 hover:border-purple-500/40 hover:text-white transition cursor-pointer disabled:opacity-50"
           >

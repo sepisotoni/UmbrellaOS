@@ -10,6 +10,7 @@ pattern), so only the static method is exercised here.
 """
 
 import asyncio
+from unittest.mock import MagicMock
 
 import discord
 import pytest
@@ -39,20 +40,24 @@ async def test_successful_push_is_durably_acknowledged_before_poll():
             raise AssertionError(name)
 
     class Channel:
-        sent = []
+        def __init__(self):
+            self.sent = []
 
         async def send(self, **kwargs):
             self.sent.append(kwargs)
 
     core = Core()
-    channel = Channel()
+    channels = {321: Channel(), 654: Channel()}
     bot = type(
         "Bot",
         (),
         {
             "core": core,
-            "remote": type("Remote", (), {"staff_alert_channel_id": 321})(),
-            "get_channel": lambda self, channel_id: channel,
+            "guild_configs": {
+                123: type("GuildConfig", (), {"staff_alert_channel_id": 321})(),
+                456: type("GuildConfig", (), {"staff_alert_channel_id": 654})(),
+            },
+            "get_channel": lambda self, channel_id: channels.get(channel_id),
         },
     )()
     cog = NotificationsCog.__new__(NotificationsCog)
@@ -64,7 +69,54 @@ async def test_successful_push_is_durably_acknowledged_before_poll():
     await cog.poll_escalations()
 
     assert core.notified
-    assert len(channel.sent) == 1
+    assert [len(channel.sent) for channel in channels.values()] == [1, 1]
+
+
+@pytest.mark.asyncio
+async def test_partial_guild_delivery_is_not_acknowledged():
+    class Core:
+        notified = False
+
+        async def invoke(self, name, params):
+            if name == "moderation_intelligence.escalation.mark_notified":
+                self.notified = True
+                return {}
+            raise AssertionError(name)
+
+    class Channel:
+        def __init__(self, fails=False):
+            self.sent = []
+            self.fails = fails
+
+        async def send(self, **kwargs):
+            if self.fails:
+                raise discord.HTTPException(MagicMock(), "Discord unavailable")
+            self.sent.append(kwargs)
+
+    core = Core()
+    channels = {321: Channel(), 654: Channel(fails=True)}
+    bot = type(
+        "Bot",
+        (),
+        {
+            "core": core,
+            "guild_configs": {
+                123: type("GuildConfig", (), {"staff_alert_channel_id": 321})(),
+                456: type("GuildConfig", (), {"staff_alert_channel_id": 654})(),
+            },
+            "get_channel": lambda self, channel_id: channels.get(channel_id),
+        },
+    )()
+    cog = NotificationsCog.__new__(NotificationsCog)
+    cog.bot = bot
+    cog._ack_tasks = set()
+
+    await cog.handle_escalation_push(
+        {"id": "esc-partial", "source": "moderation", "summary": "Review this."}
+    )
+
+    assert not core.notified
+    assert len(channels[321].sent) == 1
 
 
 def test_format_escalation_known_source_label():

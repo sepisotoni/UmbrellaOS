@@ -9,6 +9,9 @@ POST /api/v1/bot/channels   — Bot pushes guild text channel list on startup.
 GET  /api/v1/bot/channels   — Dashboard reads channel list for broadcaster dropdown.
 POST /api/v1/bot/roles      — Bot pushes guild mentionable role list on startup.
 GET  /api/v1/bot/roles      — Dashboard reads role list for role-mention dropdown.
+POST /api/v1/bot/guilds/sync — Bot syncs all joined guilds and their resources.
+GET  /api/v1/bot/guilds      — Dashboard and bot read per-guild config.
+PATCH /api/v1/bot/guilds/{id} — Owner updates a guild's role/channel mappings.
 
 Auth: require_admin_hmac_or_session (only the bot or a dashboard session).
 """
@@ -20,14 +23,18 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.dependencies.permissions import require_owner
 from api.middleware.auth import require_admin_hmac_or_session
 from database import get_db
 from models.bot_registration import BotRegistration
 from models.bot_command_manifest import BotCommandManifest
+from models.bot_guild import BotGuild
 from models.bot_guild_channels import BotGuildChannels
 from models.bot_guild_roles import BotGuildRoles
+from models.setting import Setting
 import services.bot_push_service as bot_push_service
 
 router = APIRouter(prefix="/api/v1/bot", tags=["bot"])
@@ -205,6 +212,7 @@ class RoleSchema(BaseModel):
     id: str  # Discord snowflake as string
     name: str  # role name (e.g. "Staff", "@everyone")
     color: int = 0  # Discord role color as int (0 = no color)
+    mentionable: bool = True
 
 
 class GuildRolesRequest(BaseModel):
@@ -245,3 +253,190 @@ async def get_guild_roles(
         "roles": json.loads(row.roles),
         "pushed_at": row.pushed_at.isoformat() if row.pushed_at else None,
     }
+
+
+# ─── Per-Guild Configuration ──────────────────────────────────────────────────
+
+
+class GuildSyncSchema(BaseModel):
+    guild_id: str
+    name: str
+    channels: list[ChannelSchema]
+    roles: list[RoleSchema]
+
+
+class GuildSyncRequest(BaseModel):
+    guilds: list[GuildSyncSchema]
+
+
+class GuildConfigPatch(BaseModel):
+    staff_alert_channel_id: str | None = None
+    verified_role_id: str | None = None
+    owner_role_id: str | None = None
+    admin_role_id: str | None = None
+    moderator_role_id: str | None = None
+    helper_role_id: str | None = None
+
+
+def _guild_to_dict(guild: BotGuild) -> dict:
+    return {
+        "guild_id": guild.guild_id,
+        "name": guild.name,
+        "channels": json.loads(guild.channels),
+        "roles": json.loads(guild.roles),
+        "staff_alert_channel_id": guild.staff_alert_channel_id,
+        "verified_role_id": guild.verified_role_id,
+        "owner_role_id": guild.owner_role_id,
+        "admin_role_id": guild.admin_role_id,
+        "moderator_role_id": guild.moderator_role_id,
+        "helper_role_id": guild.helper_role_id,
+        "pushed_at": guild.pushed_at.isoformat() if guild.pushed_at else None,
+    }
+
+
+@router.get("/guilds")
+async def get_bot_guilds(
+    auth: str = Depends(require_admin_hmac_or_session),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    rows = await db.scalars(
+        select(BotGuild).where(BotGuild.is_active.is_(True)).order_by(BotGuild.name)
+    )
+    return {"guilds": [_guild_to_dict(guild) for guild in rows.all()]}
+
+
+@router.post("/guilds/sync")
+async def sync_bot_guilds(
+    body: GuildSyncRequest,
+    auth: str = Depends(require_admin_hmac_or_session),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    now = datetime.now(timezone.utc)
+    rows = await db.scalars(select(BotGuild))
+    for row in rows.all():
+        row.is_active = False
+
+    legacy_keys = (
+        "discord.guild_id",
+        "discord.staff_alert_channel_id",
+        "discord.verified_role_id",
+        "discord.owner_role_id",
+        "discord.admin_role_id",
+        "discord.moderator_role_id",
+        "discord.helper_role_id",
+    )
+    setting_rows = await db.execute(
+        select(Setting.key, Setting.value).where(Setting.key.in_(legacy_keys))
+    )
+    legacy_settings = dict(setting_rows.all())
+    legacy_guild_id = legacy_settings.get("discord.guild_id", "")
+
+    synced: list[BotGuild] = []
+    for item in body.guilds:
+        guild_id = item.guild_id.strip()
+        if not guild_id.isdecimal():
+            raise HTTPException(status_code=422, detail="guild_id must be numeric")
+
+        guild = await db.get(BotGuild, guild_id)
+        if guild is None:
+            is_legacy_guild = guild_id == legacy_guild_id
+            guild = BotGuild(
+                guild_id=guild_id,
+                name=item.name,
+                channels="[]",
+                roles="[]",
+                staff_alert_channel_id=(
+                    legacy_settings.get("discord.staff_alert_channel_id")
+                    if is_legacy_guild
+                    else None
+                ),
+                verified_role_id=(
+                    legacy_settings.get("discord.verified_role_id")
+                    if is_legacy_guild
+                    else None
+                ),
+                owner_role_id=(
+                    legacy_settings.get("discord.owner_role_id")
+                    if is_legacy_guild
+                    else None
+                ),
+                admin_role_id=(
+                    legacy_settings.get("discord.admin_role_id")
+                    if is_legacy_guild
+                    else None
+                ),
+                moderator_role_id=(
+                    legacy_settings.get("discord.moderator_role_id")
+                    if is_legacy_guild
+                    else None
+                ),
+                helper_role_id=(
+                    legacy_settings.get("discord.helper_role_id")
+                    if is_legacy_guild
+                    else None
+                ),
+            )
+            db.add(guild)
+
+        guild.name = item.name
+        guild.channels = json.dumps([channel.model_dump() for channel in item.channels])
+        guild.roles = json.dumps([role.model_dump() for role in item.roles])
+        channel_ids = {channel.id for channel in item.channels}
+        role_ids = {role.id for role in item.roles}
+        if guild.staff_alert_channel_id not in channel_ids:
+            guild.staff_alert_channel_id = None
+        for field in (
+            "verified_role_id",
+            "owner_role_id",
+            "admin_role_id",
+            "moderator_role_id",
+            "helper_role_id",
+        ):
+            if getattr(guild, field) not in role_ids:
+                setattr(guild, field, None)
+        guild.is_active = True
+        guild.pushed_at = now
+        synced.append(guild)
+
+    await db.commit()
+    return {"guilds": [_guild_to_dict(guild) for guild in synced]}
+
+
+@router.patch("/guilds/{guild_id}")
+async def update_bot_guild_config(
+    guild_id: str,
+    body: GuildConfigPatch,
+    _auth=Depends(require_owner),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    guild = await db.get(BotGuild, guild_id)
+    if guild is None or not guild.is_active:
+        raise HTTPException(status_code=404, detail="Active Discord guild not found")
+
+    channels = {channel["id"] for channel in json.loads(guild.channels)}
+    roles = {role["id"] for role in json.loads(guild.roles)}
+    role_fields = (
+        "verified_role_id",
+        "owner_role_id",
+        "admin_role_id",
+        "moderator_role_id",
+        "helper_role_id",
+    )
+    for field in body.model_fields_set:
+        value = getattr(body, field)
+        if not value:
+            setattr(guild, field, None)
+            continue
+        allowed_ids = channels if field == "staff_alert_channel_id" else roles
+        if value not in allowed_ids:
+            kind = "channel" if field == "staff_alert_channel_id" else "role"
+            raise HTTPException(
+                status_code=422,
+                detail=f"{field} must identify a {kind} in this guild",
+            )
+        if field in role_fields or field == "staff_alert_channel_id":
+            setattr(guild, field, value)
+
+    await db.commit()
+    await db.refresh(guild)
+    return _guild_to_dict(guild)

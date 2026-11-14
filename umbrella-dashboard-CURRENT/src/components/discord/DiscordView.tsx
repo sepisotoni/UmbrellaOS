@@ -4,7 +4,13 @@ import {
   Users, Server, Activity, Terminal, Shield, Layers, Box, Settings,
   Pencil, X, Loader2
 } from 'lucide-react';
-import { api, SettingRecord, GuildChannel, GuildRole } from '../../lib/api';
+import {
+  api,
+  SettingRecord,
+  GuildChannel,
+  GuildRole,
+  BotGuildConfig,
+} from '../../lib/api';
 import { useDashboard } from '../../context/DashboardContext';
 import { DisconnectedBanner } from '../common/DisconnectedBanner';
 
@@ -104,9 +110,12 @@ export const DiscordView: React.FC = () => {
   const [commandsLastPushed, setCommandsLastPushed] = useState<string | null>(null);
   const [commandsLoading, setCommandsLoading] = useState(true);
 
-  // ── Guild channels + roles (from bot push) ──
-  const [guildChannels, setGuildChannels] = useState<GuildChannel[]>([]);
-  const [guildRoles, setGuildRoles] = useState<GuildRole[]>([]);
+  // ── Per-guild data and configuration (from bot push) ──
+  const [botGuilds, setBotGuilds] = useState<BotGuildConfig[]>([]);
+  const [selectedGuildId, setSelectedGuildId] = useState('');
+  const selectedGuild = botGuilds.find(guild => guild.guild_id === selectedGuildId);
+  const guildChannels: GuildChannel[] = selectedGuild?.channels ?? [];
+  const guildRoles: GuildRole[] = selectedGuild?.roles ?? [];
 
   // ── Broadcast ──
   const [embedTitle, setEmbedTitle] = useState('');
@@ -181,6 +190,21 @@ export const DiscordView: React.FC = () => {
     }
   }, []);
 
+  const loadBotGuilds = useCallback(async () => {
+    try {
+      const result = await api.getBotGuilds();
+      setBotGuilds(result.guilds);
+      setSelectedGuildId(current =>
+        result.guilds.some(guild => guild.guild_id === current)
+          ? current
+          : result.guilds[0]?.guild_id ?? '',
+      );
+    } catch {
+      setBotGuilds([]);
+      setSelectedGuildId('');
+    }
+  }, []);
+
   useEffect(() => {
     loadVerified();
     loadBotReg();
@@ -188,19 +212,13 @@ export const DiscordView: React.FC = () => {
     loadCommands();
   }, [loadVerified, loadBotReg, loadRoles, loadCommands]);
 
-  // ── Guild channels + roles from bot push ──
-  useEffect(() => {
-    api.getGuildChannels()
-      .then(r => { if (r.channels.length > 0) setGuildChannels(r.channels); })
-      .catch(() => setGuildChannels([]));
-    api.getGuildRoles()
-      .then(r => { if (r.roles.length > 0) setGuildRoles(r.roles); })
-      .catch(() => setGuildRoles([]));
-  }, []);
+  useEffect(() => { loadBotGuilds(); }, [loadBotGuilds]);
 
   // ── Set initial channel after settings load ──
   useEffect(() => {
-    if (!settingsLoading && !embedChannel) {
+    if (selectedGuild && !selectedGuild.channels.some(channel => channel.id === embedChannel)) {
+      setEmbedChannel(selectedGuild.channels[0]?.id ?? '');
+    } else if (!selectedGuild && !settingsLoading && !embedChannel) {
       const firstChannel =
         settings['discord.announcements_channel'] ||
         settings['discord.staff_alerts_channel_id'] ||
@@ -208,11 +226,18 @@ export const DiscordView: React.FC = () => {
         '';
       setEmbedChannel(firstChannel);
     }
-  }, [settingsLoading, settings, embedChannel]);
+  }, [selectedGuild, settingsLoading, settings, embedChannel]);
 
   const handleRefresh = async () => {
     setIsSyncing(true);
-    await Promise.all([reloadSettings(), loadVerified(), loadBotReg(), loadRoles(), loadCommands()]);
+    await Promise.all([
+      reloadSettings(),
+      loadVerified(),
+      loadBotReg(),
+      loadRoles(),
+      loadCommands(),
+      loadBotGuilds(),
+    ]);
     setIsSyncing(false);
     addToast({ type: 'success', title: 'Refreshed', message: 'Discord hub data reloaded.' });
   };
@@ -236,16 +261,22 @@ export const DiscordView: React.FC = () => {
   };
 
   // ── Derived data ──
-  const guildId = settings['discord.guild_id'] || '';
+  const guildId = selectedGuild?.guild_id || '';
   const clientId = settings['discord.client_id'] || '';
 
-  // Count non-empty discord.* settings
-  const discordSettingKeys = Object.keys(settings).filter(k => k.startsWith('discord.'));
-  const configuredCount = discordSettingKeys.filter(k => settings[k] && settings[k].trim() !== '').length;
+  const guildConfigKeys: (keyof BotGuildConfig)[] = [
+    'staff_alert_channel_id',
+    'verified_role_id',
+    'owner_role_id',
+    'admin_role_id',
+    'moderator_role_id',
+    'helper_role_id',
+  ];
+  const configuredCount = guildConfigKeys.filter(key => selectedGuild?.[key]).length;
 
-  // Channel options — prefer live data from bot push; fall back to settings-based IDs
+  // Channel options are scoped to the selected guild.
   const channelOptions: { value: string; label: string; category?: string }[] =
-    guildChannels.length > 0
+    selectedGuild
       ? guildChannels.map(ch => ({ value: ch.id, label: `#${ch.name}`, category: ch.category ?? undefined }))
       : (() => {
           const opts: { value: string; label: string }[] = [];
@@ -263,10 +294,16 @@ export const DiscordView: React.FC = () => {
     return acc;
   }, {} as Record<string, typeof channelOptions>);
 
-  // Role mention options — prefer live data from bot push; fall back to hardcoded defaults
+  // Role mention options are scoped to the selected guild.
   const roleMentionOptions: { value: string; label: string }[] =
-    guildRoles.length > 0
-      ? guildRoles.map(r => ({ value: r.id, label: `@${r.name}` }))
+    selectedGuild
+      ? [
+          { value: 'everyone', label: '@everyone' },
+          { value: 'here', label: '@here' },
+          ...guildRoles
+            .filter(role => role.name !== '@everyone' && role.mentionable !== false)
+            .map(role => ({ value: role.id, label: `@${role.name}` })),
+        ]
       : [
           { value: 'everyone', label: '@everyone' },
           { value: 'here', label: '@here' },
@@ -282,35 +319,21 @@ export const DiscordView: React.FC = () => {
     member: 'VIEWER',
   };
 
-  // Role → Discord role ID from settings
-  // Fix (2026-09-01): only owner/member were looked up here despite
-  // clearanceMap/roleColor above both defining all 5 roles — admin/
-  // moderator/helper always showed "Not mapped" regardless of what was
-  // configured, because there was no case for them at all (not because the
-  // settings were empty). discord.admin_role_id/moderator_role_id/
-  // helper_role_id are new settings keys — see settings_service.py's
-  // DEFAULT_SETTINGS for the corresponding backend addition.
-  const roleDiscordId = (roleName: string): string => {
-    if (roleName === 'owner') return settings['discord.owner_role_id'] || '—';
-    if (roleName === 'admin') return settings['discord.admin_role_id'] || '—';
-    if (roleName === 'moderator') return settings['discord.moderator_role_id'] || '—';
-    if (roleName === 'helper') return settings['discord.helper_role_id'] || '—';
-    if (roleName === 'member') return settings['discord.verified_role_id'] || '—';
-    return '—';
+  type GuildRoleIdKey = 'owner_role_id' | 'admin_role_id' | 'moderator_role_id' |
+    'helper_role_id' | 'verified_role_id';
+
+  const roleSettingKey = (roleName: string): GuildRoleIdKey | null => {
+    if (roleName === 'owner') return 'owner_role_id';
+    if (roleName === 'admin') return 'admin_role_id';
+    if (roleName === 'moderator') return 'moderator_role_id';
+    if (roleName === 'helper') return 'helper_role_id';
+    if (roleName === 'member') return 'verified_role_id';
+    return null;
   };
 
-  // Settings key backing roleDiscordId() above — used for saving edits.
-  // null for roles with no mapped key (defensive; roleDiscordId already
-  // covers all 5 current roles, but a future 6th role added to the
-  // clearanceMap/roleColor tables above without a matching case here
-  // should render read-only rather than silently PATCH the wrong key).
-  const roleSettingKey = (roleName: string): string | null => {
-    if (roleName === 'owner') return 'discord.owner_role_id';
-    if (roleName === 'admin') return 'discord.admin_role_id';
-    if (roleName === 'moderator') return 'discord.moderator_role_id';
-    if (roleName === 'helper') return 'discord.helper_role_id';
-    if (roleName === 'member') return 'discord.verified_role_id';
-    return null;
+  const roleDiscordId = (roleName: string): string => {
+    const key = roleSettingKey(roleName);
+    return key ? selectedGuild?.[key] || '—' : '—';
   };
 
   const startEditingRole = (roleName: string) => {
@@ -326,18 +349,41 @@ export const DiscordView: React.FC = () => {
 
   const saveRoleDiscordId = async (roleName: string) => {
     const key = roleSettingKey(roleName);
-    if (!key) return;
+    if (!key || !selectedGuildId) return;
     setSavingRole(roleName);
     try {
-      await api.updateSetting(key, editRoleValue.trim());
-      await reloadSettings();
-      addToast({ type: 'success', title: 'Role mapping saved', message: `@${roleName} → Discord role ID updated.` });
+      await api.updateBotGuildConfig(selectedGuildId, {
+        [key]: editRoleValue.trim() || null,
+      });
+      await loadBotGuilds();
+      addToast({
+        type: 'success',
+        title: 'Role mapping saved',
+        message: `@${roleName} mapping saved for ${selectedGuild?.name}.`,
+      });
       setEditingRole(null);
       setEditRoleValue('');
     } catch (err: any) {
       addToast({ type: 'error', title: 'Save failed', message: err.message || 'Only the owner role can edit settings.' });
     } finally {
       setSavingRole(null);
+    }
+  };
+
+  const saveStaffAlertChannel = async (channelId: string) => {
+    if (!selectedGuildId) return;
+    try {
+      await api.updateBotGuildConfig(selectedGuildId, {
+        staff_alert_channel_id: channelId || null,
+      });
+      await loadBotGuilds();
+      addToast({
+        type: 'success',
+        title: 'Staff alert channel saved',
+        message: `Updated for ${selectedGuild?.name}.`,
+      });
+    } catch (err: any) {
+      addToast({ type: 'error', title: 'Save failed', message: err.message });
     }
   };
 
@@ -360,16 +406,31 @@ export const DiscordView: React.FC = () => {
 
       <div className="flex items-center justify-between">
         <p className="text-sm text-slate-400">
-          Discord Gateway status, role synchronization, embed broadcaster, and slash command registry.
+          Discord Gateway, per-server role mappings, channel discovery, and broadcast tools.
         </p>
-        <button
-          onClick={handleRefresh}
-          disabled={isSyncing}
-          className="inline-flex items-center gap-2 rounded-lg border border-[#141d3d] bg-[#060b1c]/80 px-3 py-2 text-xs text-slate-400 hover:text-white transition cursor-pointer disabled:opacity-50"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <select
+            value={selectedGuildId}
+            onChange={event => setSelectedGuildId(event.target.value)}
+            disabled={botGuilds.length === 0}
+            aria-label="Select Discord server"
+            className="max-w-56 rounded-lg border border-[#141d3d] bg-[#060b1c]/80 px-3 py-2 text-xs text-white disabled:opacity-50"
+          >
+            {botGuilds.length === 0 ? (
+              <option value="">No servers connected</option>
+            ) : botGuilds.map(guild => (
+              <option key={guild.guild_id} value={guild.guild_id}>{guild.name}</option>
+            ))}
+          </select>
+          <button
+            onClick={handleRefresh}
+            disabled={isSyncing}
+            className="inline-flex items-center gap-2 rounded-lg border border-[#141d3d] bg-[#060b1c]/80 px-3 py-2 text-xs text-slate-400 hover:text-white transition cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+        </div>
       </div>
 
       {/* Top 4 Stat Cards */}
@@ -414,24 +475,24 @@ export const DiscordView: React.FC = () => {
         {/* Community Guild */}
         <div className="rounded-xl border border-[#141d3d] bg-[#060b1c]/80 p-5">
           <div className="text-[10px] font-mono text-slate-500 font-bold mb-3 uppercase tracking-wider flex items-center justify-between">
-            COMMUNITY GUILD
+            CONNECTED SERVERS
             <div className="h-6 w-6 rounded flex items-center justify-center bg-indigo-950/40 text-indigo-400 border border-indigo-500/20">
               <Users className="h-3.5 w-3.5" />
             </div>
           </div>
           {settingsLoading ? (
             <><Skeleton className="h-5 w-36 mb-2" /><Skeleton className="h-3 w-44" /></>
-          ) : guildId ? (
+          ) : selectedGuild ? (
             <>
-              <div className="text-xs font-mono text-white leading-none mb-1 truncate">
-                <span className="text-slate-500 text-[10px]">Guild ID: </span>{guildId}
+              <div className="text-sm font-bold text-white leading-none mb-1 truncate">
+                {botGuilds.length} {botGuilds.length === 1 ? 'server' : 'servers'} connected
               </div>
-              <div className="text-xs text-slate-500">Member counts available when bot is online</div>
+              <div className="text-xs text-slate-500 truncate">Selected: {selectedGuild.name}</div>
             </>
           ) : (
             <>
-              <div className="text-sm font-bold text-slate-400 leading-none mb-1">Not Configured</div>
-              <div className="text-xs text-slate-500">Set discord.guild_id in Settings</div>
+              <div className="text-sm font-bold text-slate-400 leading-none mb-1">No servers connected</div>
+              <div className="text-xs text-slate-500">Invite the bot to a Discord server.</div>
             </>
           )}
         </div>
@@ -474,9 +535,9 @@ export const DiscordView: React.FC = () => {
           ) : (
             <>
               <div className="text-lg font-bold text-white leading-none mb-1">
-                {configuredCount} / {discordSettingKeys.length}
+                {configuredCount} / {guildConfigKeys.length}
               </div>
-              <div className="text-xs text-slate-400">discord.* settings non-empty</div>
+              <div className="text-xs text-slate-400">selected server settings</div>
             </>
           )}
         </div>
@@ -501,6 +562,23 @@ export const DiscordView: React.FC = () => {
                 )}
               </div>
               {guildId && <CopyBtn text={guildId} />}
+            </div>
+
+            <div className="rounded-lg border border-[#141d3d] bg-[#070914] p-4">
+              <label className="block text-[10px] font-mono text-slate-500 uppercase mb-2">
+                STAFF ALERT CHANNEL
+              </label>
+              <select
+                value={selectedGuild?.staff_alert_channel_id ?? ''}
+                onChange={event => saveStaffAlertChannel(event.target.value)}
+                disabled={!selectedGuild}
+                className="w-full rounded-lg border border-[#1e1b4b] bg-[#02040a] px-3 py-2 text-sm text-white disabled:opacity-50"
+              >
+                <option value="">Not configured</option>
+                {guildChannels.map(channel => (
+                  <option key={channel.id} value={channel.id}>#{channel.name}</option>
+                ))}
+              </select>
             </div>
 
             <div className="rounded-lg border border-[#141d3d] bg-[#070914] p-4 flex items-center justify-between">

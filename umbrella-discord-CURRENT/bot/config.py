@@ -13,7 +13,7 @@ and other runtime settings are fetched from Core.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -55,18 +55,45 @@ async def fetch_discord_bot_token(core: "UmbrellaCoreClient") -> str:
 @dataclass
 class RemoteConfig:
     """
-    Configuration values fetched from umbrella-core's settings API at
-    startup. All fields that used to be read from .env now live here so
-    they can be updated via the dashboard without a bot redeploy.
+    Bot-wide configuration fetched from Core. Guild-specific configuration
+    is stored separately in GuildConfig.
     """
 
-    guild_id: int | None
-    staff_alert_channel_id: int | None
-    verified_role_id: int
-    owner_role_id: int
     callback_url: str | None
     callback_port: int
     command_prefix: str
+
+
+@dataclass
+class GuildConfig:
+    guild_id: int
+    name: str
+    channels: list[dict[str, Any]]
+    roles: list[dict[str, Any]]
+    staff_alert_channel_id: int | None
+    verified_role_id: int | None
+    owner_role_id: int | None
+    admin_role_id: int | None
+    moderator_role_id: int | None
+    helper_role_id: int | None
+
+    @classmethod
+    def from_api(cls, data: dict[str, Any]) -> "GuildConfig":
+        def _snowflake(value: Any) -> int | None:
+            return int(value) if value not in (None, "") else None
+
+        return cls(
+            guild_id=int(data["guild_id"]),
+            name=str(data["name"]),
+            channels=data.get("channels", []),
+            roles=data.get("roles", []),
+            staff_alert_channel_id=_snowflake(data.get("staff_alert_channel_id")),
+            verified_role_id=_snowflake(data.get("verified_role_id")),
+            owner_role_id=_snowflake(data.get("owner_role_id")),
+            admin_role_id=_snowflake(data.get("admin_role_id")),
+            moderator_role_id=_snowflake(data.get("moderator_role_id")),
+            helper_role_id=_snowflake(data.get("helper_role_id")),
+        )
 
 
 async def fetch_bot_config(core: "UmbrellaCoreClient") -> RemoteConfig:
@@ -78,25 +105,13 @@ async def fetch_bot_config(core: "UmbrellaCoreClient") -> RemoteConfig:
     Called once from UmbrellaBot.setup_hook; the result is stored as
     self.remote so cogs can read it without making their own API calls.
     """
-    # Fetch all discord.* settings in one call via the /api/v1/settings
-    # list endpoint filtered to the discord category. We use individual
-    # GETs to avoid coupling to endpoint shape — each is one DB read
-    # that is Redis-cached for 60 s anyway.
+    # Fetch bot-wide settings individually to avoid coupling to the
+    # settings list endpoint's response shape.
     keys = [
-        "discord.guild_id",
-        "discord.staff_alert_channel_id",
-        "discord.verified_role_id",
-        "discord.owner_role_id",
         "discord.callback_url",
         "discord.callback_port",
         "discord.command_prefix",
     ]
-
-    def _int_or_none(val: str) -> int | None:
-        try:
-            return int(val) if val else None
-        except (ValueError, TypeError):
-            return None
 
     def _int_default(val: str, default: int) -> int:
         try:
@@ -115,12 +130,6 @@ async def fetch_bot_config(core: "UmbrellaCoreClient") -> RemoteConfig:
             values[key] = ""
 
     return RemoteConfig(
-        guild_id=_int_or_none(values.get("discord.guild_id", "")),
-        staff_alert_channel_id=_int_or_none(
-            values.get("discord.staff_alert_channel_id", "")
-        ),
-        verified_role_id=_int_default(values.get("discord.verified_role_id", ""), 0),
-        owner_role_id=_int_default(values.get("discord.owner_role_id", ""), 0),
         callback_url=values.get("discord.callback_url") or None,
         callback_port=_int_default(values.get("discord.callback_port", ""), 8080),
         command_prefix=values.get("discord.command_prefix") or "!",

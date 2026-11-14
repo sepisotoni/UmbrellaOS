@@ -437,11 +437,8 @@ DEFAULT_SETTINGS: list[tuple] = [
         False,
         False,
     ),
-    # Bot RemoteConfig keys — values the Discord bot fetches from the
-    # settings API at startup instead of reading from .env. The bot only
-    # keeps three hard env vars (DISCORD_BOT_TOKEN, UMBRELLA_CORE_URL,
-    # UMBRELLA_CORE_API_KEY); everything else lives here so it can be
-    # updated via the dashboard without a redeploy.
+    # Legacy single-guild defaults retained for migration into BotGuild
+    # when the bot first syncs. New role/channel configuration is per guild.
     (
         "discord.staff_alert_channel_id",
         "1503076452994650323",

@@ -367,3 +367,38 @@ class UmbrellaCoreClient:
                 f"Guild roles push failed: {response.status_code}",
                 status_code=response.status_code,
             )
+
+    async def sync_guilds(self, guilds: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Publish the bot's active guilds and retrieve their per-guild config."""
+        url = f"{self._base_url}/api/v1/bot/guilds/sync"
+        headers = await self._make_auth_headers_async()
+
+        try:
+            async with httpx.AsyncClient(
+                timeout=self._timeout, transport=self._transport
+            ) as client:
+                response = await client.post(url, headers=headers, json={"guilds": guilds})
+        except httpx.RequestError as exc:
+            raise UmbrellaCoreError(f"Could not reach umbrella-core: {exc}") from exc
+
+        if response.status_code >= 400:
+            message, code = UmbrellaCoreClient._parse_error(response)
+            raise UmbrellaCoreError(
+                message, status_code=response.status_code, code=code
+            )
+
+        try:
+            payload = response.json()
+            return payload["guilds"]
+        except (ValueError, KeyError, TypeError) as exc:
+            raise UmbrellaCoreError(
+                "umbrella-core returned an invalid guild sync response"
+            ) from exc
+
+    async def get_guilds(self) -> list[dict[str, Any]]:
+        """Read active guild config from Core."""
+        response = await self.get("/api/v1/bot/guilds")
+        guilds = response.get("guilds")
+        if not isinstance(guilds, list):
+            raise UmbrellaCoreError("umbrella-core returned an invalid guild list")
+        return guilds

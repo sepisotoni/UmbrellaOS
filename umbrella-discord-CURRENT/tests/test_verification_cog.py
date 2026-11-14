@@ -9,7 +9,7 @@ not a pure function.
 """
 
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 from bot.cogs.verification_cog import VerificationCog
 from bot.services.umbrella_core_client import UmbrellaCoreError
@@ -18,7 +18,7 @@ from bot.services.umbrella_core_client import UmbrellaCoreError
 def _make_cog():
     """Return a VerificationCog instance with a mocked bot — enough for pure-function tests."""
     mock_bot = MagicMock()
-    mock_bot.remote.verified_role_id = None
+    mock_bot.guild_configs = {}
     cog = VerificationCog.__new__(VerificationCog)
     cog.bot = mock_bot
     # _t falls back to returning the key so format_error uses its fallback strings
@@ -113,3 +113,37 @@ def test_format_success_already_linked():
     message = _make_cog()._format_success(result, "Steve")
     assert "already" in message
     assert "Steve" in message
+
+
+@pytest.mark.asyncio
+async def test_verified_role_uses_each_guilds_own_role_mapping():
+    members = [MagicMock(), MagicMock()]
+    roles = [MagicMock(id=111), MagicMock(id=222)]
+    guilds = [
+        MagicMock(
+            id=1,
+            get_member=MagicMock(return_value=members[0]),
+            get_role=MagicMock(return_value=roles[0]),
+        ),
+        MagicMock(
+            id=2,
+            get_member=MagicMock(return_value=members[1]),
+            get_role=MagicMock(return_value=roles[1]),
+        ),
+    ]
+    for member in members:
+        member.add_roles = AsyncMock()
+
+    cog = VerificationCog.__new__(VerificationCog)
+    cog.bot = MagicMock(
+        guilds=guilds,
+        guild_configs={
+            1: MagicMock(verified_role_id=111),
+            2: MagicMock(verified_role_id=222),
+        },
+    )
+
+    await cog._assign_verified_role(MagicMock(id=9))
+
+    assert members[0].add_roles.await_args.args[0].id == 111
+    assert members[1].add_roles.await_args.args[0].id == 222

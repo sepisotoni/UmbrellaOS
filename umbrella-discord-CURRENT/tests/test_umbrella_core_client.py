@@ -159,3 +159,30 @@ async def test_invoke_omits_discord_user_id_header_by_default():
         "https://core.example.com", "test-key", transport=httpx.MockTransport(handler)
     )
     await client.invoke("investigation.run", {})
+
+
+@pytest.mark.asyncio
+async def test_sync_guilds_posts_all_guilds_and_returns_per_guild_config():
+    guilds = [
+        {"guild_id": "123", "name": "Community", "channels": [], "roles": []},
+        {"guild_id": "456", "name": "Staff", "channels": [], "roles": []},
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == "/api/v1/bot/guilds/sync"
+        assert json.loads(request.content) == {"guilds": guilds}
+        return httpx.Response(
+            200,
+            json={"guilds": [{**guilds[0], "owner_role_id": None}]},
+        )
+
+    client = UmbrellaCoreClient(
+        "https://core.example.com",
+        "test-key",
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = await client.sync_guilds(guilds)
+
+    assert result[0]["guild_id"] == "123"

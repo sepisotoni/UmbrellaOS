@@ -93,28 +93,35 @@ class NotificationsCog(commands.Cog):
         if not unnotified:
             return
 
-        channel_id = self.bot.remote.staff_alert_channel_id
-        if channel_id is None:
+        channels = self._staff_alert_channels()
+        if not channels:
             logger.warning(
-                "%d new staff escalation(s) found but staff_alert_channel_id isn't configured — nothing posted, nothing marked notified.",
+                "%d new staff escalation(s) found but no guild has a staff alert channel configured.",
                 len(unnotified),
             )
             return
 
-        channel = self.bot.get_channel(channel_id)
-        if channel is None:
-            logger.warning(
-                "staff_alert_channel_id=%s isn't a channel this bot can see.",
-                channel_id,
-            )
-            return
-
         for escalation in unnotified:
-            try:
-                await channel.send(embed=self._format_escalation(escalation))
-            except discord.HTTPException:
-                logger.exception(
-                    "Failed to post escalation %s — will retry next poll.",
+            delivered = 0
+            delivery_failed = False
+            for guild_id, channel in channels:
+                if channel is None:
+                    delivery_failed = True
+                    continue
+                try:
+                    await channel.send(embed=self._format_escalation(escalation))
+                    delivered += 1
+                except discord.HTTPException:
+                    delivery_failed = True
+                    logger.exception(
+                        "Failed to post escalation %s to guild %s.",
+                        escalation.get("id"),
+                        guild_id,
+                    )
+
+            if delivery_failed or not delivered:
+                logger.warning(
+                    "Escalation %s was not delivered to every configured guild; will retry next poll.",
                     escalation.get("id"),
                 )
                 continue
@@ -141,29 +148,35 @@ class NotificationsCog(commands.Cog):
         notified_at capability after a short delay, allowing core's transaction
         that emitted this push to commit first. The poll loop then sees the
         durable acknowledgement and skips this escalation.
-        If the channel isn't configured or visible, logs and returns — same
-        behaviour as the poll loop's own channel-missing guard."""
-        channel_id = self.bot.remote.staff_alert_channel_id
-        if channel_id is None:
+        Posts to each guild with a configured staff alert channel."""
+        channels = self._staff_alert_channels()
+        if not channels:
             logger.warning(
-                "Push: escalation %s received but staff_alert_channel_id isn't configured.",
+                "Push: escalation %s received but no guild has a staff alert channel configured.",
                 payload.get("id"),
             )
             return
 
-        channel = self.bot.get_channel(channel_id)
-        if channel is None:
-            logger.warning(
-                "Push: staff_alert_channel_id=%s isn't a channel this bot can see.",
-                channel_id,
-            )
-            return
+        delivered = 0
+        delivery_failed = False
+        for guild_id, channel in channels:
+            if channel is None:
+                delivery_failed = True
+                continue
+            try:
+                await channel.send(embed=self._format_escalation(payload))
+                delivered += 1
+            except discord.HTTPException:
+                delivery_failed = True
+                logger.exception(
+                    "Push: failed to post escalation %s to guild %s.",
+                    payload.get("id"),
+                    guild_id,
+                )
 
-        try:
-            await channel.send(embed=self._format_escalation(payload))
-        except discord.HTTPException:
-            logger.exception(
-                "Push: failed to post escalation %s — poll will retry within 5 min.",
+        if delivery_failed or not delivered:
+            logger.warning(
+                "Push: escalation %s was not delivered to every configured guild; poll will retry.",
                 payload.get("id"),
             )
             return
@@ -178,6 +191,24 @@ class NotificationsCog(commands.Cog):
         task = asyncio.create_task(self._acknowledge_push(str(escalation_id)))
         self._ack_tasks.add(task)
         task.add_done_callback(self._ack_tasks.discard)
+
+    def _staff_alert_channels(
+        self,
+    ) -> list[tuple[int, discord.abc.Messageable | None]]:
+        channels = []
+        for guild_id, config in self.bot.guild_configs.items():
+            channel_id = config.staff_alert_channel_id
+            if not channel_id:
+                continue
+            channel = self.bot.get_channel(channel_id)
+            if channel is None:
+                logger.warning(
+                    "Staff alert channel %s is unavailable in guild %s.",
+                    channel_id,
+                    guild_id,
+                )
+            channels.append((guild_id, channel))
+        return channels
 
     async def _acknowledge_push(self, escalation_id: str) -> None:
         """Persist push delivery using core's existing durable marker.

@@ -110,6 +110,21 @@ export interface GuildRole {
   id: string;
   name: string;
   color: number;
+  mentionable?: boolean;
+}
+
+export interface BotGuildConfig {
+  guild_id: string;
+  name: string;
+  channels: GuildChannel[];
+  roles: GuildRole[];
+  staff_alert_channel_id: string | null;
+  verified_role_id: string | null;
+  owner_role_id: string | null;
+  admin_role_id: string | null;
+  moderator_role_id: string | null;
+  helper_role_id: string | null;
+  pushed_at: string | null;
 }
 
 // Knowledge Base Types
@@ -975,12 +990,13 @@ export class UmbrellaApiClient {
     return this.removeStaff(discordId);
   }
 
-  public async getDiscordMembers(): Promise<DiscordMemberSchema[]> {
-    return this.request<DiscordMemberSchema[]>('/api/v1/staff/discord-members');
+  public async getDiscordMembers(guildId?: string): Promise<DiscordMemberSchema[]> {
+    const query = guildId ? `?guild_id=${encodeURIComponent(guildId)}` : '';
+    return this.request<DiscordMemberSchema[]>(`/api/v1/staff/discord-members${query}`);
   }
 
-  public async getDiscordGuildMembers(): Promise<DiscordMemberSchema[]> {
-    return this.getDiscordMembers();
+  public async getDiscordGuildMembers(guildId?: string): Promise<DiscordMemberSchema[]> {
+    return this.getDiscordMembers(guildId);
   }
 
   // --------------------------------------------------------------------------
@@ -1192,6 +1208,23 @@ export class UmbrellaApiClient {
 
   public async getGuildRoles(): Promise<{ roles: GuildRole[]; pushed_at: string | null }> {
     return this.request('/api/v1/bot/roles');
+  }
+
+  public async getBotGuilds(): Promise<{ guilds: BotGuildConfig[] }> {
+    return this.request('/api/v1/bot/guilds');
+  }
+
+  public async updateBotGuildConfig(
+    guildId: string,
+    config: Partial<Pick<BotGuildConfig,
+      'staff_alert_channel_id' | 'verified_role_id' | 'owner_role_id' |
+      'admin_role_id' | 'moderator_role_id' | 'helper_role_id'
+    >>,
+  ): Promise<BotGuildConfig> {
+    return this.request(`/api/v1/bot/guilds/${encodeURIComponent(guildId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(config),
+    });
   }
 
   // --------------------------------------------------------------------------

@@ -5,9 +5,8 @@ access control inside umbrella-discord.
 Discord's built-in `default_permissions` gates commands on Discord
 *permission bits* (e.g. administrator, manage_guild), which is coarse and
 tied to the guild's role hierarchy rather than Umbrella-specific roles.
-These checks instead inspect the invoking member's *role IDs* against the
-configured owner_role_id — giving the MOON server precise control over who
-can run which commands without touching Discord permission settings.
+These checks inspect the invoking member's role IDs against the owner role
+configured for the guild where the command was invoked.
 
 Usage
 -----
@@ -18,7 +17,7 @@ Usage
     async def my_command(self, interaction: discord.Interaction) -> None:
         ...
 
-If `owner_role_id` is 0 / unset in config, the check falls back to
+If that guild's `owner_role_id` is unset, the check falls back to
 `interaction.user.guild_permissions.administrator` so commands remain
 guarded even in a dev environment without a specific role configured.
 """
@@ -42,9 +41,9 @@ def require_owner_role() -> app_commands.check:
             )
             return False
 
-        # Retrieve the configured role ID from bot.remote (DB-backed RemoteConfig).
-        remote = getattr(interaction.client, "remote", None)
-        owner_role_id: int = getattr(remote, "owner_role_id", 0) or 0
+        guild_configs = getattr(interaction.client, "guild_configs", {})
+        guild_config = guild_configs.get(member.guild.id)
+        owner_role_id = getattr(guild_config, "owner_role_id", None)
 
         if owner_role_id:
             has_role = any(r.id == owner_role_id for r in member.roles)
