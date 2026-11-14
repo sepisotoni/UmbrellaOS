@@ -37,7 +37,8 @@ export const AITasksView: React.FC = () => {
 
   // Crash Risk State
   const [servers, setServers] = useState<ServerRecord[]>([]);
-  const [selectedRiskServer, setSelectedRiskServer] = useState<string>('survival-01');
+  const [selectedRiskServer, setSelectedRiskServer] = useState<string>('');
+  const [riskServersError, setRiskServersError] = useState<string | null>(null);
   const [crashRiskResult, setCrashRiskResult] = useState<any | null>(null);
   const [riskLoading, setRiskLoading] = useState<boolean>(false);
   const [riskError, setRiskError] = useState<string | null>(null);
@@ -57,12 +58,22 @@ export const AITasksView: React.FC = () => {
 
   useEffect(() => {
     fetchTasks();
-    api.getServers().then((res) => {
-      if (res && res.length > 0) {
-        setServers(res);
-        setSelectedRiskServer(res[0].id);
-      }
-    }).catch(() => {});
+    api.getServers()
+      .then((res) => {
+        const availableServers = Array.isArray(res) ? res : [];
+        setServers(availableServers);
+        setSelectedRiskServer(current =>
+          availableServers.some(server => server.id === current)
+            ? current
+            : availableServers[0]?.id ?? '',
+        );
+        setRiskServersError(null);
+      })
+      .catch((error: unknown) => {
+        setRiskServersError(
+          error instanceof Error ? error.message : 'Could not load servers.',
+        );
+      });
   }, []);
 
   const handleApproveTask = async (taskId: number) => {
@@ -111,7 +122,10 @@ export const AITasksView: React.FC = () => {
     setCopilotLoading(true);
 
     try {
-      const res = await api.askCopilot(query, { server_id: selectedRiskServer });
+      const res = await api.askCopilot(
+        query,
+        selectedRiskServer ? { server_id: selectedRiskServer } : undefined,
+      );
       setCopilotMessages((prev) => [
         ...prev,
         { sender: 'copilot', text: res.response || res.answer || JSON.stringify(res) },
@@ -358,6 +372,7 @@ export const AITasksView: React.FC = () => {
                 <select
                   value={selectedRiskServer}
                   onChange={(e) => setSelectedRiskServer(e.target.value)}
+                  disabled={servers.length === 0}
                   className="rounded-lg border border-[#1e1b4b] bg-[#070914] px-3 py-2 text-xs text-white focus:border-purple-500 focus:outline-none"
                 >
                   {servers.length > 0 ? (
@@ -367,20 +382,32 @@ export const AITasksView: React.FC = () => {
                       </option>
                     ))
                   ) : (
-                    <option value="survival-01">survival-01</option>
+                    <option value="">
+                      {riskServersError ? 'Server list unavailable' : 'No registered servers'}
+                    </option>
                   )}
                 </select>
 
                 <button
                   id="evaluate-crash-risk-btn"
                   onClick={handleCheckCrashRisk}
-                  disabled={riskLoading}
+                  disabled={riskLoading || !selectedRiskServer}
                   className="rounded-lg border border-purple-500/50 bg-purple-600 px-4 py-2 text-xs font-bold text-white hover:bg-purple-500 transition disabled:opacity-50 cursor-pointer"
                 >
                   {riskLoading ? 'Evaluating...' : 'Analyze Risk'}
                 </button>
               </div>
             </div>
+
+            {riskServersError ? (
+              <p role="alert" className="text-xs text-rose-300">
+                Could not load the server list: {riskServersError}
+              </p>
+            ) : servers.length === 0 ? (
+              <p className="text-xs text-slate-400">
+                No registered servers are available to analyze.
+              </p>
+            ) : null}
 
             {riskError && (
               <div className="rounded-lg border border-rose-500/40 bg-rose-950/40 p-3 text-xs text-rose-300">

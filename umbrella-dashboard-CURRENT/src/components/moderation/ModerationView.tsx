@@ -367,7 +367,7 @@ export const ModerationView: React.FC<ModerationViewProps> = ({ onOpenBanModal }
                         >
                           {v.player_name || v.player_uuid.slice(0, 10)}
                         </td>
-                        <td className="py-3 text-slate-400">{v.server_id || 'survival-01'}</td>
+                        <td className="py-3 text-slate-400">{v.server_id || 'Not recorded'}</td>
                         <td className="py-3">
                           <span className="px-1.5 py-0.5 rounded bg-rose-950/80 text-rose-300 font-bold text-[10px] border border-rose-800/40">
                             VL {v.vl}
