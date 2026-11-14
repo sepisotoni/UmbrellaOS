@@ -138,6 +138,60 @@ async def test_base_url_trailing_slash_is_stripped():
 
 
 @pytest.mark.asyncio
+async def test_bot_runtime_state_sends_revisions_and_returns_changes():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        assert request.url.path == "/api/v1/bot/runtime-state"
+        assert dict(request.url.params) == {
+            "config_revision": "config-v1",
+            "token_revision": "token-v1",
+        }
+        return httpx.Response(
+            200,
+            json={
+                "config_revision": "config-v2",
+                "token_revision": "token-v1",
+                "config": {"remote": {}, "guilds": []},
+            },
+        )
+
+    client = UmbrellaCoreClient(
+        "https://core.example.com",
+        "test-key",
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = await client.get_bot_runtime_state(
+        config_revision="config-v1",
+        token_revision="token-v1",
+    )
+
+    assert result is not None
+    assert result["config_revision"] == "config-v2"
+    assert "discord_token" not in result
+
+
+@pytest.mark.asyncio
+async def test_bot_runtime_state_returns_none_when_unchanged():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v1/bot/runtime-state"
+        return httpx.Response(204)
+
+    client = UmbrellaCoreClient(
+        "https://core.example.com",
+        "test-key",
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = await client.get_bot_runtime_state(
+        config_revision="config-v1",
+        token_revision="token-v1",
+    )
+
+    assert result is None
+
+
+@pytest.mark.asyncio
 async def test_invoke_sends_discord_user_id_header_when_given():
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.headers["x-discord-user-id"] == "123456"

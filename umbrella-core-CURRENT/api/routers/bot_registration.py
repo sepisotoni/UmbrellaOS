@@ -11,6 +11,7 @@ POST /api/v1/bot/roles      — Bot pushes guild mentionable role list on startu
 GET  /api/v1/bot/roles      — Dashboard reads role list for role-mention dropdown.
 POST /api/v1/bot/guilds/sync — Bot syncs all joined guilds and their resources.
 GET  /api/v1/bot/guilds      — Dashboard and bot read per-guild config.
+GET  /api/v1/bot/runtime-state — Bot fetches only changed runtime settings.
 PATCH /api/v1/bot/guilds/{id} — Owner updates a guild's role/channel mappings.
 
 Auth: require_admin_hmac_or_session (only the bot or a dashboard session).
@@ -19,13 +20,16 @@ Auth: require_admin_hmac_or_session (only the bot or a dashboard session).
 from __future__ import annotations
 
 import json
+import hashlib
+import hmac
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from config import get_settings
 from api.dependencies.permissions import require_owner
 from api.middleware.auth import require_admin_hmac_or_session
 from database import get_db
@@ -304,6 +308,77 @@ async def get_bot_guilds(
         select(BotGuild).where(BotGuild.is_active.is_(True)).order_by(BotGuild.name)
     )
     return {"guilds": [_guild_to_dict(guild) for guild in rows.all()]}
+
+
+@router.get("/runtime-state", response_model=None)
+async def get_bot_runtime_state(
+    response: Response,
+    config_revision: str | None = None,
+    token_revision: str | None = None,
+    auth: str = Depends(require_admin_hmac_or_session),
+    db: AsyncSession = Depends(get_db),
+) -> dict | Response:
+    """Return bot config only when its revision changes; disclose tokens only on token changes."""
+    if auth != "hmac":
+        raise HTTPException(
+            status_code=403, detail="Bot runtime state requires HMAC authentication"
+        )
+
+    setting_rows = await db.scalars(
+        select(Setting).where(
+            Setting.key.in_(
+                (
+                    "discord.bot_token",
+                    "discord.callback_url",
+                    "discord.callback_port",
+                    "discord.command_prefix",
+                )
+            )
+        )
+    )
+    settings = {setting.key: setting.value for setting in setting_rows.all()}
+    token = settings.get("discord.bot_token", "").strip()
+    try:
+        callback_port = int(settings.get("discord.callback_port", "") or 8080)
+    except ValueError:
+        callback_port = 8080
+
+    guild_rows = await db.scalars(
+        select(BotGuild).where(BotGuild.is_active.is_(True)).order_by(BotGuild.name)
+    )
+    guilds = []
+    for guild in guild_rows.all():
+        guild_data = _guild_to_dict(guild)
+        guild_data.pop("pushed_at", None)
+        guilds.append(guild_data)
+
+    config = {
+        "remote": {
+            "callback_url": settings.get("discord.callback_url") or None,
+            "callback_port": callback_port,
+            "command_prefix": settings.get("discord.command_prefix") or "!",
+        },
+        "guilds": guilds,
+    }
+    config_payload = json.dumps(config, sort_keys=True, separators=(",", ":"))
+    current_config_revision = hashlib.sha256(config_payload.encode()).hexdigest()
+    current_token_revision = hmac.new(
+        get_settings().admin_key.encode(), token.encode(), hashlib.sha256
+    ).hexdigest()
+
+    changes: dict = {
+        "config_revision": current_config_revision,
+        "token_revision": current_token_revision,
+    }
+    response.headers["Cache-Control"] = "no-store"
+    if config_revision != current_config_revision:
+        changes["config"] = config
+    if token_revision != current_token_revision:
+        changes["discord_token"] = token or None
+
+    if len(changes) == 2:
+        return Response(status_code=204, headers={"Cache-Control": "no-store"})
+    return changes
 
 
 @router.post("/guilds/sync")

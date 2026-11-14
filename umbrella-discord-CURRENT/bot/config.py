@@ -34,24 +34,6 @@ class BotTokenUnavailable(RuntimeError):
     """Raised when Core has no usable Discord bot token configured."""
 
 
-async def fetch_discord_bot_token(core: "UmbrellaCoreClient") -> str:
-    try:
-        setting = await core.get("/api/v1/settings/discord.bot_token")
-    except UmbrellaCoreError as exc:
-        if exc.status_code == 404:
-            raise BotTokenUnavailable(
-                "Core setting 'discord.bot_token' is not configured"
-            ) from exc
-        raise
-
-    token = setting.get("value")
-    if not isinstance(token, str) or not token.strip() or token.strip() == "***":
-        raise BotTokenUnavailable(
-            "Core setting 'discord.bot_token' is empty or masked"
-        )
-    return token.strip()
-
-
 @dataclass
 class RemoteConfig:
     """
@@ -96,41 +78,81 @@ class GuildConfig:
         )
 
 
-async def fetch_bot_config(core: "UmbrellaCoreClient") -> RemoteConfig:
-    """
-    Fetch all RemoteConfig values from core's settings API. Falls back to
-    safe defaults for keys that are missing or empty, but propagates other
-    Core errors so startup can wait for Core to become available.
+@dataclass
+class BotRuntimeState:
+    config_revision: str
+    token_revision: str
+    discord_token: str | None
+    token_changed: bool
+    remote: RemoteConfig | None
+    guild_configs: dict[int, GuildConfig] | None
 
-    Called once from UmbrellaBot.setup_hook; the result is stored as
-    self.remote so cogs can read it without making their own API calls.
-    """
-    # Fetch bot-wide settings individually to avoid coupling to the
-    # settings list endpoint's response shape.
-    keys = [
-        "discord.callback_url",
-        "discord.callback_port",
-        "discord.command_prefix",
-    ]
 
-    def _int_default(val: str, default: int) -> int:
+async def fetch_bot_runtime_state(
+    core: "UmbrellaCoreClient",
+    *,
+    config_revision: str | None = None,
+    token_revision: str | None = None,
+) -> BotRuntimeState | None:
+    """Fetch one conditional snapshot of Core-managed bot configuration."""
+    data = await core.get_bot_runtime_state(
+        config_revision=config_revision,
+        token_revision=token_revision,
+    )
+    if data is None:
+        return None
+
+    is_initial_state = config_revision is None and token_revision is None
+    next_config_revision = data.get("config_revision")
+    next_token_revision = data.get("token_revision")
+    if not isinstance(next_config_revision, str) or not isinstance(
+        next_token_revision, str
+    ):
+        raise UmbrellaCoreError("umbrella-core returned invalid bot revisions")
+
+    token_changed = "discord_token" in data
+    if is_initial_state and not token_changed:
+        raise UmbrellaCoreError("Core omitted the initial Discord bot token")
+    raw_token = data.get("discord_token")
+    if token_changed and raw_token is not None and not isinstance(raw_token, str):
+        raise UmbrellaCoreError("umbrella-core returned an invalid Discord token")
+    token = None
+    if isinstance(raw_token, str):
+        token = raw_token.strip() or None
+
+    remote = None
+    guild_configs = None
+    if "config" in data:
+        config = data["config"]
+        if not isinstance(config, dict):
+            raise UmbrellaCoreError("umbrella-core returned invalid bot config")
+        remote_data = config.get("remote")
+        guild_data = config.get("guilds")
+        if not isinstance(remote_data, dict) or not isinstance(guild_data, list):
+            raise UmbrellaCoreError("umbrella-core returned invalid bot config")
         try:
-            return int(val) if val else default
-        except (ValueError, TypeError):
-            return default
+            callback_port = int(remote_data.get("callback_port", 8080))
+            remote = RemoteConfig(
+                callback_url=remote_data.get("callback_url"),
+                callback_port=callback_port,
+                command_prefix=remote_data.get("command_prefix") or "!",
+            )
+            guild_configs = {
+                guild.guild_id: guild
+                for guild in map(GuildConfig.from_api, guild_data)
+            }
+        except (KeyError, TypeError, ValueError) as exc:
+            raise UmbrellaCoreError(
+                "umbrella-core returned invalid bot config"
+            ) from exc
+    elif is_initial_state:
+        raise UmbrellaCoreError("Core omitted the initial bot config")
 
-    values: dict[str, str] = {}
-    for key in keys:
-        try:
-            data = await core.get(f"/api/v1/settings/{key}")
-            values[key] = data.get("value") or ""
-        except UmbrellaCoreError as exc:
-            if exc.status_code != 404:
-                raise
-            values[key] = ""
-
-    return RemoteConfig(
-        callback_url=values.get("discord.callback_url") or None,
-        callback_port=_int_default(values.get("discord.callback_port", ""), 8080),
-        command_prefix=values.get("discord.command_prefix") or "!",
+    return BotRuntimeState(
+        config_revision=next_config_revision,
+        token_revision=next_token_revision,
+        discord_token=token,
+        token_changed=token_changed,
+        remote=remote,
+        guild_configs=guild_configs,
     )

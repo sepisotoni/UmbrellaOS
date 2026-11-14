@@ -254,6 +254,51 @@ class UmbrellaCoreClient:
                 f"umbrella-core returned a non-JSON response: {exc}"
             ) from exc
 
+    async def get_bot_runtime_state(
+        self,
+        *,
+        config_revision: str | None = None,
+        token_revision: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Fetch changed bot runtime state; return None when Core reports no changes."""
+        url = f"{self._base_url}/api/v1/bot/runtime-state"
+        headers = await self._make_auth_headers_async()
+        params = {
+            key: value
+            for key, value in (
+                ("config_revision", config_revision),
+                ("token_revision", token_revision),
+            )
+            if value is not None
+        }
+
+        try:
+            async with httpx.AsyncClient(
+                timeout=self._timeout, transport=self._transport
+            ) as client:
+                response = await client.get(url, headers=headers, params=params)
+        except httpx.RequestError as exc:
+            raise UmbrellaCoreError(f"Could not reach umbrella-core: {exc}") from exc
+
+        if response.status_code == 204:
+            return None
+        if response.status_code >= 400:
+            message, code = UmbrellaCoreClient._parse_error(response)
+            raise UmbrellaCoreError(
+                message, status_code=response.status_code, code=code
+            )
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise UmbrellaCoreError(
+                f"umbrella-core returned a non-JSON response: {exc}"
+            ) from exc
+        if not isinstance(payload, dict):
+            raise UmbrellaCoreError(
+                "umbrella-core returned an invalid bot runtime state"
+            )
+        return payload
+
     async def ask_ai(self, message: str, context: str | None = None) -> dict[str, Any]:
         """POST /api/v1/ai/copilot — send a natural-language question to the
         AI copilot and return the parsed response dict (keys: response,

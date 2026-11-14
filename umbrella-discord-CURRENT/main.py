@@ -8,7 +8,7 @@ import logging
 import discord
 
 from bot.bot import UmbrellaBot
-from bot.config import BotTokenUnavailable, Settings, fetch_discord_bot_token
+from bot.config import BotTokenUnavailable, Settings, fetch_bot_runtime_state
 from bot.services.umbrella_core_client import UmbrellaCoreClient, UmbrellaCoreError
 
 logging.basicConfig(level=logging.INFO)
@@ -26,7 +26,16 @@ async def run_bot(settings: Settings) -> None:
 
     while True:
         try:
-            token = await fetch_discord_bot_token(core)
+            runtime_state = await fetch_bot_runtime_state(core)
+            if runtime_state is None:
+                raise UmbrellaCoreError(
+                    "Core returned no initial bot runtime state"
+                )
+            token = runtime_state.discord_token
+            if token is None:
+                raise BotTokenUnavailable(
+                    "Core setting 'discord.bot_token' is not configured"
+                )
         except BotTokenUnavailable as exc:
             logging.error(
                 "%s; retrying Core in %d seconds.",
@@ -37,7 +46,7 @@ async def run_bot(settings: Settings) -> None:
             continue
         except UmbrellaCoreError as exc:
             logging.error(
-                "Could not retrieve the Discord token from Core (status=%s); "
+                "Could not retrieve bot runtime state from Core (status=%s); "
                 "retrying in %d seconds.",
                 exc.status_code,
                 CORE_RETRY_INTERVAL_SECONDS,
@@ -45,7 +54,7 @@ async def run_bot(settings: Settings) -> None:
             await asyncio.sleep(CORE_RETRY_INTERVAL_SECONDS)
             continue
 
-        bot = UmbrellaBot(settings, token, core=core)
+        bot = UmbrellaBot(settings, runtime_state, core=core)
         restart_delay = BOT_RESTART_DELAY_SECONDS
         try:
             await bot.start(token)

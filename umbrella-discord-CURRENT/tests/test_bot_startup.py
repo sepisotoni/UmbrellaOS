@@ -4,7 +4,7 @@ import discord
 import pytest
 
 from bot.bot import UmbrellaBot
-from bot.config import RemoteConfig, Settings
+from bot.config import BotRuntimeState, RemoteConfig, Settings
 
 
 @pytest.mark.asyncio
@@ -13,11 +13,20 @@ async def test_setup_hook_syncs_commands_globally_without_guild_setting(monkeypa
         umbrella_core_url="https://core.test",
         umbrella_core_api_key="key",
     )
-    bot = UmbrellaBot(settings, "token")
-    bot.remote = RemoteConfig(
-        callback_url=None,
-        callback_port=8080,
-        command_prefix="!",
+    bot = UmbrellaBot(
+        settings,
+        BotRuntimeState(
+            config_revision="config-v1",
+            token_revision="token-v1",
+            discord_token="token",
+            token_changed=True,
+            remote=RemoteConfig(
+                callback_url=None,
+                callback_port=8080,
+                command_prefix="!",
+            ),
+            guild_configs={},
+        ),
     )
 
     async def command_callback(interaction: discord.Interaction) -> None:
@@ -34,10 +43,6 @@ async def test_setup_hook_syncs_commands_globally_without_guild_setting(monkeypa
     bot.tree.sync = sync
     bot.core.push_command_manifest = AsyncMock()
     monkeypatch.setattr("bot.bot.EXTENSIONS", ())
-    monkeypatch.setattr(
-        "bot.bot.fetch_bot_config",
-        AsyncMock(return_value=bot.remote),
-    )
 
     try:
         await bot.setup_hook()

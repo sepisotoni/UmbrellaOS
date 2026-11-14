@@ -38,17 +38,16 @@ from discord.ext import commands
 
 from bot.config import (
     BotTokenUnavailable,
+    BotRuntimeState,
     GuildConfig,
-    RemoteConfig,
     Settings,
-    fetch_bot_config,
-    fetch_discord_bot_token,
+    fetch_bot_runtime_state,
 )
 from bot.services.umbrella_core_client import UmbrellaCoreClient, UmbrellaCoreError
 
 logger = logging.getLogger(__name__)
 
-TOKEN_POLL_INTERVAL_SECONDS = 30
+CORE_STATE_POLL_INTERVAL_SECONDS = 60
 
 EXTENSIONS: tuple[str, ...] = (
     "bot.cogs.ask_cog",
@@ -72,7 +71,7 @@ class UmbrellaBot(commands.Bot):
     def __init__(
         self,
         settings: Settings,
-        discord_token: str,
+        runtime_state: BotRuntimeState,
         *,
         core: UmbrellaCoreClient | None = None,
     ) -> None:
@@ -81,13 +80,18 @@ class UmbrellaBot(commands.Bot):
         intents.members = True
         intents.guilds = True
 
-        # command_prefix defaults to "!" here; the actual value from core's
-        # settings API is stored in self.remote after setup_hook runs. The
-        # prefix cannot be changed after construction without subclassing
-        # get_prefix(), and "!" matches the RemoteConfig default anyway.
-        super().__init__(command_prefix="!", intents=intents)
+        # Core supplies the prefix in the startup snapshot and the runtime
+        # watcher updates it if the setting changes.
+        super().__init__(
+            command_prefix=(
+                runtime_state.remote.command_prefix if runtime_state.remote else "!"
+            ),
+            intents=intents,
+        )
         self.settings = settings
-        self._discord_token = discord_token
+        if runtime_state.discord_token is None:
+            raise BotTokenUnavailable("Core has no usable Discord bot token")
+        self._discord_token = runtime_state.discord_token
         # timeout=90s: the default 30s wraps the full round-trip including the
         # upstream LLM call inside umbrella-core. Providers have their own 30s
         # timeout, but orchestrator overhead (DB reads, constitution build, dual
@@ -100,18 +104,16 @@ class UmbrellaBot(commands.Bot):
             settings.umbrella_core_api_key,
             timeout=90.0,
         )
-        # Populated by setup_hook after fetching from core's settings API.
-        self.remote: RemoteConfig | None = None
-        self.guild_configs: dict[int, GuildConfig] = {}
+        self.remote = runtime_state.remote
+        self.guild_configs = runtime_state.guild_configs or {}
+        self._config_revision = runtime_state.config_revision
+        self._token_revision = runtime_state.token_revision
         self._token_watch_task: asyncio.Task[None] | None = None
 
     async def setup_hook(self) -> None:
-        # Fetch remote config from core before loading extensions so cogs
-        # can access self.bot.remote (via self.bot) from their __init__.
-        self.remote = await fetch_bot_config(self.core)
         logger.info(
             "Bot-wide RemoteConfig loaded — callback_port=%s",
-            self.remote.callback_port,
+            self.remote.callback_port if self.remote else None,
         )
 
         for extension in EXTENSIONS:
@@ -148,7 +150,7 @@ class UmbrellaBot(commands.Bot):
         except Exception as exc:  # noqa: BLE001
             logger.warning("Failed to push command manifest: %s", exc)
 
-        self._token_watch_task = asyncio.create_task(self._watch_discord_token())
+        self._token_watch_task = asyncio.create_task(self._watch_core_runtime_state())
 
     async def close(self) -> None:
         task = self._token_watch_task
@@ -162,41 +164,45 @@ class UmbrellaBot(commands.Bot):
         self._token_watch_task = None
         await super().close()
 
-    async def _watch_discord_token(self) -> None:
+    async def _watch_core_runtime_state(self) -> None:
         while not self.is_closed():
-            await asyncio.sleep(TOKEN_POLL_INTERVAL_SECONDS)
+            await asyncio.sleep(CORE_STATE_POLL_INTERVAL_SECONDS)
             try:
-                token = await fetch_discord_bot_token(self.core)
-            except BotTokenUnavailable as exc:
-                logger.error("%s; disconnecting until Core has a token again.", exc)
-                await self.close()
-                return
+                state = await fetch_bot_runtime_state(
+                    self.core,
+                    config_revision=self._config_revision,
+                    token_revision=self._token_revision,
+                )
             except UmbrellaCoreError as exc:
                 logger.warning(
-                    "Could not check the Discord token in Core (status=%s); "
+                    "Could not check bot runtime state in Core (status=%s); "
                     "keeping the current session.",
                     exc.status_code,
                 )
                 continue
 
-            if token != self._discord_token:
+            if state is None:
+                continue
+            self._config_revision = state.config_revision
+            self._token_revision = state.token_revision
+
+            if state.token_changed and state.discord_token != self._discord_token:
                 logger.info("Discord bot token changed in Core; reconnecting.")
                 await self.close()
                 return
-            await self._refresh_guild_configs()
-
-    async def _refresh_guild_configs(self) -> None:
-        try:
-            data = await self.core.get_guilds()
-            configs = {
-                config.guild_id: config for config in map(GuildConfig.from_api, data)
-            }
-            if set(configs) != {guild.id for guild in self.guilds}:
-                await self._sync_guilds_with_core()
-            else:
-                self.guild_configs = configs
-        except (UmbrellaCoreError, KeyError, TypeError, ValueError):
-            logger.exception("Failed to refresh per-guild Discord configuration.")
+            if state.remote is not None:
+                restart_for_webhook_change = self.remote is not None and (
+                    state.remote.callback_port != self.remote.callback_port
+                    or state.remote.callback_url != self.remote.callback_url
+                )
+                self.remote = state.remote
+                self.command_prefix = state.remote.command_prefix
+                if restart_for_webhook_change:
+                    logger.info("Bot webhook settings changed in Core; reconnecting.")
+                    await self.close()
+                    return
+            if state.guild_configs is not None:
+                self.guild_configs = state.guild_configs
 
     async def _sync_guilds_with_core(self) -> None:
         """Publish all joined guilds and load each guild's saved configuration."""
