@@ -11,7 +11,6 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      DISCORD_BOT_TOKEN: ci-fake-token
       UMBRELLA_CORE_URL: http://localhost:8000
       UMBRELLA_CORE_API_KEY: ci-test-admin
 

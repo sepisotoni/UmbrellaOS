@@ -6,9 +6,8 @@ umbrella-core now (config/settings.py + the dashboard-configurable
 SettingsService values), reached over UmbrellaCoreClient rather than
 constructed here in-process.
 
-Only three values are kept as hard env vars (see Settings below);
-everything else is fetched from core's settings API at startup and
-stored in a RemoteConfig instance on the bot (self.remote).
+The Core URL and API key are kept as hard env vars; the Discord bot token
+and other runtime settings are fetched from Core.
 """
 
 from __future__ import annotations
@@ -18,6 +17,8 @@ from typing import TYPE_CHECKING
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from bot.services.umbrella_core_client import UmbrellaCoreError
+
 if TYPE_CHECKING:
     from bot.services.umbrella_core_client import UmbrellaCoreClient
 
@@ -25,12 +26,30 @@ if TYPE_CHECKING:
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    # The three env vars that must be present in the environment — they
-    # cannot live in the DB because they are needed to connect to core in
-    # the first place (chicken-and-egg), or are the bot's own identity.
-    discord_bot_token: str
-    umbrella_core_url: str = "https://umbrellaos-core.onrender.com"
+    umbrella_core_url: str
     umbrella_core_api_key: str
+
+
+class BotTokenUnavailable(RuntimeError):
+    """Raised when Core has no usable Discord bot token configured."""
+
+
+async def fetch_discord_bot_token(core: "UmbrellaCoreClient") -> str:
+    try:
+        setting = await core.get("/api/v1/settings/discord.bot_token")
+    except UmbrellaCoreError as exc:
+        if exc.status_code == 404:
+            raise BotTokenUnavailable(
+                "Core setting 'discord.bot_token' is not configured"
+            ) from exc
+        raise
+
+    token = setting.get("value")
+    if not isinstance(token, str) or not token.strip() or token.strip() == "***":
+        raise BotTokenUnavailable(
+            "Core setting 'discord.bot_token' is empty or masked"
+        )
+    return token.strip()
 
 
 @dataclass
@@ -52,10 +71,9 @@ class RemoteConfig:
 
 async def fetch_bot_config(core: "UmbrellaCoreClient") -> RemoteConfig:
     """
-    Fetch all RemoteConfig values from core's settings API in a single
-    batch GET. Falls back to safe defaults for each key that is missing
-    or empty, so a partially-configured core never prevents the bot from
-    starting.
+    Fetch all RemoteConfig values from core's settings API. Falls back to
+    safe defaults for keys that are missing or empty, but propagates other
+    Core errors so startup can wait for Core to become available.
 
     Called once from UmbrellaBot.setup_hook; the result is stored as
     self.remote so cogs can read it without making their own API calls.
@@ -91,7 +109,9 @@ async def fetch_bot_config(core: "UmbrellaCoreClient") -> RemoteConfig:
         try:
             data = await core.get(f"/api/v1/settings/{key}")
             values[key] = data.get("value") or ""
-        except Exception:
+        except UmbrellaCoreError as exc:
+            if exc.status_code != 404:
+                raise
             values[key] = ""
 
     return RemoteConfig(

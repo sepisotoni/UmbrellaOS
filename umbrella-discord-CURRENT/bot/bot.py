@@ -30,15 +30,24 @@ Consequences of that difference, also not carried over from Moo:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 import discord
 from discord.ext import commands
 
-from bot.config import Settings, RemoteConfig, fetch_bot_config
-from bot.services.umbrella_core_client import UmbrellaCoreClient
+from bot.config import (
+    BotTokenUnavailable,
+    RemoteConfig,
+    Settings,
+    fetch_bot_config,
+    fetch_discord_bot_token,
+)
+from bot.services.umbrella_core_client import UmbrellaCoreClient, UmbrellaCoreError
 
 logger = logging.getLogger(__name__)
+
+TOKEN_POLL_INTERVAL_SECONDS = 30
 
 EXTENSIONS: tuple[str, ...] = (
     "bot.cogs.ask_cog",
@@ -59,7 +68,13 @@ EXTENSIONS: tuple[str, ...] = (
 
 
 class UmbrellaBot(commands.Bot):
-    def __init__(self, settings: Settings) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        discord_token: str,
+        *,
+        core: UmbrellaCoreClient | None = None,
+    ) -> None:
         intents = discord.Intents.default()
         intents.message_content = True
         intents.members = True
@@ -71,6 +86,7 @@ class UmbrellaBot(commands.Bot):
         # get_prefix(), and "!" matches the RemoteConfig default anyway.
         super().__init__(command_prefix="!", intents=intents)
         self.settings = settings
+        self._discord_token = discord_token
         # timeout=90s: the default 30s wraps the full round-trip including the
         # upstream LLM call inside umbrella-core. Providers have their own 30s
         # timeout, but orchestrator overhead (DB reads, constitution build, dual
@@ -78,38 +94,24 @@ class UmbrellaBot(commands.Bot):
         # and 30s provider timeout, a slow-but-valid LLM response causes the bot
         # to raise "Could not reach umbrella-core" before core even replies.
         # 90s gives the provider its full 30s plus 60s of headroom.
-        self.core = UmbrellaCoreClient(
-            settings.umbrella_core_url, settings.umbrella_core_api_key, timeout=90.0
+        self.core = core or UmbrellaCoreClient(
+            settings.umbrella_core_url,
+            settings.umbrella_core_api_key,
+            timeout=90.0,
         )
         # Populated by setup_hook after fetching from core's settings API.
         self.remote: RemoteConfig | None = None
+        self._token_watch_task: asyncio.Task[None] | None = None
 
     async def setup_hook(self) -> None:
         # Fetch remote config from core before loading extensions so cogs
         # can access self.bot.remote (via self.bot) from their __init__.
-        try:
-            self.remote = await fetch_bot_config(self.core)
-            logger.info(
-                "RemoteConfig loaded — guild_id=%s staff_alert_channel_id=%s",
-                self.remote.guild_id,
-                self.remote.staff_alert_channel_id,
-            )
-        except Exception:
-            logger.exception(
-                "Failed to fetch RemoteConfig from core — bot will start with defaults. "
-                "Check UMBRELLA_CORE_URL and UMBRELLA_CORE_API_KEY."
-            )
-            # Construct a safe all-defaults RemoteConfig so cogs don't have
-            # to guard against self.bot.remote being None.
-            self.remote = RemoteConfig(
-                guild_id=None,
-                staff_alert_channel_id=None,
-                verified_role_id=0,
-                owner_role_id=0,
-                callback_url=None,
-                callback_port=8080,
-                command_prefix="!",
-            )
+        self.remote = await fetch_bot_config(self.core)
+        logger.info(
+            "RemoteConfig loaded — guild_id=%s staff_alert_channel_id=%s",
+            self.remote.guild_id,
+            self.remote.staff_alert_channel_id,
+        )
 
         for extension in EXTENSIONS:
             try:
@@ -166,9 +168,41 @@ class UmbrellaBot(commands.Bot):
         # Push guild channels + roles — guild cache may be cold in setup_hook
         # (GUILD_CREATE not received yet), so also retry in on_ready.
         await self._push_guild_data()
+        self._token_watch_task = asyncio.create_task(self._watch_discord_token())
 
     async def close(self) -> None:
+        task = self._token_watch_task
+        if (
+            task is not None
+            and task is not asyncio.current_task()
+            and not task.done()
+        ):
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        self._token_watch_task = None
         await super().close()
+
+    async def _watch_discord_token(self) -> None:
+        while not self.is_closed():
+            await asyncio.sleep(TOKEN_POLL_INTERVAL_SECONDS)
+            try:
+                token = await fetch_discord_bot_token(self.core)
+            except BotTokenUnavailable as exc:
+                logger.error("%s; disconnecting until Core has a token again.", exc)
+                await self.close()
+                return
+            except UmbrellaCoreError as exc:
+                logger.warning(
+                    "Could not check the Discord token in Core (status=%s); "
+                    "keeping the current session.",
+                    exc.status_code,
+                )
+                continue
+
+            if token != self._discord_token:
+                logger.info("Discord bot token changed in Core; reconnecting.")
+                await self.close()
+                return
 
     async def _push_guild_data(self) -> None:
         """Push guild text channels and mentionable roles to core.

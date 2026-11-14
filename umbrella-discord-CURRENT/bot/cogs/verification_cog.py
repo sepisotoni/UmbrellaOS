@@ -249,9 +249,9 @@ class VerificationCog(commands.Cog):
         """Assign the verified role from RemoteConfig.  Best-effort only.
 
         FIX (HIGH): was reading self.bot.settings.discord_verified_role_id, which
-        does not exist on Settings (Settings only carries discord_bot_token,
-        umbrella_core_url, umbrella_core_api_key).  getattr() silently returned 0
-        every time, so verified-role assignment was always silently skipped.
+        does not exist on Settings (which only carries the Core URL and API key).
+        getattr() silently returned 0 every time, so verified-role assignment
+        was always silently skipped.
         Corrected to self.bot.remote.verified_role_id, the RemoteConfig field
         populated from core's discord.verified_role_id setting at startup.
         """

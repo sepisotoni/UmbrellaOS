@@ -9,8 +9,11 @@ from bot.config import RemoteConfig, Settings
 
 @pytest.mark.asyncio
 async def test_setup_hook_copies_global_commands_into_configured_guild(monkeypatch):
-    settings = Settings(discord_bot_token="token", umbrella_core_api_key="key")
-    bot = UmbrellaBot(settings)
+    settings = Settings(
+        umbrella_core_url="https://core.test",
+        umbrella_core_api_key="key",
+    )
+    bot = UmbrellaBot(settings, "token")
     guild_id = 123456
     bot.remote = RemoteConfig(
         guild_id=guild_id,
