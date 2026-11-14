@@ -23,6 +23,7 @@ import {
   BRAND_DEFINITIONS,
   LogoRenderMode,
 } from './BrandLogos';
+import { UmbrellaSignalMark } from './UmbrellaSignalMark';
 
 interface BrandShowcaseModalProps {
   isOpen: boolean;
@@ -357,6 +358,26 @@ export const BrandShowcaseModal: React.FC<BrandShowcaseModalProps> = ({
                   <div className="flex flex-col items-center gap-1.5">
                     <BrandLogo variant={activeVariant} size="xl" renderMode={renderMode} glow={true} />
                     <span className="text-[9px] font-mono text-slate-500">xl (80px)</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="relative overflow-hidden rounded-xl border border-sky-500/20 bg-gradient-to-br from-[#0a1128] via-[#050918] to-[#02040a] p-5 md:p-6">
+                <div className="absolute -right-10 -top-16 h-48 w-48 rounded-full bg-sky-500/10 blur-3xl pointer-events-none" />
+                <div className="relative flex flex-col sm:flex-row items-center gap-5">
+                  <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-2xl border border-sky-400/20 bg-[#02040a]/80 shadow-[0_0_32px_rgba(56,189,248,0.12)]">
+                    <UmbrellaSignalMark className="h-24 w-24" />
+                  </div>
+                  <div className="text-center sm:text-left">
+                    <div className="mb-1 flex items-center justify-center sm:justify-start gap-2 text-[10px] font-mono font-semibold tracking-[0.18em] text-sky-300">
+                      <span className="h-1.5 w-1.5 rounded-full bg-sky-400" />
+                      ORBITAL SIGNAL · MOTION STUDY
+                    </div>
+                    <h4 className="text-lg font-bold tracking-tight text-white">One system. Every signal.</h4>
+                    <p className="mt-1 max-w-xl text-xs leading-relaxed text-slate-400">
+                      An original UmbrellaOS mark—shield, canopy, and orbit in a quiet telemetry loop.
+                      Animation respects your reduced-motion preference.
+                    </p>
                   </div>
                 </div>
               </div>

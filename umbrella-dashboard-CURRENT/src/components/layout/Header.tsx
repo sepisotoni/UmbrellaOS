@@ -8,20 +8,16 @@ import {
   Radio,
   Search,
   Zap,
-  Activity,
-  Sparkles,
 } from 'lucide-react';
 
 interface HeaderProps {
   onOpenBroadcastModal?: () => void;
   onOpenCommandPalette?: () => void;
-  onOpenBrandModal?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   onOpenBroadcastModal,
   onOpenCommandPalette,
-  onOpenBrandModal,
 }) => {
   const {
     isDisconnected,
@@ -74,18 +70,6 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Center / Fast Actions */}
       <div className="flex items-center gap-3">
-        {onOpenBrandModal && (
-          <button
-            id="header-brand-logos-button"
-            onClick={onOpenBrandModal}
-            className="hidden md:inline-flex items-center gap-1.5 rounded-lg border border-[#141d3d] bg-[#060b1c] hover:bg-[#0a122e] hover:border-indigo-500/50 px-3 py-1.5 text-xs text-indigo-300 transition cursor-pointer"
-            title="View Umbrella OS, Core, Bot, and Dashboard Logos & Wallpaper"
-          >
-            <Sparkles className="h-3.5 w-3.5 text-indigo-400" />
-            <span>Suite Logos</span>
-          </button>
-        )}
-
         {onOpenBroadcastModal && (
           <button
             id="header-broadcast-button"

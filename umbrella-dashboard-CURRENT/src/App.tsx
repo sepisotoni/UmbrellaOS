@@ -209,7 +209,6 @@ const DashboardContent: React.FC = () => {
         <Header
           onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
           onOpenBroadcastModal={() => setIsBroadcastModalOpen(true)}
-          onOpenBrandModal={() => setIsBrandModalOpen(true)}
         />
       </div>
 
