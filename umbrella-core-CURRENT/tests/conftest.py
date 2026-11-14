@@ -44,6 +44,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from sqlalchemy.pool import StaticPool
 
 from database.engine import Base, get_db
+from database import get_redis
 from services import SettingsService, RolesService
 from services.rate_limit_service import RateLimitResult
 
@@ -245,6 +246,14 @@ async def client(db_session, monkeypatch):
     from main import app
 
     app.dependency_overrides[get_db] = override_get_db
+    import fakeredis.aioredis
+
+    test_redis = fakeredis.aioredis.FakeRedis()
+
+    async def override_get_redis():
+        yield test_redis
+
+    app.dependency_overrides[get_redis] = override_get_redis
 
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
@@ -252,6 +261,7 @@ async def client(db_session, monkeypatch):
         yield ac
 
     app.dependency_overrides.clear()
+    await test_redis.aclose()
 
 
 # Shorthand headers for convenience

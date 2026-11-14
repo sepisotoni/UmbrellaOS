@@ -8,25 +8,10 @@ from unittest.mock import AsyncMock
 
 import fakeredis.aioredis
 import pytest
-import pytest_asyncio
 from redis.exceptions import RedisError
 
 from database import get_redis
 from main import app
-
-
-@pytest_asyncio.fixture(autouse=True)
-async def use_loop_local_redis():
-    """Keep health tests from reusing the production Redis pool across test loops."""
-    fake_redis = fakeredis.aioredis.FakeRedis()
-
-    async def override_get_redis():
-        yield fake_redis
-
-    app.dependency_overrides[get_redis] = override_get_redis
-    yield
-    app.dependency_overrides.pop(get_redis, None)
-    await fake_redis.aclose()
 
 
 @pytest.mark.asyncio
