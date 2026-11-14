@@ -3,7 +3,8 @@ api/middleware/auth.py — API key and session authentication.
 
 Three auth tiers, in order of trust:
 
-    X-Plugin-Key   — Minecraft plugin-facing endpoints only (matches SECRET_KEY)
+    X-Plugin-Key   — Shared plugin key for non-server-scoped plugin endpoints
+    X-Plugin-Server-Key — Server-bound command polling/completion key
     X-Admin-Key    — Full admin access (matches ADMIN_KEY). Dashboard and admin
                      tools use this; also accepted as Bearer session token from
                      the Discord OAuth flow.
@@ -18,7 +19,7 @@ import hashlib
 import hmac
 import time
 
-from fastapi import Depends, HTTPException, Security, Header
+from fastapi import Depends, HTTPException, Request, Security, Header
 from fastapi.security import APIKeyHeader
 from sqlalchemy.ext.asyncio import AsyncSession
 from config import get_settings
@@ -27,6 +28,7 @@ from database import get_db
 settings = get_settings()
 
 plugin_key_header = APIKeyHeader(name="X-Plugin-Key", auto_error=False)
+plugin_server_key_header = APIKeyHeader(name="X-Plugin-Server-Key", auto_error=False)
 admin_key_header = APIKeyHeader(name="X-Admin-Key", auto_error=False)
 
 
@@ -45,6 +47,43 @@ async def require_plugin_key(
     ):
         return key
     raise HTTPException(status_code=401, detail="Invalid or missing plugin key")
+
+
+async def require_server_plugin_key(
+    request: Request,
+    x_plugin_server_key: str | None = Security(plugin_server_key_header),
+    x_plugin_key: str | None = Security(plugin_key_header),
+    x_admin_key: str | None = Security(admin_key_header),
+) -> str:
+    """Authenticate a server-scoped plugin request with a bound key.
+
+    The shared plugin/admin keys remain a migration fallback until explicitly
+    disabled. A supplied server key is never downgraded to that fallback.
+    """
+    server_id = request.query_params.get("server_id", "default")
+    if not server_id.strip():
+        raise HTTPException(status_code=400, detail="Invalid server ID")
+    if x_plugin_server_key is not None:
+        configured_key = settings.plugin_server_keys.get(server_id)
+        if configured_key:
+            secret_value = configured_key.get_secret_value()
+            if secret_value and x_plugin_server_key and hmac.compare_digest(
+                x_plugin_server_key, secret_value
+            ):
+                return server_id
+        raise HTTPException(status_code=401, detail="Invalid server plugin key")
+
+    key = x_plugin_key or x_admin_key
+    if (
+        settings.plugin_server_legacy_auth_enabled
+        and key
+        and (
+            hmac.compare_digest(key, settings.secret_key)
+            or hmac.compare_digest(key, settings.admin_key)
+        )
+    ):
+        return server_id
+    raise HTTPException(status_code=401, detail="Invalid or missing server plugin key")
 
 
 async def require_admin_key(

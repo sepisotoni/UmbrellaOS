@@ -5,9 +5,9 @@ POST /api/v1/mc/command                — Queue a command for execution
                                           (admin/Discord-bot initiated,
                                           X-Auth-MAC/HMAC or X-Admin-Key)
 GET  /api/v1/mc/commands/pending       — Get pending commands
-                                          (plugin-initiated, X-Plugin-Key)
-POST /api/v1/mc/commands/{id}/complete — Mark command as completed
-                                          (plugin-initiated, X-Plugin-Key)
+                                          (plugin-initiated, server-bound key)
+POST /api/v1/mc/commands/{id}/complete?server_id=... — Mark command as completed
+                                                       (plugin-initiated, server-bound key)
 
 The enqueue side and the poll/complete side are different actors with
 different auth: staff/bot enqueue via the admin key, the plugin itself
@@ -15,14 +15,14 @@ polls and acks via the plugin key. (Phase 13 Step 2 — the poll/complete
 pair used to require_admin_key too, which the plugin was never given a
 credential for; fixed to match every other plugin-facing router.)
 
-Every command carries a server_id (default "default" for backward
-compatibility with anything not yet passing one explicitly) so a
-multi-server fleet's plugin instances each only see and execute commands
-meant for their own server — see models/mc_commands.py's column docstring
-for the bug this fixes ([PLUGIN] subsystem audit).
+Every command carries a server_id (default "default" for enqueue callers
+that omit one). Polling and completion are scoped to that ID. This is queue
+routing and, when X-Plugin-Server-Key is configured, authorization bound to
+that ID. Shared-key authentication remains a temporary migration fallback
+controlled by PLUGIN_SERVER_LEGACY_AUTH_ENABLED.
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
@@ -30,7 +30,10 @@ from datetime import datetime, timezone
 
 from database import get_db
 from models import MCCommand, AuditLog
-from api.middleware.auth import require_admin_hmac_or_session, require_plugin_key
+from api.middleware.auth import (
+    require_admin_hmac_or_session,
+    require_server_plugin_key,
+)
 from api.middleware.audit import create_audit_log, AuditAction
 from uuid import uuid4
 
@@ -77,7 +80,8 @@ async def create_mc_command(
 
     Auth: require_admin_hmac_or_session — the Discord bot (PBKDF2 MAC),
     raw X-Admin-Key (dashboard/admin tools), or a session token may enqueue
-    commands. The plugin itself uses X-Plugin-Key only for the poll/ack pair.
+    commands. The plugin uses its server-bound key for poll/ack after
+    migration, or the shared plugin key while legacy auth remains enabled.
     """
     if not body.command or not body.command.strip():
         raise HTTPException(status_code=400, detail="Command cannot be empty")
@@ -118,7 +122,7 @@ async def create_mc_command(
 async def get_pending_mc_commands(
     server_id: str = "default",
     db: AsyncSession = Depends(get_db),
-    _auth: str = Depends(require_plugin_key),
+    _auth: str = Depends(require_server_plugin_key),
 ) -> list[MCCommandResponse]:
     """
     Get all pending Minecraft commands for one server.
@@ -132,7 +136,11 @@ async def get_pending_mc_commands(
     keeps working exactly as before (scoped to the implicit "default"
     queue every existing row already uses via the column's default).
 
-    Auth: X-Plugin-Key (Phase 13 Step 2 — was require_admin_key, which
+    A configured X-Plugin-Server-Key is bound to this server ID. The
+    shared-key fallback can be disabled after the fleet has migrated.
+
+    Auth: X-Plugin-Server-Key (with a temporary X-Plugin-Key fallback).
+    Before the server-bound key was added this used require_admin_key, which
     checks a different secret (settings.admin_key) than every other
     plugin-facing endpoint in this codebase (plugin.py, anticheat.py,
     both on require_plugin_key / settings.secret_key). The plugin's
@@ -156,18 +164,25 @@ async def get_pending_mc_commands(
 async def complete_mc_command(
     command_id: int,
     body: MCCommandCompleteRequest,
+    server_id: str = Query(..., min_length=1),
     db: AsyncSession = Depends(get_db),
-    _auth: str = Depends(require_plugin_key),
+    _auth: str = Depends(require_server_plugin_key),
 ):
     """
     Mark a Minecraft command as completed.
 
     The plugin calls this after executing a command to report the result.
+    A matching server_id query parameter is required; omitted or mismatched
+    IDs cannot complete the command.
 
-    Auth: X-Plugin-Key — see get_pending_mc_commands docstring above for
-    why this changed from require_admin_key (Phase 13 Step 2).
+    Auth: X-Plugin-Server-Key (with a temporary X-Plugin-Key fallback).
     """
-    result = await db.execute(select(MCCommand).where(MCCommand.id == command_id))
+    result = await db.execute(
+        select(MCCommand).where(
+            MCCommand.id == command_id,
+            MCCommand.server_id == server_id,
+        )
+    )
     mc_command = result.scalar_one_or_none()
 
     if not mc_command:

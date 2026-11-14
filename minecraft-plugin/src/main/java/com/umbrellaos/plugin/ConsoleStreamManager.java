@@ -26,17 +26,25 @@ import java.util.logging.SimpleFormatter;
 public class ConsoleStreamManager {
 
     public static final int DEFAULT_CAPACITY = 500;
+    private static final String DEFAULT_SERVER_ID = "default";
 
     private final int capacity;
-    private final Deque<String> buffer;
+    private final Deque<BufferedLine> buffer;
     private final Object lock = new Object();
+    private final Object pushLock = new Object();
     private Handler logHandler;
     /** The repeating task scheduled by startPushing(), cancelled in stopPushing(). */
     private volatile BukkitTask pushTask;
-    /** Total lines ever appended — used for delta tracking so we only push new lines. */
-    private long totalAppended = 0;
-    /** Total lines that have been pushed to core — only send lines after this index. */
-    private long totalPushed = 0;
+    private long nextSequence = 0;
+    private long nextToSend = 0;
+
+    private record BufferedLine(long sequence, String text) {}
+
+    record Batch(long startSequence, long endSequence, List<String> lines) {
+        Batch {
+            lines = List.copyOf(lines);
+        }
+    }
 
     public ConsoleStreamManager() {
         this(DEFAULT_CAPACITY);
@@ -58,10 +66,12 @@ public class ConsoleStreamManager {
         if (line == null) return;
         synchronized (lock) {
             while (buffer.size() >= capacity) {
-                buffer.removeFirst();
+                BufferedLine removed = buffer.removeFirst();
+                if (removed.sequence() >= nextToSend) {
+                    nextToSend = removed.sequence() + 1;
+                }
             }
-            buffer.addLast(line);
-            totalAppended++;
+            buffer.addLast(new BufferedLine(nextSequence++, line));
         }
     }
 
@@ -70,7 +80,11 @@ public class ConsoleStreamManager {
      */
     public List<String> getRecentLines() {
         synchronized (lock) {
-            return new ArrayList<>(buffer);
+            List<String> lines = new ArrayList<>(buffer.size());
+            for (BufferedLine line : buffer) {
+                lines.add(line.text());
+            }
+            return lines;
         }
     }
 
@@ -86,9 +100,9 @@ public class ConsoleStreamManager {
             List<String> result = new ArrayList<>(count);
             int skip = buffer.size() - count;
             int i = 0;
-            for (String line : buffer) {
+            for (BufferedLine line : buffer) {
                 if (i >= skip) {
-                    result.add(line);
+                    result.add(line.text());
                 }
                 i++;
             }
@@ -118,6 +132,7 @@ public class ConsoleStreamManager {
     public void clear() {
         synchronized (lock) {
             buffer.clear();
+            nextToSend = nextSequence;
         }
     }
 
@@ -152,64 +167,76 @@ public class ConsoleStreamManager {
         } catch (Exception ignored) {}
     }
 
+    /** Returns the oldest unsent lines without advancing the upload cursor. */
+    Batch nextBatch(int maxLines) {
+        synchronized (lock) {
+            if (maxLines <= 0) {
+                return new Batch(nextToSend, nextToSend, Collections.emptyList());
+            }
+            List<String> result = new ArrayList<>(Math.min(maxLines, buffer.size()));
+            long endSequence = nextToSend;
+            for (BufferedLine line : buffer) {
+                if (line.sequence() < nextToSend) continue;
+                if (result.size() == maxLines) break;
+                result.add(line.text());
+                endSequence = line.sequence() + 1;
+            }
+            return new Batch(nextToSend, endSequence, result);
+        }
+    }
+
+    /** Advances the cursor only for a successful upload of the current batch. */
+    void confirmUploaded(Batch batch) {
+        if (batch == null || batch.lines().isEmpty()) return;
+        synchronized (lock) {
+            if (nextToSend < batch.endSequence()) {
+                nextToSend = Math.max(nextToSend, batch.endSequence());
+            }
+        }
+    }
+
     /**
-     * Schedules a repeating Bukkit task that pushes the most recent console
-     * lines to umbrella-core every {@code intervalTicks} ticks (100 ticks = 5s).
-     *
-     * <p>The task sends the last {@code batchSize} lines each cycle. Core
-     * stores them capped at 500 per server and the dashboard polls the GET
-     * endpoint to display them when WebSocket is unavailable.
+     * Schedules a repeating Bukkit task that pushes the oldest unsent console
+     * lines to umbrella-core. A batch is marked sent only after core confirms
+     * a successful upload.
      *
      * @param plugin        owning plugin (needed for scheduler)
      * @param client        authenticated core API client
      * @param serverId      the server's umbrella-core server_id
      * @param intervalTicks ticks between pushes (100 = 5s at 20 TPS)
      */
-    /**
-     * Returns lines appended since the last push call (delta only), capped at
-     * {@code maxLines}. Advances {@code totalPushed} so subsequent calls don't
-     * resend already-sent lines.
-     */
-    /** Package-private for testing. Production callers use startPushing(). */
-    List<String> drainNewLines(int maxLines) {
-        synchronized (lock) {
-            long newCount = totalAppended - totalPushed;
-            if (newCount <= 0) return Collections.emptyList();
-            int take = (int) Math.min(newCount, maxLines);
-            // Lines are in the buffer oldest-first; we want the newest `take` that haven't been sent.
-            // totalPushed tracks how many have been sent; buffer may have evicted oldest under capacity.
-            List<String> all = new ArrayList<>(buffer);
-            int fromIndex = Math.max(0, all.size() - take);
-            List<String> result = new ArrayList<>(all.subList(fromIndex, all.size()));
-            totalPushed += result.size();
-            return result;
-        }
-    }
-
     public void startPushing(JavaPlugin plugin, CoreApiClient client, String serverId, long intervalTicks) {
         if (pushTask != null) return; // already started
+        String normalizedServerId = normalizeServerId(serverId);
         pushTask = plugin.getServer().getScheduler().runTaskTimerAsynchronously(plugin, () -> {
-            // Only send lines we haven't sent yet (delta tracking).
-            List<String> lines = drainNewLines(50);
-            if (lines.isEmpty()) return;
+            synchronized (pushLock) {
+                Batch batch = nextBatch(50);
+                if (batch.lines().isEmpty()) return;
 
-            // Build JSON array using JSONArray so all control chars are
-            // correctly escaped (DESIGN-3 fix — org.json is already shaded in).
-            JSONArray arr = new JSONArray(lines);
-            String body = "{\"lines\": " + arr.toString() + "}";
+                // Build JSON array using JSONArray so all control chars are
+                // correctly escaped (DESIGN-3 fix — org.json is already shaded in).
+                JSONArray arr = new JSONArray(batch.lines());
+                String body = "{\"lines\": " + arr.toString() + "}";
 
-            try {
-                HttpResponse<String> resp = client.post(
-                        "/api/v1/plugin/servers/" + serverId + "/console/lines", body);
-                if (resp.statusCode() != 200) {
-                    client.logger().warning("[ConsoleStreamManager] Push returned HTTP "
-                            + resp.statusCode() + " — " + resp.body());
+                try {
+                    HttpResponse<String> resp = client.post(
+                            "/api/v1/plugin/servers/" + normalizedServerId + "/console/lines", body);
+                    if (resp.statusCode() >= 200 && resp.statusCode() < 300) {
+                        confirmUploaded(batch);
+                    } else {
+                        client.logger().warning("[ConsoleStreamManager] Push returned HTTP "
+                                + resp.statusCode() + " — " + resp.body());
+                    }
+                } catch (IOException | InterruptedException e) {
+                    if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+                    client.logger().warning("[ConsoleStreamManager] Push failed: " + e.getMessage());
                 }
-            } catch (IOException | InterruptedException e) {
-                if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-                client.logger().warning("[ConsoleStreamManager] Push failed: " + e.getMessage());
             }
         }, intervalTicks, intervalTicks);
+    }
+
+    static String normalizeServerId(String serverId) {
+        return serverId == null || serverId.isBlank() ? DEFAULT_SERVER_ID : serverId;
     }
 
     /**

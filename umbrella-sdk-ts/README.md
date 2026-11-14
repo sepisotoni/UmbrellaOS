@@ -128,15 +128,17 @@ generate.
 ## Verification
 
 - `npm run typecheck` and `npm run build`: clean.
-- `scripts/integration-test.mjs`: a real integration test against a
-  live local backend (SQLite-backed `uvicorn main:app`, not mocked) —
+- `scripts/integration-test.mjs`: a write-capable integration test against
+  a manually started local backend (not mocked) —
   exercises `listCapabilities()`, a read-only `invoke()` call, a full
   create/list/delete round-trip against `webhooks.subscription.*`
   (proving params, a server-generated id, and multi-call sequencing all
   work), and confirms an invalid capability name raises a structured
   `UmbrellaApiError`. All passed — see the handback doc for the full
   run transcript. Not part of `npm run typecheck`/`build`; run manually
-  against a locally-booted backend:
+  against a locally booted backend. This script creates and deletes a
+  webhook subscription; run it only against a disposable local test
+  backend, never against production.
 
   ```bash
   # from umbrella-core-CURRENT, in a fresh venv, with a local Postgres/SQLite + redis:

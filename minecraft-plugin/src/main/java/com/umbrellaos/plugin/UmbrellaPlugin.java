@@ -33,6 +33,7 @@ public final class UmbrellaPlugin extends JavaPlugin {
 
         String baseUrl = config.getString("core.base-url", "http://localhost:8000");
         String pluginKey = config.getString("core.plugin-key", "");
+        String serverKey = config.getString("core.server-key", "");
         long heartbeatIntervalSeconds = config.getLong("heartbeat.interval-seconds", 30);
         long commandPollIntervalSeconds = config.getLong("commands.poll-interval-seconds", 5);
         String serverId = config.getString("server.id", "");
@@ -44,13 +45,18 @@ public final class UmbrellaPlugin extends JavaPlugin {
                             + "polling, and ban checks will fail every request with HTTP 401 until this "
                             + "is set to a real key matching umbrella-core's SECRET_KEY.");
         }
+        if (serverKey == null || serverKey.isBlank()) {
+            getLogger().warning(
+                    "core.server-key is not set — command polling and completion still use the "
+                            + "shared plugin key; configure a per-server key to enable server-bound auth.");
+        }
 
         apiClient = new CoreApiClient(baseUrl, pluginKey, getLogger());
         configManager = new ConfigManager(apiClient);
         messageTemplateManager = new MessageTemplateManager(this, apiClient);
         // GrimBridge reference set after grimBridge is created below (DEAD-4 fix).
         heartbeatManager = new HeartbeatManager(this, apiClient, configManager, serverId, serverName);
-        commandPoller = new CommandPoller(this, apiClient, serverId);
+        commandPoller = new CommandPoller(this, apiClient, serverId, serverKey);
         banEnforcer = new BanEnforcer(apiClient);
         maintenanceEnforcer = new MaintenanceEnforcer(this, configManager, messageTemplateManager);
         telemetryListener = new PlayerTelemetryListener(this, apiClient);

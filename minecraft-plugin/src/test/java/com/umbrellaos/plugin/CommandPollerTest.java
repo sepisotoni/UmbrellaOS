@@ -15,6 +15,24 @@ import static org.junit.jupiter.api.Assertions.*;
 class CommandPollerTest {
 
     @Test
+    void serverId_isIncludedInPendingAndCompletionPaths() {
+        String serverId = "survival one";
+
+        assertEquals("/api/v1/mc/commands/pending?server_id=survival+one",
+                CommandPoller.pendingPath(serverId));
+        assertEquals("/api/v1/mc/commands/12/complete?server_id=survival+one",
+                CommandPoller.completionPath(12, serverId));
+    }
+
+    @Test
+    void blankServerId_usesDefaultForPendingAndCompletion() {
+        assertEquals("/api/v1/mc/commands/pending?server_id=default",
+                CommandPoller.pendingPath(" "));
+        assertEquals("/api/v1/mc/commands/12/complete?server_id=default",
+                CommandPoller.completionPath(12, null));
+    }
+
+    @Test
     void parsePendingCommands_parsesMultipleCommands() {
         String json = """
                 [

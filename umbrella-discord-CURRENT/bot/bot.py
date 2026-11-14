@@ -121,17 +121,15 @@ class UmbrellaBot(commands.Bot):
         guild_id = self.remote.guild_id
         if guild_id:
             guild = discord.Object(id=guild_id)
-            # Sync guild-scoped commands only. Do NOT call copy_global_to() —
-            # that copies every command into the guild tree AND leaves the
-            # global registrations intact, producing visible duplicates in the
-            # Discord command picker. Instead we clear the global tree so
-            # Discord removes any previously-registered global commands, then
-            # sync only to the guild for instant (<1s) registration.
-            self.tree.clear_commands(guild=None)
-            await self.tree.sync(guild=None)  # wipe stale global registrations
+            # Cogs declare commands globally. Copy them before clearing that
+            # tree so guild commands stay available immediately while syncing
+            # an empty global tree removes stale global registrations.
+            self.tree.copy_global_to(guild=guild)
             await self.tree.sync(guild=guild)
+            self.tree.clear_commands(guild=None)
+            await self.tree.sync(guild=None)
             logger.info(
-                "Slash commands synced to guild %s (guild-only, global tree cleared).",
+                "Slash commands synced to guild %s; global registrations cleared.",
                 guild_id,
             )
         else:

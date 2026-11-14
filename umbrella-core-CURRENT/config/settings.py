@@ -3,8 +3,11 @@ config/settings.py — Central configuration loaded from .env
 All settings live here. Never import os.environ directly elsewhere.
 """
 
-from pydantic_settings import BaseSettings
 from functools import lru_cache
+from urllib.parse import quote
+
+from pydantic import Field, SecretStr, model_validator
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -15,6 +18,8 @@ class Settings(BaseSettings):
     database_url_sync: str = (
         "postgresql+psycopg2://umbrella:changeme@localhost:5432/umbrella_core"
     )
+    # Optional raw password for URLs containing the {DATABASE_PASSWORD} marker.
+    database_password: SecretStr | None = None
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"
@@ -150,6 +155,12 @@ class Settings(BaseSettings):
     # start the real server if either value is still the default.
     secret_key: str = "change-me-in-production"
     admin_key: str = "change-me-in-production"
+    # Optional per-server credentials for command polling/completion. Configure
+    # as a JSON object in PLUGIN_SERVER_KEYS, keyed by the exact server ID.
+    plugin_server_keys: dict[str, SecretStr] = Field(default_factory=dict)
+    # Keep shared-key auth enabled while existing plugin configs are migrated.
+    # Set PLUGIN_SERVER_LEGACY_AUTH_ENABLED=false after all servers have keys.
+    plugin_server_legacy_auth_enabled: bool = True
 
     # Initial admin bootstrap
     initial_admin_discord_id: str = ""
@@ -214,6 +225,32 @@ class Settings(BaseSettings):
     # OTLP endpoint so either, both, or neither can be on.
     otel_exporter_otlp_endpoint: str | None = None
     otel_console_export: bool = False
+
+    @model_validator(mode="after")
+    def apply_database_password(self) -> "Settings":
+        placeholder = "{DATABASE_PASSWORD}"
+        if (
+            placeholder not in self.database_url
+            and placeholder not in self.database_url_sync
+        ):
+            return self
+        if self.database_password is None:
+            raise ValueError(
+                "DATABASE_PASSWORD is required when a database URL uses "
+                "{DATABASE_PASSWORD}"
+            )
+        password = self.database_password.get_secret_value()
+        if not password:
+            raise ValueError(
+                "DATABASE_PASSWORD must not be empty when a database URL uses "
+                "{DATABASE_PASSWORD}"
+            )
+        encoded_password = quote(password, safe="")
+        self.database_url = self.database_url.replace(placeholder, encoded_password)
+        self.database_url_sync = self.database_url_sync.replace(
+            placeholder, encoded_password
+        )
+        return self
 
     class Config:
         env_file = ".env"

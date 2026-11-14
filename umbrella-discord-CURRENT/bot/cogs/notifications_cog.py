@@ -4,27 +4,18 @@ bot/cogs/notifications_cog.py — Closes the last item on Phase 6's original
 (moderation_intelligence.escalation.list) since early in this project, but
 nothing ever surfaced them anywhere - staff had to remember to go check.
 
-**Scope decision, stated plainly rather than oversold**: this is a polling
-design, not a true push/event bus. umbrella-core has no outbound mechanism
-to call umbrella-discord (the integration boundary in this whole project
-has only ever run one direction - Discord calls core, never the reverse -
-see UmbrellaCoreClient's own docstring and every other cog in this
-package), and building one (webhooks, a message queue, SSE, whatever) is a
-meaningfully bigger infrastructure decision than "add a cog." redis and
-aioredis are already dependencies of umbrella-core (see requirements.txt)
-which could eventually back a real pub/sub layer, but nothing currently
-publishes to it - wiring that up is real future work, not assumed or
-faked here. A 5-minute poll of an already-existing, already-tested list
-capability is a genuinely working, honest solution within this project's
-existing architecture, not a placeholder pretending to be the real thing.
+Escalations use core's webhook push for near-real-time delivery, with a
+5-minute poll as the fallback. Successful push delivery is acknowledged via
+the same durable ``StaffEscalation.notified_at`` marker used by polling; the
+ack is delayed/retried because core emits the event before its transaction
+commits.
 
-**Durability**: dedup is tracked in umbrella-core's DB
+**Durability**: delivery acknowledgement is tracked in umbrella-core's DB
 (StaffEscalation.notified_at, see models/moderation_intelligence.py and
 moderation_intelligence.escalation.mark_notified), not locally in this
-stateless service - a bot restart mid-poll cannot cause a duplicate
-announcement, and a channel-send failure (caught below) means
-mark_notified is deliberately skipped so the escalation is retried next
-cycle rather than silently lost.
+stateless service. A successful push writes this marker before the next poll,
+while a channel-send failure deliberately skips it so polling retries rather
+than silently losing the escalation.
 
 **Known gap, not fixed here**: operational_intelligence's query/postmortem
 "escalated" flag (see operational_intelligence_cog.py) is a one-off signal
@@ -47,6 +38,7 @@ cog_unload() cleanup hook (discord/ext/tasks/__init__.py).
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 import discord
@@ -66,10 +58,16 @@ _SOURCE_LABELS = {
 class NotificationsCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
+        self._ack_tasks: set[asyncio.Task[None]] = set()
         self.poll_escalations.start()
 
     async def cog_unload(self) -> None:
         self.poll_escalations.cancel()
+        ack_tasks = list(self._ack_tasks)
+        for task in ack_tasks:
+            task.cancel()
+        if ack_tasks:
+            await asyncio.gather(*ack_tasks, return_exceptions=True)
 
     @tasks.loop(
         minutes=5
@@ -139,9 +137,10 @@ class NotificationsCog(commands.Cog):
     async def handle_escalation_push(self, payload: dict) -> None:
         """Called by WebhookCog when core pushes a staff.escalation.new event.
         Posts the escalation embed immediately without waiting for the poll cycle.
-        Does not call mark_notified because the push fires before the row has
-        been committed in some code paths; the poll loop's next cycle (in ≤5 min)
-        will see notified_at is still None and call mark_notified then.
+        Acknowledges successful delivery through the existing durable
+        notified_at capability after a short delay, allowing core's transaction
+        that emitted this push to commit first. The poll loop then sees the
+        durable acknowledgement and skips this escalation.
         If the channel isn't configured or visible, logs and returns — same
         behaviour as the poll loop's own channel-missing guard."""
         channel_id = self.bot.remote.staff_alert_channel_id
@@ -167,6 +166,45 @@ class NotificationsCog(commands.Cog):
                 "Push: failed to post escalation %s — poll will retry within 5 min.",
                 payload.get("id"),
             )
+            return
+
+        escalation_id = payload.get("id")
+        if not escalation_id:
+            logger.warning(
+                "Push: delivered escalation without an id; cannot persist its acknowledgement."
+            )
+            return
+
+        task = asyncio.create_task(self._acknowledge_push(str(escalation_id)))
+        self._ack_tasks.add(task)
+        task.add_done_callback(self._ack_tasks.discard)
+
+    async def _acknowledge_push(self, escalation_id: str) -> None:
+        """Persist push delivery using core's existing durable marker.
+
+        Core emits the push before its transaction commits, so acknowledgement
+        is deferred and retried. No in-memory state is used to suppress polls.
+        """
+        await asyncio.sleep(1)
+        for attempt in range(3):
+            try:
+                await self.bot.core.invoke(
+                    "moderation_intelligence.escalation.mark_notified",
+                    {"escalation_id": escalation_id},
+                )
+                logger.info(
+                    "Persisted push acknowledgement for escalation %s.",
+                    escalation_id,
+                )
+                return
+            except UmbrellaCoreError:
+                logger.exception(
+                    "Failed to acknowledge pushed escalation %s (attempt %d/3).",
+                    escalation_id,
+                    attempt + 1,
+                )
+                if attempt < 2:
+                    await asyncio.sleep(2**attempt)
 
     @staticmethod
     def _format_escalation(escalation: dict) -> discord.Embed:

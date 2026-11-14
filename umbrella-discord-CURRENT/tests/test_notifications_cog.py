@@ -9,10 +9,62 @@ module docstring for why that's the correct, standard discord.py
 pattern), so only the static method is exercised here.
 """
 
+import asyncio
+
 import discord
 import pytest
 
 from bot.cogs.notifications_cog import NotificationsCog
+
+
+@pytest.mark.asyncio
+async def test_successful_push_is_durably_acknowledged_before_poll():
+    escalation = {
+        "id": "esc-push",
+        "source": "moderation",
+        "summary": "Review this report.",
+        "confidence": 0.8,
+    }
+
+    class Core:
+        notified = False
+
+        async def invoke(self, name, params):
+            if name == "moderation_intelligence.escalation.mark_notified":
+                self.notified = True
+                return {}
+            if name == "moderation_intelligence.escalation.list":
+                row = {**escalation, "notified_at": "now" if self.notified else None}
+                return {"escalations": [row]}
+            raise AssertionError(name)
+
+    class Channel:
+        sent = []
+
+        async def send(self, **kwargs):
+            self.sent.append(kwargs)
+
+    core = Core()
+    channel = Channel()
+    bot = type(
+        "Bot",
+        (),
+        {
+            "core": core,
+            "remote": type("Remote", (), {"staff_alert_channel_id": 321})(),
+            "get_channel": lambda self, channel_id: channel,
+        },
+    )()
+    cog = NotificationsCog.__new__(NotificationsCog)
+    cog.bot = bot
+    cog._ack_tasks = set()
+
+    await cog.handle_escalation_push(escalation)
+    await asyncio.gather(*list(cog._ack_tasks))
+    await cog.poll_escalations()
+
+    assert core.notified
+    assert len(channel.sent) == 1
 
 
 def test_format_escalation_known_source_label():

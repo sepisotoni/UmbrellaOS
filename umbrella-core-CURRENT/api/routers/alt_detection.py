@@ -12,10 +12,12 @@ GET  /api/v1/alts/groups
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from database import get_db
 from models import SuspicionEvent, AltGroup, AltGroupMember, Player
+from models import User
+from models.api_key import ApiKey
 from api.middleware.auth import require_admin_key, require_plugin_key
 from api.dependencies.permissions import require_permission
 from services.alt_detection_service import calculate_suspicion, flag_player
@@ -39,7 +41,6 @@ class AltCheckResponse(BaseModel):
 class FalsePositiveRequest(BaseModel):
     event_id: int | None = None
     player_uuid: str | None = None
-    reviewed_by: str
 
 
 class AltGroupRequest(BaseModel):
@@ -77,25 +78,6 @@ class SuspicionEventSchema(BaseModel):
         from_attributes = True
 
 
-class AltGroupSchema(BaseModel):
-    id: int
-    created_at: str
-    notes: str | None
-    confirmed: bool
-
-    @classmethod
-    def from_orm(cls, obj):
-        return cls(
-            id=obj.id,
-            created_at=obj.created_at.isoformat() if obj.created_at else "",
-            notes=obj.notes,
-            confirmed=obj.confirmed,
-        )
-
-    class Config:
-        from_attributes = True
-
-
 class AltGroupMemberSchema(BaseModel):
     id: int
     group_id: int
@@ -111,6 +93,29 @@ class AltGroupMemberSchema(BaseModel):
             player_uuid=obj.player_uuid,
             added_at=obj.added_at.isoformat() if obj.added_at else "",
             added_by=obj.added_by,
+        )
+
+    class Config:
+        from_attributes = True
+
+
+class AltGroupSchema(BaseModel):
+    id: int
+    created_at: str
+    notes: str | None
+    confirmed: bool
+    members: list[AltGroupMemberSchema] = Field(default_factory=list)
+
+    @classmethod
+    def from_orm(cls, obj, members: list[AltGroupMember] | None = None):
+        return cls(
+            id=obj.id,
+            created_at=obj.created_at.isoformat() if obj.created_at else "",
+            notes=obj.notes,
+            confirmed=obj.confirmed,
+            members=[
+                AltGroupMemberSchema.from_orm(member) for member in (members or [])
+            ],
         )
 
     class Config:
@@ -217,8 +222,17 @@ async def get_player_suspicion(
         groups_result = await db.execute(
             select(AltGroup).where(AltGroup.id.in_(group_ids))
         )
-        for g in groups_result.scalars().all():
-            alt_groups.append(AltGroupSchema.from_orm(g))
+        groups = groups_result.scalars().all()
+        members_result = await db.execute(
+            select(AltGroupMember).where(AltGroupMember.group_id.in_(group_ids))
+        )
+        members_by_group: dict[int, list[AltGroupMember]] = {}
+        for member in members_result.scalars().all():
+            members_by_group.setdefault(member.group_id, []).append(member)
+        for group in groups:
+            alt_groups.append(
+                AltGroupSchema.from_orm(group, members_by_group.get(group.id, []))
+            )
 
     return {
         "score": player.suspicion_score,
@@ -231,7 +245,7 @@ async def get_player_suspicion(
 async def mark_false_positive(
     body: FalsePositiveRequest,
     db: AsyncSession = Depends(get_db),
-    _auth: str = Depends(require_permission("players.manage")),
+    auth: User | ApiKey | str = Depends(require_permission("players.manage")),
 ):
     """Mark a suspicion event as false positive."""
     if body.event_id is not None:
@@ -259,7 +273,12 @@ async def mark_false_positive(
 
     event.false_positive = True
     event.reviewed = True
-    event.reviewed_by = body.reviewed_by
+    if isinstance(auth, User):
+        event.reviewed_by = auth.username
+    elif isinstance(auth, ApiKey):
+        event.reviewed_by = f"api-key:{auth.name}"[:128]
+    else:
+        event.reviewed_by = "admin-key"
 
     # Reduce player suspicion_score by event points
     result = await db.execute(select(Player).where(Player.uuid == event.player_uuid))
@@ -297,7 +316,10 @@ async def create_alt_group(
 
     await db.flush()
 
-    return AltGroupSchema.from_orm(alt_group)
+    members_result = await db.execute(
+        select(AltGroupMember).where(AltGroupMember.group_id == alt_group.id)
+    )
+    return AltGroupSchema.from_orm(alt_group, members_result.scalars().all())
 
 
 @router.get("/groups", response_model=list[AltGroupSchema])
@@ -309,7 +331,19 @@ async def list_alt_groups(
     result = await db.execute(select(AltGroup).where(AltGroup.confirmed == True))
     groups = result.scalars().all()
 
-    return [AltGroupSchema.from_orm(g) for g in groups]
+    group_ids = [group.id for group in groups]
+    members_by_group: dict[int, list[AltGroupMember]] = {}
+    if group_ids:
+        members_result = await db.execute(
+            select(AltGroupMember).where(AltGroupMember.group_id.in_(group_ids))
+        )
+        for member in members_result.scalars().all():
+            members_by_group.setdefault(member.group_id, []).append(member)
+
+    return [
+        AltGroupSchema.from_orm(group, members_by_group.get(group.id, []))
+        for group in groups
+    ]
 
 
 class AltTrackRequest(BaseModel):

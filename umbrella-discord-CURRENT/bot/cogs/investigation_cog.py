@@ -39,7 +39,7 @@ class InvestigationCog(commands.Cog):
         question: str,
         user: discord.Member | None = None,
     ) -> None:
-        await interaction.response.defer(thinking=True)
+        await interaction.response.defer(thinking=True, ephemeral=True)
 
         try:
             result = await self.bot.core.invoke(
@@ -51,10 +51,12 @@ class InvestigationCog(commands.Cog):
                 discord_user_id=str(interaction.user.id),
             )
         except UmbrellaCoreError as exc:
-            await interaction.followup.send(self._format_error(exc))
+            await interaction.followup.send(self._format_error(exc), ephemeral=True)
             return
 
-        await interaction.followup.send(embed=self._format_result(question, result))
+        await interaction.followup.send(
+            embed=self._format_result(question, result), ephemeral=True
+        )
 
     @staticmethod
     def _format_error(exc: UmbrellaCoreError) -> str:

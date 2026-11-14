@@ -194,3 +194,64 @@ async def test_ai_config_unauthenticated_returns_401(client: AsyncClient):
         json={"action_type": "plugin_config", "natural_language": "Test"},
     )
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_apply_ai_config_rejection_rolls_back_partial_setting_updates(
+    db_session, monkeypatch
+):
+    """A rejected multi-setting action must not persist any partial updates."""
+    from services.ai_config_service import apply_config_action
+    from services.settings_service import SettingsService
+
+    async with db_session() as db:
+        db.add(
+            AIConfigAction(
+                action_type="plugin_config",
+                natural_language_input="Update server settings",
+                ai_interpretation="Update two settings",
+                proposed_changes='{"server.name":"Changed","server.max_players":"100"}',
+                status="pending",
+                created_at=datetime.now(timezone.utc),
+            )
+        )
+        setting_name = await db.scalar(
+            select(Setting).where(Setting.key == "server.name")
+        )
+        max_players = await db.scalar(
+            select(Setting).where(Setting.key == "server.max_players")
+        )
+        setting_name.value = "Original"
+        max_players.value = "50"
+        await db.commit()
+        action = await db.scalar(select(AIConfigAction))
+        action_id = action.id
+
+    original_set_value = SettingsService.set_value
+
+    async def fail_second_setting(db, key, value, category="general", actor="system"):
+        if key == "server.max_players":
+            raise RuntimeError("simulated setting failure")
+        await original_set_value(db, key, value, category, actor)
+
+    monkeypatch.setattr(SettingsService, "set_value", fail_second_setting)
+
+    async with db_session() as db:
+        action = await apply_config_action(action_id, db)
+        assert action.status == "rejected"
+        assert "simulated setting failure" in action.error_message
+        assert action.reviewed_at is not None
+
+    async with db_session() as db:
+        assert await db.scalar(
+            select(Setting.value).where(Setting.key == "server.name")
+        ) == "Original"
+        assert await db.scalar(
+            select(Setting.value).where(Setting.key == "server.max_players")
+        ) == "50"
+        rejected_action = await db.scalar(
+            select(AIConfigAction).where(AIConfigAction.id == action_id)
+        )
+        assert rejected_action.status == "rejected"
+        assert "simulated setting failure" in rejected_action.error_message
+        assert rejected_action.reviewed_at is not None

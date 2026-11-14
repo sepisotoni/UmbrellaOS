@@ -40,7 +40,10 @@ DEFAULT_PERMISSIONS = [
     ("hosting.allocation.view", "View port allocations"),
     ("hosting.allocation.manage", "Reserve and release port allocations"),
     ("hosting.server.view", "View hosted server state and stats"),
-    ("hosting.server.control", "Start, stop, restart, and kill hosted servers"),
+    (
+        "hosting.server.control",
+        "Execute console commands and start, stop, restart, and kill hosted servers",
+    ),
     ("hosting.server.manage", "Create and delete hosted servers"),
     ("hosting.backup.view", "View server backups"),
     ("hosting.backup.manage", "Create, restore, and delete server backups"),
@@ -181,7 +184,12 @@ DEFAULT_ROLES = [
         [
             p
             for p in ALL_PERMISSION_KEYS
-            if p not in ("roles.manage", "server.control", "hosting.server.control")
+            if p
+            not in (
+                "roles.manage",
+                "server.control",
+                "hosting.server.control",
+            )
         ],
     ),
     (

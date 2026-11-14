@@ -14,12 +14,18 @@ Event routing:
   (others can be added here without touching WebhookServer or bot.py)
 
 The cog does NOT crash the bot if the server fails to start or if
-registration with core fails — it logs and continues. The fallback poll
-loop in NotificationsCog ensures escalations eventually surface.
+registration with core fails — it logs and continues. Registration retries
+with bounded backoff and repeats every five minutes after exhaustion. The
+fallback poll loop in NotificationsCog ensures escalations eventually surface.
+Bridge delivery has no such fallback: after its bounded send retries fail,
+BridgeCog logs and returns, so this endpoint replies 2xx and core's
+fire-and-forget sender does not retry. See BridgeCog's module docstring for
+that bounded-loss limitation.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -30,11 +36,15 @@ from bot.webhook_server import WebhookServer
 
 logger = logging.getLogger(__name__)
 
+_REGISTRATION_RETRY_DELAYS = (1, 2, 4)
+_REGISTRATION_RETRY_INTERVAL = 300
+
 
 class WebhookCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self._server: WebhookServer | None = None
+        self._registration_task: asyncio.Task[None] | None = None
 
     async def cog_load(self) -> None:
         port = self.bot.remote.callback_port
@@ -67,18 +77,49 @@ class WebhookCog(commands.Cog):
             )
             return
 
-        try:
-            await self.bot.core.register_bot(f"{callback_url.rstrip('/')}/webhook")
-            logger.info("Registered bot webhook with umbrella-core at %s", callback_url)
-        except UmbrellaCoreError:
-            logger.exception(
-                "Failed to register bot webhook with umbrella-core — push events "
-                "will not be received until next restart. Poll fallback remains active."
-            )
+        self._registration_task = asyncio.create_task(
+            self._registration_worker(f"{callback_url.rstrip('/')}/webhook")
+        )
 
     async def cog_unload(self) -> None:
+        if self._registration_task:
+            self._registration_task.cancel()
+            try:
+                await self._registration_task
+            except asyncio.CancelledError:
+                pass
         if self._server:
             await self._server.stop()
+
+    async def _register_with_backoff(self, callback_url: str) -> bool:
+        """Attempt webhook registration with bounded exponential backoff."""
+        for attempt in range(len(_REGISTRATION_RETRY_DELAYS) + 1):
+            try:
+                await self.bot.core.register_bot(callback_url)
+                logger.info("Registered bot webhook with umbrella-core.")
+                return True
+            except UmbrellaCoreError:
+                if attempt < len(_REGISTRATION_RETRY_DELAYS):
+                    delay = _REGISTRATION_RETRY_DELAYS[attempt]
+                    logger.exception(
+                        "Webhook registration failed (attempt %d/4); retrying in %ds.",
+                        attempt + 1,
+                        delay,
+                    )
+                else:
+                    logger.exception(
+                        "Webhook registration failed after 4 attempts; will retry in %ds.",
+                        _REGISTRATION_RETRY_INTERVAL,
+                    )
+                if attempt < len(_REGISTRATION_RETRY_DELAYS):
+                    await asyncio.sleep(_REGISTRATION_RETRY_DELAYS[attempt])
+        return False
+
+    async def _registration_worker(self, callback_url: str) -> None:
+        while True:
+            if await self._register_with_backoff(callback_url):
+                return
+            await asyncio.sleep(_REGISTRATION_RETRY_INTERVAL)
 
     async def _on_escalation(self, payload: dict[str, Any]) -> None:
         """Handle a staff.escalation.new push event from core.

@@ -198,3 +198,26 @@ No application code changed.
 - UOS-CORE-025 atomic multi-setting AI configuration using a savepoint.
 
 **Not fixed:** Minecraft command/server-bound authorization, console-write authorization, local-vs-remote server-control design, disabled plugin command queue, health/readiness split, secret exposure audit, every incomplete/unused feature, remaining API naming consistency checks. The attempted console-write change was blocked during the source write and is *not* present in the PR. This is an incomplete remediation pass, **not a claim all Core findings are fixed**. No CI or integration tests run in the audit environment. Keep PR unmerged until validated.
+
+
+### Fleet audit remediation update — 2026-11-13
+
+> This update supersedes the older "not fixed" statements only for the items explicitly listed below. Changes are in the current working tree and are not merged. The audit covered the major Core, dashboard/SDK, Discord, Java plugin, CI, and deployment paths; it was not a literal read of every file. Production end-to-end validation remains blocked by the unavailable Core endpoint and missing service configuration.
+
+**Implemented in the working tree**
+
+| Area | Changes | Validation |
+|---|---|---|
+| Core | Fail startup on migration errors; atomically update AI settings; derive review identity from the authenticated principal; include alt-group members; scope command completion by server ID; require `hosting.server.control` before forwarding console input while retaining view-only console output; add gradual server-bound command credentials. | 94 targeted tests passed. |
+| Dashboard/SDK | Align console WebSocket URL and session-token auth; include selected server ID in command requests; correct alt-group presentation; add a `<main>` landmark; preserve non-JSON SDK error bodies after a single response-body read. | Dashboard lint/build passed; SDK test and typecheck passed. |
+| Discord bot | Preserve guild command registration while clearing stale globals; acknowledge pushed escalations; make investigations ephemeral; restore marketplace sync state after failures; retry webhook registration and bridge sends with bounded retries. | 159 bot tests passed. |
+| Java plugin | Keep console batches ordered and unacknowledged until successful upload; handle blank server IDs and include server IDs on command completion; send an optional server-bound key on command polling/completion. | Maven test suite passed (120 tests). |
+| CI/integration docs | Put dependency scanning under root `.github/workflows`, correct paths, add SDK CI, and remove the reference to a nonexistent integration runner. | Workflow/path and SDK checks reported passing; GitHub Actions was not run live. |
+
+**Still open / deployment plan**
+
+- **Per-server command authorization now has a gradual migration path.** Set Core's `PLUGIN_SERVER_KEYS` to a JSON object keyed by exact `server.id`, then copy each matching value to that server's plugin `core.server-key`. Keep `PLUGIN_SERVER_LEGACY_AUTH_ENABLED=true` while updating the fleet; a supplied but invalid server key never falls back to the shared key. After every server is migrated, set the flag to `false` to reject shared-key command polling/completion. The global plugin key remains required for the plugin's other Core APIs.
+- **Discord delivery remains bounded-loss/at-least-once.** A crash can occur after posting an escalation but before persisting its acknowledgement. Core's webhook sender is fire-and-forget and the bot endpoint returns 2xx on handler errors; bridge retries are bounded, with final failures logged and no durable queue or polling fallback.
+- **Other audit concerns remain:** the configured Core CORS allowlist is not enforced; legacy admin-key persistence and full contract/unused-feature verification remain. A HeavenCloud API credential was present in the coordination file's Git history; its current notice is redacted, but the provider credential must be rotated because deleting it from the latest file does not erase history.
+- **Render is not healthy.** The new free Frankfurt service `umbrellaos-core` is at `https://umbrellaos-core-7vd0.onrender.com`, auto-deploys from `main`, and its initial deploy failed. It has no health-check path configured. The Core working tree now supports `DATABASE_URL`/`DATABASE_URL_SYNC` containing the literal `{DATABASE_PASSWORD}` marker plus a separate secret `DATABASE_PASSWORD`; it URL-encodes and substitutes the password at settings load, failing startup if the marker is present but the password is missing. This code must be deployed before using that template. The owner must also set `SECRET_KEY`, `ADMIN_KEY`, and any configured encryption key securely, then configure `/health`. Vercel's `VITE_UMBRELLA_CORE_URL` should point at this host only after it is healthy.
+- **End-to-end integration is still blocked.** The previously configured Core URL returned 404/no-server, and local integration infrastructure was unavailable. Re-run browser/API flows, bot-to-Core, plugin-to-Core, and CI after Core health and credentials are restored.

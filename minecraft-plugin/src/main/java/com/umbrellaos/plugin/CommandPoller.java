@@ -24,18 +24,12 @@ import java.util.logging.Level;
  * dispatch is marshalled onto the main thread — same async-network /
  * sync-Bukkit-API split {@link HeartbeatManager} already established.
  *
- * <p>FIX ([PLUGIN] subsystem audit): the poll previously fetched every
- * pending command globally with no server scoping, despite core already
- * supporting multiple Minecraft servers under one umbrella-core instance
- * (the Node/Server/daemon system). In a real fleet, every plugin instance
- * would execute every OTHER server's queued commands too, since core's
- * mc_commands table had no server_id column at all until this fix.
- * {@link HeartbeatManager} already threads {@code serverId} through from
- * {@link UmbrellaPlugin}; this class previously didn't take it as a
- * constructor argument at all, even though the exact same value was
- * already available at the exact same construction site.
+ * <p>Both polling and completion acknowledgements include this instance's
+ * configured server ID to match the server-scoped core command contract.
  */
 public class CommandPoller {
+
+    private static final String DEFAULT_SERVER_ID = "default";
 
     /** One pending command as returned by the core endpoint. */
     record PendingCommand(long id, String command) {}
@@ -43,22 +37,25 @@ public class CommandPoller {
     private final Plugin plugin;
     private final CoreApiClient apiClient;
     private final String serverId;
+    private final String serverKey;
 
     private BukkitTask task;
 
     /**
      * @param serverId this server's configured ID (same value passed to
-     *                 {@link HeartbeatManager}), or null/blank if not yet
-     *                 configured — in which case the poll omits the
-     *                 server_id query param entirely and core's own
-     *                 "default" column default applies, preserving
-     *                 pre-fix behavior for any deployment that hasn't set
-     *                 one.
+     *                 {@link HeartbeatManager}), or null/blank to use
+     *                 the documented "default" server ID.
      */
     public CommandPoller(Plugin plugin, CoreApiClient apiClient, String serverId) {
+        this(plugin, apiClient, serverId, null);
+    }
+
+    public CommandPoller(
+            Plugin plugin, CoreApiClient apiClient, String serverId, String serverKey) {
         this.plugin = plugin;
         this.apiClient = apiClient;
-        this.serverId = (serverId == null || serverId.isBlank()) ? null : serverId;
+        this.serverId = normalizeServerId(serverId);
+        this.serverKey = serverKey;
     }
 
     /** Starts the periodic async poll task. Safe to call once from onEnable. */
@@ -88,11 +85,8 @@ public class CommandPoller {
     }
 
     private void poll() throws Exception {
-        String path = "/api/v1/mc/commands/pending";
-        if (serverId != null) {
-            path += "?server_id=" + URLEncoder.encode(serverId, StandardCharsets.UTF_8);
-        }
-        HttpResponse<String> response = apiClient.get(path);
+        HttpResponse<String> response = apiClient.getServerScoped(
+                pendingPath(serverId), serverKey);
         if (response.statusCode() != 200) {
             apiClient.logger().warning(
                     "Command poll rejected by core: HTTP " + response.statusCode() + " — " + response.body());
@@ -122,6 +116,20 @@ public class CommandPoller {
             result.add(new PendingCommand(obj.getLong("id"), obj.getString("command")));
         }
         return result;
+    }
+
+    static String pendingPath(String serverId) {
+        return "/api/v1/mc/commands/pending?server_id="
+                + URLEncoder.encode(normalizeServerId(serverId), StandardCharsets.UTF_8);
+    }
+
+    static String completionPath(long commandId, String serverId) {
+        return "/api/v1/mc/commands/" + commandId + "/complete?server_id="
+                + URLEncoder.encode(normalizeServerId(serverId), StandardCharsets.UTF_8);
+    }
+
+    static String normalizeServerId(String serverId) {
+        return serverId == null || serverId.isBlank() ? DEFAULT_SERVER_ID : serverId;
     }
 
     private void executeAndAck(PendingCommand cmd) {
@@ -155,8 +163,8 @@ public class CommandPoller {
         body.put("success", success);
         body.put("output", output);
         try {
-            HttpResponse<String> response = apiClient.post(
-                    "/api/v1/mc/commands/" + commandId + "/complete", body.toString());
+            HttpResponse<String> response = apiClient.postServerScoped(
+                    completionPath(commandId, serverId), body.toString(), serverKey);
             if (response.statusCode() != 200) {
                 apiClient.logger().warning(
                         "Command completion ack rejected by core: HTTP " + response.statusCode()

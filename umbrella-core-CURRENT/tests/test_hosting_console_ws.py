@@ -9,6 +9,9 @@ re-tested here since it delegates entirely to functions already covered
 elsewhere (get_current_user, resolve_user_permissions, NodeService.get_node)
 — see the module docstring in hosting_console_ws.py for why that split
 makes this a reasonable test boundary rather than a gap.
+
+The client-input gate is exercised directly through `pipe_console` so
+read-only console sessions cannot forward data to the daemon.
 """
 
 import asyncio
@@ -47,6 +50,7 @@ class FakeClientWS:
         self._to_send = list(to_send)
         self.received: list[bytes] = []
         self.closed = False
+        self.close_code = None
 
     async def receive_bytes(self) -> bytes:
         if self._to_send:
@@ -59,8 +63,9 @@ class FakeClientWS:
     async def send_bytes(self, data: bytes) -> None:
         self.received.append(data)
 
-    async def close(self, code: int | None = None) -> None:
+    async def close(self, code: int | None = None, reason: str | None = None) -> None:
         self.closed = True
+        self.close_code = code
 
 
 @pytest.mark.asyncio
@@ -87,6 +92,7 @@ async def test_pipe_console_forwards_daemon_output_to_client():
                 upstream_url,
                 "node-1",
                 "a-signing-secret-at-least-32-bytes-long",
+                allow_client_input=True,
             )
         )
         await asyncio.sleep(0.3)
@@ -120,6 +126,7 @@ async def test_pipe_console_forwards_client_input_to_daemon():
                 upstream_url,
                 "node-1",
                 "a-signing-secret-at-least-32-bytes-long",
+                allow_client_input=True,
             )
         )
         try:
@@ -135,6 +142,30 @@ async def test_pipe_console_forwards_client_input_to_daemon():
 
 
 @pytest.mark.asyncio
+async def test_pipe_console_rejects_client_input_without_write_permission():
+    received_by_daemon = []
+
+    async def fake_daemon_handler(connection):
+        async for message in connection:
+            received_by_daemon.append(message)
+
+    async with websockets.serve(fake_daemon_handler, "localhost", 0) as server:
+        port = server.sockets[0].getsockname()[1]
+        client_ws = FakeClientWS(to_send=[b"say hello\n"])
+        await pipe_console(
+            client_ws,
+            f"ws://localhost:{port}",
+            "node-1",
+            "a-signing-secret-at-least-32-bytes-long",
+            allow_client_input=False,
+        )
+
+    assert received_by_daemon == []
+    assert client_ws.closed is True
+    assert client_ws.close_code == 1008
+
+
+@pytest.mark.asyncio
 async def test_pipe_console_closes_client_gracefully_when_daemon_unreachable():
     client_ws = FakeClientWS(to_send=[])
     # Port 1 on localhost: nothing listens there, connection refused fast.
@@ -143,5 +174,6 @@ async def test_pipe_console_closes_client_gracefully_when_daemon_unreachable():
         "ws://localhost:1",
         "node-1",
         "a-signing-secret-at-least-32-bytes-long",
+        allow_client_input=True,
     )
     assert client_ws.closed is True

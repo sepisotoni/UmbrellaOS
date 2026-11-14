@@ -1,16 +1,13 @@
 /**
- * integration-test.mjs — Task A verification: exercises the built
- * `@umbrellaos/sdk` package against a real, running local umbrella-core
- * instance (SQLite-backed, started by run-integration-test.sh), not a
- * mock. Confirms `listCapabilities()` sees the real registry and that
- * `invoke()` can drive one full real capability round-trip
- * (marketplace.install.list) through the generated client.
+ * integration-test.mjs — exercises the built `@umbrellaos/sdk` package
+ * against a manually started local umbrella-core instance, not a mock.
+ * It includes a webhook create/list/delete round-trip, so only run it
+ * against a disposable local test backend, never a production service.
  *
  * Not run as part of `npm run typecheck`/`build` — this is a one-off
  * verification script for the Phase 7 completion dispatch's handback,
- * run manually against a locally-booted backend (see
- * run-integration-test.sh in the same handback for how that backend is
- * started).
+ * run manually against a locally booted backend; see the SDK README for
+ * the command. No integration-runner shell script is provided.
  */
 import { UmbrellaClient } from "../dist/index.js";
 

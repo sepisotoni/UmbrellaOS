@@ -19,10 +19,17 @@ fixed configured channel, so there's no fallback default here — if
 channel_id is missing or not a channel this bot can see, log and drop
 (same "can't do anything useful" guard as notifications_cog.py's
 channel-missing case).
+
+Delivery is a bounded best effort: Discord sends are retried three times,
+then the failure is logged and this handler returns. WebhookServer therefore
+responds 2xx, and umbrella-core's fire-and-forget push does not retry; a
+broadcast can be lost after all three send attempts fail. There is no durable
+bridge queue or polling fallback today.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -30,6 +37,8 @@ import discord
 from discord.ext import commands
 
 logger = logging.getLogger(__name__)
+
+_SEND_RETRY_DELAYS = (0.25, 0.5)
 
 
 class BridgeCog(commands.Cog):
@@ -65,14 +74,29 @@ class BridgeCog(commands.Cog):
             )
             return
 
-        try:
-            await channel.send(embed=self._format_broadcast(payload))
-        except discord.HTTPException:
-            logger.exception(
-                "Failed to post dashboard broadcast (message_id=%s) to channel %s.",
-                payload.get("message_id"),
-                channel_id,
-            )
+        for attempt in range(len(_SEND_RETRY_DELAYS) + 1):
+            try:
+                await channel.send(embed=self._format_broadcast(payload))
+                return
+            except discord.HTTPException:
+                if attempt < len(_SEND_RETRY_DELAYS):
+                    delay = _SEND_RETRY_DELAYS[attempt]
+                    logger.exception(
+                        "Dashboard broadcast (message_id=%s) send to channel %s failed "
+                        "(attempt %d/3); retrying in %.2fs.",
+                        payload.get("message_id"),
+                        channel_id,
+                        attempt + 1,
+                        delay,
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    logger.exception(
+                        "Dashboard broadcast (message_id=%s) send to channel %s failed "
+                        "after 3 attempts.",
+                        payload.get("message_id"),
+                        channel_id,
+                    )
 
     @staticmethod
     def _format_broadcast(payload: dict[str, Any]) -> discord.Embed:

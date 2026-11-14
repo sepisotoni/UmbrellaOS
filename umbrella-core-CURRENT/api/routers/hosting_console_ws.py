@@ -35,12 +35,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/hosting", tags=["hosting-console"])
 
-# Viewing console output is gated the same as any other read of a server's
-# live state — there is no separate, stricter permission for sending
-# commands into the console in this phase; that's a reasonable future
-# tightening (e.g. a dedicated hosting.server.console_write) flagged here
-# rather than silently assumed unnecessary.
 REQUIRED_PERMISSION = "hosting.server.view"
+CONSOLE_WRITE_PERMISSION = "hosting.server.control"
 
 
 def daemon_ws_url(daemon_url: str, server_id: str) -> str:
@@ -104,12 +100,20 @@ async def proxy_console(websocket: WebSocket, server_id: str, token: str = Query
     await websocket.accept()
     decrypted_secret = NodeService.decrypted_signing_secret(node)
     await pipe_console(
-        websocket, daemon_ws_url(node.daemon_url, server_id), node.id, decrypted_secret
+        websocket,
+        daemon_ws_url(node.daemon_url, server_id),
+        node.id,
+        decrypted_secret,
+        allow_client_input=CONSOLE_WRITE_PERMISSION in permissions,
     )
 
 
 async def pipe_console(
-    client_ws, upstream_url: str, node_id: str, signing_secret: str
+    client_ws,
+    upstream_url: str,
+    node_id: str,
+    signing_secret: str,
+    allow_client_input: bool,
 ) -> None:
     """
     Open the outbound connection to the daemon and pipe bytes both
@@ -125,7 +129,9 @@ async def pipe_console(
             upstream_url, additional_headers={"Authorization": f"Bearer {node_token}"}
         ) as daemon_ws:
             forward_in = asyncio.create_task(
-                _forward_client_to_daemon(client_ws, daemon_ws)
+                _forward_client_to_daemon(
+                    client_ws, daemon_ws, allow_client_input=allow_client_input
+                )
             )
             forward_out = asyncio.create_task(
                 _forward_daemon_to_client(daemon_ws, client_ws)
@@ -159,10 +165,18 @@ async def pipe_console(
             pass
 
 
-async def _forward_client_to_daemon(client_ws, daemon_ws) -> None:
+async def _forward_client_to_daemon(
+    client_ws, daemon_ws, allow_client_input: bool
+) -> None:
     try:
         while True:
             data = await client_ws.receive_bytes()
+            if not allow_client_input:
+                await client_ws.close(
+                    code=ws_status.WS_1008_POLICY_VIOLATION,
+                    reason="console write permission required",
+                )
+                return
             await daemon_ws.send(data)
     except WebSocketDisconnect:
         pass

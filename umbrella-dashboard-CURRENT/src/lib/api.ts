@@ -167,27 +167,6 @@ export interface NetworkSettings {
   discord_invite?: string;
 }
 
-export interface FlaggedAltAccount {
-  id: string;
-  primary_uuid: string;
-  primary_username?: string;
-  alt_uuid: string;
-  alt_username?: string;
-  method: string;
-  confidence: number;
-  created_at: string;
-}
-
-export interface AltClusterGroup {
-  group_id: string;
-  reason: string;
-  members: Array<{
-    uuid: string;
-    username: string;
-    is_banned: boolean;
-  }>;
-}
-
 // Player Types
 export interface PlayerSummary {
   uuid: string;
@@ -403,12 +382,27 @@ export interface SuspicionEventSchema {
   false_positive: boolean;
 }
 
+export interface FlaggedPlayerSchema {
+  uuid: string;
+  username: string;
+  suspicion_score: number;
+  first_seen: string;
+}
+
+export interface AltGroupMemberSchema {
+  id: number;
+  group_id: number;
+  player_uuid: string;
+  added_at: string;
+  added_by: string | null;
+}
+
 export interface AltGroupSchema {
   id: number;
   created_at: string;
   notes: string | null;
   confirmed: boolean;
-  members?: Array<{ id: number; group_id: number; player_uuid: string; added_at: string }>;
+  members: AltGroupMemberSchema[];
 }
 
 // AI Tasks & Intelligence
@@ -536,11 +530,16 @@ export class UmbrellaApiClient {
   }
 
   public getServerConsoleWebSocketUrl(serverId: string): string {
-    const wsProtocol = this.baseUrl.startsWith('https') ? 'wss:' : 'ws:';
-    const host = this.baseUrl.replace(/^https?:\/\//, '');
-    const tokenParam = this.sessionToken ? `&token=${encodeURIComponent(this.sessionToken)}` : '';
-    const adminParam = this.adminKey ? `&admin_key=${encodeURIComponent(this.adminKey)}` : '';
-    return `${wsProtocol}//${host}/ws/console/${encodeURIComponent(serverId)}?source=dashboard${tokenParam}${adminParam}`;
+    const base = new URL(this.baseUrl);
+    const wsProtocol = base.protocol === 'https:' ? 'wss:' : 'ws:';
+    const url = new URL(
+      `/api/v1/hosting/servers/${encodeURIComponent(serverId)}/console`,
+      `${wsProtocol}//${base.host}`,
+    );
+    if (this.sessionToken) {
+      url.searchParams.set('token', this.sessionToken);
+    }
+    return url.toString();
   }
 
   public async sendServerCommand(serverId: string, command: string): Promise<any> {
@@ -548,6 +547,7 @@ export class UmbrellaApiClient {
     return this.request<any>('/api/v1/mc/command', {
       method: 'POST',
       body: JSON.stringify({
+        server_id: serverId,
         command,
         requested_by_discord_id: 'dashboard',
         requested_by_username: 'Dashboard',
@@ -1036,12 +1036,12 @@ export class UmbrellaApiClient {
   // --------------------------------------------------------------------------
   // Alt Detection
   // --------------------------------------------------------------------------
-  public async getFlaggedAlts(limit: number = 50, offset: number = 0): Promise<SuspicionEventSchema[]> {
-    return this.request<SuspicionEventSchema[]>(`/api/v1/alts/flagged?limit=${limit}&offset=${offset}`);
+  public async getFlaggedAlts(limit: number = 50, skip: number = 0): Promise<FlaggedPlayerSchema[]> {
+    return this.request<FlaggedPlayerSchema[]>(`/api/v1/alts/flagged?limit=${limit}&skip=${skip}`);
   }
 
-  public async getAltGroups(limit: number = 50, offset: number = 0): Promise<AltGroupSchema[]> {
-    return this.request<AltGroupSchema[]>(`/api/v1/alts/groups?limit=${limit}&offset=${offset}`);
+  public async getAltGroups(): Promise<AltGroupSchema[]> {
+    return this.request<AltGroupSchema[]>('/api/v1/alts/groups');
   }
 
   public async markAltFalsePositive(

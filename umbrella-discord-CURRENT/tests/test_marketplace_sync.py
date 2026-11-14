@@ -518,6 +518,38 @@ async def test_sync_rebuilds_command_when_spec_changes():
 
 
 @pytest.mark.asyncio
+async def test_sync_failure_restores_local_state_so_retry_reapplies_changes():
+    bot = _make_bot()
+    bot.core = _FakeCore(discord_commands=[_dc_entry()], capabilities=[_cap()])
+    sync = MarketplaceCommandSync(bot)
+    calls = 0
+
+    async def fail_once(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise discord.HTTPException(
+                type("Response", (), {"status": 500, "reason": "temporary"})(),
+                "temporary sync failure",
+            )
+        return []
+
+    bot.tree.sync = fail_once
+
+    with pytest.raises(discord.HTTPException):
+        await sync.sync()
+
+    assert sync._active == {}
+    assert bot.tree.get_command("status") is None
+
+    outcome = await sync.sync()
+
+    assert outcome.added == ["status"]
+    assert bot.tree.get_command("status") is not None
+    assert sync._active["status"].discord_name == "status"
+
+
+@pytest.mark.asyncio
 async def test_sync_does_not_touch_static_cog_commands():
     bot = _make_bot()
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { api, FlaggedAltAccount, AltClusterGroup } from '../../lib/api';
+import { api, AltGroupSchema, FlaggedPlayerSchema } from '../../lib/api';
 import { useDashboard } from '../../context/DashboardContext';
 import { DisconnectedBanner } from '../common/DisconnectedBanner';
 import {
@@ -15,8 +15,8 @@ import {
 
 export const AltDetectionView: React.FC = () => {
   const { addToast, navigateToPlayer } = useDashboard();
-  const [flaggedAlts, setFlaggedAlts] = useState<FlaggedAltAccount[]>([]);
-  const [altGroups, setAltGroups] = useState<AltClusterGroup[]>([]);
+  const [flaggedPlayers, setFlaggedPlayers] = useState<FlaggedPlayerSchema[]>([]);
+  const [altGroups, setAltGroups] = useState<AltGroupSchema[]>([]);
   const [activeTab, setActiveTab] = useState<'flagged' | 'groups'>('flagged');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -32,33 +32,10 @@ export const AltDetectionView: React.FC = () => {
       ]);
 
       if (flaggedRes.status === 'fulfilled') {
-        // Core returns FlaggedPlayerSchema {uuid, username, suspicion_score, first_seen}
-        // Normalize to FlaggedAltAccount shape the table expects
-        const normalized = (flaggedRes.value || []).map((p: any) => ({
-          id: p.uuid,
-          primary_uuid: p.uuid,
-          primary_username: p.username,
-          alt_uuid: p.uuid,
-          alt_username: p.username,
-          method: 'Suspicion Score',
-          confidence: Math.min((p.suspicion_score || 0) / 100, 1),
-          created_at: p.first_seen,
-        }));
-        setFlaggedAlts(normalized);
+        setFlaggedPlayers(flaggedRes.value);
       }
       if (groupsRes.status === 'fulfilled') {
-        // Core returns AltGroupSchema {id, created_at, notes, confirmed}
-        // Normalize to AltClusterGroup shape
-        const normalized = (groupsRes.value || []).map((g: any) => ({
-          group_id: String(g.id),
-          reason: g.notes || (g.confirmed ? 'Confirmed Cluster' : 'Suspected Cluster'),
-          members: (g.members || []).map((m: any) => ({
-            uuid: m.player_uuid || m.uuid || '',
-            username: m.player_uuid?.slice(0, 8) || 'Unknown',
-            is_banned: false,
-          })),
-        }));
-        setAltGroups(normalized);
+        setAltGroups(groupsRes.value);
       }
     } catch (err: any) {
       setError(err.message || 'Failed to fetch alt intelligence data');
@@ -71,13 +48,13 @@ export const AltDetectionView: React.FC = () => {
     fetchAltData();
   }, []);
 
-  const handleMarkFalsePositive = async (primaryUuid: string, altUuid?: string) => {
+  const handleMarkFalsePositive = async (playerUuid: string) => {
     try {
-      await api.markAltFalsePositive(primaryUuid, altUuid);
+      await api.markAltFalsePositive(playerUuid);
       addToast({
         type: 'success',
         title: 'Marked False Positive',
-        message: 'Alt cluster link unflagged.',
+        message: 'Player suspicion flag cleared.',
       });
       fetchAltData();
     } catch (err: any) {
@@ -89,12 +66,10 @@ export const AltDetectionView: React.FC = () => {
     }
   };
 
-  const filteredAlts = flaggedAlts.filter(
-    (a) =>
-      a.primary_username?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      a.alt_username?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      a.primary_uuid.includes(searchQuery) ||
-      a.alt_uuid.includes(searchQuery)
+  const filteredPlayers = flaggedPlayers.filter(
+    (player) =>
+      player.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      player.uuid.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
@@ -107,7 +82,7 @@ export const AltDetectionView: React.FC = () => {
           <h1 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
             <span>Alt Account Intelligence</span>
             <span className="text-xs px-2 py-0.5 rounded font-mono bg-purple-950/80 border border-purple-800/40 text-purple-300">
-              {flaggedAlts.length} Clusters
+              {flaggedPlayers.length} Flagged Players
             </span>
           </h1>
           <p className="text-xs text-slate-400 mt-1">
@@ -137,7 +112,7 @@ export const AltDetectionView: React.FC = () => {
           }`}
         >
           <UserX className="h-3.5 w-3.5 text-rose-400" />
-          <span>Flagged Alt Pairs ({flaggedAlts.length})</span>
+          <span>Flagged Players ({flaggedPlayers.length})</span>
         </button>
 
         <button
@@ -149,7 +124,7 @@ export const AltDetectionView: React.FC = () => {
           }`}
         >
           <Users className="h-3.5 w-3.5 text-purple-400" />
-          <span>Cluster Groups ({altGroups.length})</span>
+          <span>Alt Groups ({altGroups.length})</span>
         </button>
       </div>
 
@@ -163,7 +138,7 @@ export const AltDetectionView: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 1: Flagged Pairs */}
+      {/* TAB 1: Flagged Players */}
       {activeTab === 'flagged' && (
         <div className="space-y-4">
           <div className="relative">
@@ -182,7 +157,7 @@ export const AltDetectionView: React.FC = () => {
               <div className="py-12 text-center text-xs text-slate-500 font-mono">
                 Loading flagged alt correlation records...
               </div>
-            ) : filteredAlts.length === 0 ? (
+            ) : filteredPlayers.length === 0 ? (
               <div className="py-12 text-center text-xs text-slate-500 font-mono">
                 No active alt flags recorded.
               </div>
@@ -191,49 +166,34 @@ export const AltDetectionView: React.FC = () => {
                 <table className="w-full text-left text-xs font-mono">
                   <thead>
                     <tr className="border-b border-[#1e1b4b] text-slate-400">
-                      <th className="pb-3 font-semibold">Primary Account</th>
-                      <th className="pb-3 font-semibold">Suspected Alt</th>
-                      <th className="pb-3 font-semibold">Correlation Method</th>
-                      <th className="pb-3 font-semibold">Confidence</th>
-                      <th className="pb-3 font-semibold">Flagged Date</th>
+                      <th className="pb-3 font-semibold">Player</th>
+                      <th className="pb-3 font-semibold">Suspicion Score</th>
+                      <th className="pb-3 font-semibold">First Seen</th>
                       <th className="pb-3 font-semibold text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#1e1b4b]/60">
-                    {filteredAlts.map((alt) => (
-                      <tr key={alt.id} className="hover:bg-[#121638]/50 transition">
+                    {filteredPlayers.map((player) => (
+                      <tr key={player.uuid} className="hover:bg-[#121638]/50 transition">
                         <td
-                          onClick={() => navigateToPlayer(alt.primary_uuid)}
+                          onClick={() => navigateToPlayer(player.uuid)}
                           className="py-3 font-bold text-white hover:text-purple-300 hover:underline cursor-pointer"
                         >
-                          {alt.primary_username || alt.primary_uuid.slice(0, 10)}
-                        </td>
-                        <td
-                          onClick={() => navigateToPlayer(alt.alt_uuid)}
-                          className="py-3 font-bold text-rose-300 hover:underline cursor-pointer"
-                        >
-                          {alt.alt_username || alt.alt_uuid.slice(0, 10)}
-                        </td>
-                        <td className="py-3 text-slate-300">
-                          {alt.method || 'IP Address Match'}
+                          {player.username || player.uuid.slice(0, 10)}
                         </td>
                         <td className="py-3">
                           <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                              (alt.confidence || 0) >= 0.8
-                                ? 'bg-rose-950/80 text-rose-300 border border-rose-800/40'
-                                : 'bg-amber-950/80 text-amber-300 border border-amber-800/40'
-                            }`}
+                            className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950/80 text-amber-300 border border-amber-800/40"
                           >
-                            {Math.round((alt.confidence || 0.85) * 100)}%
+                            {player.suspicion_score}
                           </span>
                         </td>
                         <td className="py-3 text-slate-400 text-[11px]">
-                          {alt.created_at ? new Date(alt.created_at).toLocaleDateString() : 'Recent'}
+                          {player.first_seen ? new Date(player.first_seen).toLocaleDateString() : 'Unknown'}
                         </td>
                         <td className="py-3 text-right">
                           <button
-                            onClick={() => handleMarkFalsePositive(alt.primary_uuid, alt.alt_uuid)}
+                            onClick={() => handleMarkFalsePositive(player.uuid)}
                             className="px-2.5 py-1 rounded border border-[#1e1b4b] bg-[#070914] text-slate-300 hover:text-white hover:border-purple-500/40 text-[11px] transition cursor-pointer"
                           >
                             False Positive
@@ -264,34 +224,29 @@ export const AltDetectionView: React.FC = () => {
             <div className="space-y-4">
               {altGroups.map((grp) => (
                 <div
-                  key={grp.group_id}
+                  key={grp.id}
                   className="rounded-xl border border-[#1a1f42] bg-[#070914] p-4 space-y-3 font-mono text-xs"
                 >
                   <div className="flex items-center justify-between border-b border-[#1e1b4b] pb-2">
                     <div className="flex items-center gap-2">
-                      <span className="font-bold text-purple-300">Cluster #{grp.group_id.slice(0, 8)}</span>
+                      <span className="font-bold text-purple-300">Group #{grp.id}</span>
                       <span className="px-2 py-0.5 rounded bg-purple-950/80 text-purple-300 text-[10px] border border-purple-800/40">
                         {grp.members.length} Associated Accounts
                       </span>
                     </div>
                     <span className="text-slate-500 text-[10px]">
-                      Method: {grp.reason || 'IP Subnet Cluster'}
+                      {grp.notes || (grp.confirmed ? 'Confirmed Cluster' : 'Suspected Cluster')}
                     </span>
                   </div>
 
                   <div className="flex flex-wrap gap-2 pt-1">
-                    {grp.members.map((m) => (
+                    {grp.members.map((member) => (
                       <div
-                        key={m.uuid}
-                        onClick={() => navigateToPlayer(m.uuid)}
+                        key={member.id}
+                        onClick={() => navigateToPlayer(member.player_uuid)}
                         className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[#1e1b4b] bg-[#0d1127] text-white hover:border-purple-500/40 transition cursor-pointer"
                       >
-                        <span className="font-bold">{m.username || m.uuid.slice(0, 8)}</span>
-                        {m.is_banned && (
-                          <span className="px-1.5 py-0.2 rounded bg-rose-950 text-rose-400 text-[9px] font-bold">
-                            BANNED
-                          </span>
-                        )}
+                        <span className="font-bold">{member.player_uuid.slice(0, 8)}</span>
                       </div>
                     ))}
                   </div>

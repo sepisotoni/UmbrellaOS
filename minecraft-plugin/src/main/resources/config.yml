@@ -10,11 +10,17 @@ core:
   # Example: http://localhost:8000  or  https://core.example.com
   base-url: "https://umbrellaos-core.onrender.com"
 
-  # Shared secret sent as the X-Plugin-Key header on every request.
-  # Must match umbrella-core's SECRET_KEY (or an equivalent X-Admin-Key —
-  # both are accepted by require_plugin_key, but the plugin should always
-  # use its own plugin key here).
+  # Shared secret sent as X-Plugin-Key for plugin API calls. During migration,
+  # command polling/completion use this key only when server-key is blank.
+  # Must match umbrella-core's SECRET_KEY.
   plugin-key: "CHANGE-ME"
+
+  # Optional server-bound secret used only for command polling and completion.
+  # Set a unique value per server and add the same server-id/value pair to
+  # umbrella-core's PLUGIN_SERVER_KEYS JSON environment variable. Once every
+  # server has migrated, disable PLUGIN_SERVER_LEGACY_AUTH_ENABLED in Core.
+  # Leave blank temporarily to keep using plugin-key during the migration.
+  server-key: ""
 
 heartbeat:
   # How often to POST /api/v1/plugin/heartbeat, in seconds.

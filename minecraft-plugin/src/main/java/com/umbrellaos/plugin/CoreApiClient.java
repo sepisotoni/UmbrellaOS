@@ -69,11 +69,23 @@ public class CoreApiClient {
      * built request without a real or mocked network round trip.
      */
     HttpRequest.Builder buildRequest(String path) {
+        return buildRequest(path, "X-Plugin-Key", pluginKey);
+    }
+
+    /** Uses only the bound key when set, avoiding a shared-key downgrade. */
+    HttpRequest.Builder buildServerRequest(String path, String serverKey) {
+        if (serverKey == null || serverKey.isBlank()) {
+            return buildRequest(path);
+        }
+        return buildRequest(path, "X-Plugin-Server-Key", serverKey);
+    }
+
+    private HttpRequest.Builder buildRequest(String path, String authHeader, String authKey) {
         String fullPath = path.startsWith("/") ? path : "/" + path;
         return HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + fullPath))
                 .timeout(requestTimeout)
-                .header("X-Plugin-Key", pluginKey)
+                .header(authHeader, authKey)
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json");
     }
@@ -98,6 +110,22 @@ public class CoreApiClient {
             throws IOException, InterruptedException {
         HttpRequest request = buildRequest(path)
                 .GET()
+                .build();
+        return httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+    }
+
+    public HttpResponse<String> getServerScoped(String path, String serverKey)
+            throws IOException, InterruptedException {
+        HttpRequest request = buildServerRequest(path, serverKey)
+                .GET()
+                .build();
+        return httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+    }
+
+    public HttpResponse<String> postServerScoped(String path, String jsonBody, String serverKey)
+            throws IOException, InterruptedException {
+        HttpRequest request = buildServerRequest(path, serverKey)
+                .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
                 .build();
         return httpClient.send(request, HttpResponse.BodyHandlers.ofString());
     }

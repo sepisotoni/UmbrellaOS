@@ -369,28 +369,47 @@ class MarketplaceCommandSync:
         desired_by_name = {s.discord_name: s for s in desired_specs}
 
         removed: list[str] = []
-        for name in list(self._active):
-            if name not in desired_by_name:
-                self.bot.tree.remove_command(name)
-                del self._active[name]
-                removed.append(name)
-
         added: list[str] = []
-        for name, spec in desired_by_name.items():
-            if self._active.get(name) == spec:
-                continue  # Unchanged since last sync - nothing to do.
-            if name in self._active:
-                # Spec changed (plugin updated its command/params) - drop
-                # the stale Command object before re-adding under the same
-                # name; CommandTree.add_command refuses a duplicate name.
-                self.bot.tree.remove_command(name)
-            command = self._build_command(spec)
-            self.bot.tree.add_command(command)
-            self._active[name] = spec
-            added.append(name)
+        previous_active = self._active.copy()
+        previous_commands = {
+            name: self.bot.tree.get_command(name) for name in previous_active
+        }
+        try:
+            for name in list(previous_active):
+                if name not in desired_by_name:
+                    self.bot.tree.remove_command(name)
+                    removed.append(name)
 
+            for name, spec in desired_by_name.items():
+                if previous_active.get(name) == spec:
+                    continue  # Unchanged since last sync - nothing to do.
+                if name in previous_active:
+                    # Spec changed (plugin updated its command/params) - drop
+                    # the stale Command object before re-adding under the same
+                    # name; CommandTree.add_command refuses a duplicate name.
+                    self.bot.tree.remove_command(name)
+                command = self._build_command(spec)
+                self.bot.tree.add_command(command)
+                added.append(name)
+
+            if added or removed:
+                await self.bot.tree.sync()
+        except Exception:
+            # Keep the local tree and our diff state aligned with Discord. If
+            # the API sync failed, the next poll must retry the same changes.
+            for name in set(previous_active) | set(desired_by_name):
+                self.bot.tree.remove_command(name)
+                previous_command = previous_commands.get(name)
+                if previous_command is not None:
+                    self.bot.tree.add_command(previous_command)
+            self._active = previous_active
+            logger.exception(
+                "marketplace command sync: Discord tree sync failed; restored local commands for retry."
+            )
+            raise
+
+        self._active = desired_by_name
         if added or removed:
-            await self.bot.tree.sync()
             logger.info(
                 "marketplace command sync: pushed to Discord (%d added/updated, %d removed).",
                 len(added),

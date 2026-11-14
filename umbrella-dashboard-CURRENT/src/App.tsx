@@ -74,9 +74,9 @@ const DashboardContent: React.FC = () => {
     return (
       <div className="h-screen w-screen overflow-y-auto font-sans bg-[#02040a] text-slate-100 relative">
         <AtmosphericBackground showDoodles={showDoodles} doodleOpacity={doodleOpacity} />
-        <div className="relative z-10">
+        <main className="relative z-10">
           <LoginView />
-        </div>
+        </main>
 
         {/* Toast Notification Container */}
         <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-md pointer-events-none">

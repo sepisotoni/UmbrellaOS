@@ -5,7 +5,7 @@ tests/test_ai_tasks.py — AI moderation task API tests.
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
-from models import AITask, Player, Setting
+from models import AITask, AuditLog, Player, Setting
 from datetime import datetime, timezone, timedelta
 
 
@@ -214,14 +214,22 @@ async def test_post_ai_tasks_id_approve_updates_status(client: AsyncClient, db_s
 
     response = await client.post(
         f"/api/v1/ai/tasks/{task.id}/approve",
-        json={"action_taken": "Banned for 7 days", "reviewed_by": "staff123"},
+        json={"action_taken": "Banned for 7 days", "reviewed_by": "forged-staff"},
         headers={"X-Admin-Key": "test-secret-key"},
     )
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "approved"
-    assert data["reviewed_by"] == "staff123"
+    assert data["reviewed_by"] == "admin-key"
     assert data["action_taken"] == "Banned for 7 days"
+    async with db_session() as db:
+        audit = await db.scalar(
+            select(AuditLog).where(
+                AuditLog.action == "ai_task.approved",
+                AuditLog.target == str(task.id),
+            )
+        )
+        assert audit.actor == "admin-key"
 
 
 @pytest.mark.asyncio
@@ -246,13 +254,13 @@ async def test_post_ai_tasks_id_deny_updates_status(client: AsyncClient, db_sess
 
     response = await client.post(
         f"/api/v1/ai/tasks/{task.id}/deny",
-        json={"reviewed_by": "staff123", "reason": "False positive"},
+        json={"reviewed_by": "forged-staff", "reason": "False positive"},
         headers={"X-Admin-Key": "test-secret-key"},
     )
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "denied"
-    assert data["reviewed_by"] == "staff123"
+    assert data["reviewed_by"] == "admin-key"
 
 
 @pytest.mark.asyncio

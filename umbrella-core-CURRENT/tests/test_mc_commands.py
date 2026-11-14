@@ -2,11 +2,15 @@
 tests/test_mc_commands.py — MC command execution API tests.
 """
 
+from datetime import datetime, timezone
+
 import pytest
 from httpx import AsyncClient
+from pydantic import SecretStr
 from sqlalchemy import select
+
+from config import get_settings
 from models import MCCommand, AuditLog
-from datetime import datetime, timezone
 from tests.conftest import PLUGIN_HEADERS
 
 
@@ -131,7 +135,7 @@ async def test_post_mc_commands_id_complete_marks_completed(
         await db.refresh(cmd)
 
     response = await client.post(
-        f"/api/v1/mc/commands/{cmd.id}/complete",
+        f"/api/v1/mc/commands/{cmd.id}/complete?server_id=default",
         json={
             "output": "Command executed successfully",
             "success": True,
@@ -170,7 +174,7 @@ async def test_post_mc_commands_id_complete_marks_failed(
         await db.refresh(cmd)
 
     response = await client.post(
-        f"/api/v1/mc/commands/{cmd.id}/complete",
+        f"/api/v1/mc/commands/{cmd.id}/complete?server_id=default",
         json={
             "output": "Unknown command",
             "success": False,
@@ -190,7 +194,7 @@ async def test_post_mc_commands_id_complete_marks_failed(
 async def test_post_mc_commands_id_complete_not_found_returns_404(client: AsyncClient):
     """POST /mc/commands/{id}/complete with non-existent ID returns 404."""
     response = await client.post(
-        "/api/v1/mc/commands/99999/complete",
+        "/api/v1/mc/commands/99999/complete?server_id=default",
         json={
             "output": "test",
             "success": True,
@@ -221,7 +225,7 @@ async def test_post_mc_commands_id_complete_already_completed_returns_400(
         await db.refresh(cmd)
 
     response = await client.post(
-        f"/api/v1/mc/commands/{cmd.id}/complete",
+        f"/api/v1/mc/commands/{cmd.id}/complete?server_id=default",
         json={
             "output": "test",
             "success": True,
@@ -238,7 +242,7 @@ async def test_post_mc_commands_id_complete_unauthenticated_returns_401(
 ):
     """POST /mc/commands/{id}/complete without auth returns 401."""
     response = await client.post(
-        "/api/v1/mc/commands/1/complete",
+        "/api/v1/mc/commands/1/complete?server_id=default",
         json={
             "output": "test",
             "success": True,
@@ -292,7 +296,7 @@ async def test_post_mc_commands_id_complete_creates_audit_log(
         await db.refresh(cmd)
 
     response = await client.post(
-        f"/api/v1/mc/commands/{cmd.id}/complete",
+        f"/api/v1/mc/commands/{cmd.id}/complete?server_id=default",
         json={
             "output": "Executed",
             "success": True,
@@ -438,3 +442,135 @@ async def test_get_mc_commands_pending_defaults_to_default_server(
     commands = [c["command"] for c in response.json()]
     assert "say legacy behavior" in commands
     assert "say other server" not in commands
+
+
+@pytest.mark.asyncio
+async def test_complete_command_requires_matching_server_id(client: AsyncClient, db_session):
+    async with db_session() as db:
+        command = MCCommand(
+            command="say scoped",
+            server_id="survival-1",
+            requested_by_discord_id="1",
+            requested_by_username="A",
+            status="pending",
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(command)
+        await db.commit()
+        await db.refresh(command)
+
+    response = await client.post(
+        f"/api/v1/mc/commands/{command.id}/complete?server_id=creative-1",
+        json={"output": "wrong server", "success": True},
+        headers=PLUGIN_HEADERS,
+    )
+    assert response.status_code == 404
+
+    missing_server = await client.post(
+        f"/api/v1/mc/commands/{command.id}/complete",
+        json={"output": "missing server", "success": True},
+        headers=PLUGIN_HEADERS,
+    )
+    assert missing_server.status_code == 422
+
+    async with db_session() as db:
+        pending = await db.scalar(
+            select(MCCommand).where(MCCommand.id == command.id)
+        )
+        assert pending.status == "pending"
+
+
+@pytest.mark.asyncio
+async def test_server_plugin_key_is_bound_to_server_id(
+    client: AsyncClient, monkeypatch
+):
+    settings = get_settings()
+    monkeypatch.setattr(
+        settings,
+        "plugin_server_keys",
+        {"survival-1": SecretStr("survival-server-secret")},
+    )
+    monkeypatch.setattr(settings, "plugin_server_legacy_auth_enabled", False)
+    headers = {"X-Plugin-Server-Key": "survival-server-secret"}
+
+    authorized = await client.get(
+        "/api/v1/mc/commands/pending?server_id=survival-1",
+        headers=headers,
+    )
+    unauthorized = await client.get(
+        "/api/v1/mc/commands/pending?server_id=creative-1",
+        headers=headers,
+    )
+
+    assert authorized.status_code == 200
+    assert unauthorized.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_server_plugin_key_authorizes_completion(
+    client: AsyncClient, db_session, monkeypatch
+):
+    settings = get_settings()
+    monkeypatch.setattr(
+        settings,
+        "plugin_server_keys",
+        {"survival-1": SecretStr("survival-server-secret")},
+    )
+    async with db_session() as db:
+        command = MCCommand(
+            command="say scoped",
+            server_id="survival-1",
+            requested_by_discord_id="1",
+            requested_by_username="A",
+            status="pending",
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(command)
+        await db.commit()
+        await db.refresh(command)
+
+    response = await client.post(
+        f"/api/v1/mc/commands/{command.id}/complete?server_id=survival-1",
+        json={"output": "executed", "success": True},
+        headers={"X-Plugin-Server-Key": "survival-server-secret"},
+    )
+
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_invalid_server_key_does_not_downgrade_to_shared_key(
+    client: AsyncClient, monkeypatch
+):
+    settings = get_settings()
+    monkeypatch.setattr(
+        settings,
+        "plugin_server_keys",
+        {"survival-1": SecretStr("survival-server-secret")},
+    )
+    headers = {
+        **PLUGIN_HEADERS,
+        "X-Plugin-Server-Key": "incorrect-server-secret",
+    }
+
+    response = await client.get(
+        "/api/v1/mc/commands/pending?server_id=survival-1",
+        headers=headers,
+    )
+
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_legacy_shared_key_can_be_disabled_after_migration(
+    client: AsyncClient, monkeypatch
+):
+    settings = get_settings()
+    monkeypatch.setattr(settings, "plugin_server_legacy_auth_enabled", False)
+
+    response = await client.get(
+        "/api/v1/mc/commands/pending?server_id=default",
+        headers=PLUGIN_HEADERS,
+    )
+
+    assert response.status_code == 401

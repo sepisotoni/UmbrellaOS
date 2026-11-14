@@ -109,15 +109,36 @@ export class UmbrellaClient {
   }
 
   private async unwrap<T>(res: Response): Promise<T> {
-    if (!res.ok) {
-      let body: unknown;
+    const responseText = await res.text();
+    let body: unknown = responseText;
+    if (responseText) {
       try {
-        body = await res.json();
+        body = JSON.parse(responseText);
       } catch {
-        body = await res.text();
+        // Keep plain-text responses available to callers through UmbrellaApiError.body.
       }
-      throw new UmbrellaApiError(`UmbrellaOS API request failed: ${res.status} ${res.statusText}`, res.status, body);
     }
-    return (await res.json()) as T;
+
+    if (!res.ok) {
+      const bodyMessage =
+        typeof body === "string"
+          ? body.trim()
+          : body && typeof body === "object"
+            ? String(
+                (body as Record<string, unknown>).detail ??
+                  (body as Record<string, unknown>).message ??
+                  (body as Record<string, unknown>).error ??
+                  "",
+              ).trim()
+            : "";
+      const statusText = res.statusText ? ` ${res.statusText}` : "";
+      const detail = bodyMessage ? ` — ${bodyMessage}` : "";
+      throw new UmbrellaApiError(
+        `UmbrellaOS API request failed: ${res.status}${statusText}${detail}`,
+        res.status,
+        body,
+      );
+    }
+    return JSON.parse(responseText) as T;
   }
 }

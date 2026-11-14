@@ -92,3 +92,28 @@ async def test_health_redis_unreachable(client):
         assert data["status"] == "degraded"
     finally:
         del app.dependency_overrides[get_redis]
+
+
+@pytest.mark.asyncio
+async def test_required_migration_failure_prevents_startup_and_readiness(
+    monkeypatch,
+):
+    """A failed required migration must abort lifespan before startup completes."""
+    import main as main_module
+    from alembic import command as alembic_command
+
+    def fail_migration(config, revision):
+        raise RuntimeError("migration failed")
+
+    monkeypatch.setattr(main_module, "validate_secrets", lambda settings: None)
+    monkeypatch.setattr(alembic_command, "upgrade", fail_migration)
+    create_tables = AsyncMock()
+    monkeypatch.setattr(main_module, "create_tables", create_tables)
+
+    startup_completed = False
+    with pytest.raises(RuntimeError, match="migration failed"):
+        async with main_module.lifespan(app):
+            startup_completed = True
+
+    assert startup_completed is False
+    create_tables.assert_not_awaited()

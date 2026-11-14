@@ -10,6 +10,7 @@ GET  /api/v1/alts/groups
 """
 
 import pytest
+from sqlalchemy import select
 from tests.conftest import ADMIN_HEADERS, WRONG_HEADERS
 
 
@@ -133,7 +134,7 @@ async def test_get_alts_player_uuid_without_auth_returns_401(client):
 
 
 @pytest.mark.asyncio
-async def test_post_alts_false_positive_reduces_score(client):
+async def test_post_alts_false_positive_reduces_score(client, db_session):
     """POST /alts/false-positive should reduce score."""
     # Create a player
     payload = {
@@ -158,13 +159,20 @@ async def test_post_alts_false_positive_reduces_score(client):
     # Mark as false positive
     payload = {
         "event_id": event_id,
-        "reviewed_by": "TestStaff",
+        "reviewed_by": "forged-staff",
     }
     response = await client.post(
         "/api/v1/alts/false-positive", json=payload, headers=ADMIN_HEADERS
     )
     assert response.status_code == 200
     assert response.json()["success"] is True
+    from models import SuspicionEvent
+
+    async with db_session() as db:
+        event = await db.scalar(
+            select(SuspicionEvent).where(SuspicionEvent.id == event_id)
+        )
+        assert event.reviewed_by == "admin-key"
 
 
 @pytest.mark.asyncio
@@ -195,6 +203,10 @@ async def test_post_alts_group_creates_alt_group(client):
     assert response.status_code == 200
     data = response.json()
     assert "id" in data
+    assert len(data["members"]) == 2
+    assert {member["player_uuid"] for member in data["members"]} == set(
+        payload["player_uuids"]
+    )
 
 
 @pytest.mark.asyncio
@@ -225,6 +237,15 @@ async def test_get_alts_groups_returns_list(client):
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, list)
+    assert data
+    assert len(data[0]["members"]) == 2
+    assert {
+        "id",
+        "group_id",
+        "player_uuid",
+        "added_at",
+        "added_by",
+    } == set(data[0]["members"][0])
 
 
 @pytest.mark.asyncio

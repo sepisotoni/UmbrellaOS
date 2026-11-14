@@ -7,11 +7,17 @@ name: Dependency scan (Phase 9)
 on:
   pull_request:
     paths:
-      - "requirements.txt"
+      - "umbrella-core-CURRENT/requirements.txt"
+      - "umbrella-core-CURRENT/scripts/scan_dependencies.py"
+      - "umbrella-core-CURRENT/scripts/generate_sbom.py"
+      - ".github/workflows/dependency-scan.yml"
   push:
     branches: [main]
     paths:
-      - "requirements.txt"
+      - "umbrella-core-CURRENT/requirements.txt"
+      - "umbrella-core-CURRENT/scripts/scan_dependencies.py"
+      - "umbrella-core-CURRENT/scripts/generate_sbom.py"
+      - ".github/workflows/dependency-scan.yml"
   schedule:
     # Weekly, independent of any code change — new CVEs get published
     # against dependencies whose pinned version in this repo never
@@ -35,15 +41,17 @@ jobs:
 
       - name: Scan for known vulnerabilities
         run: python scripts/scan_dependencies.py --requirements requirements.txt --fail-on high
+        working-directory: umbrella-core-CURRENT
 
       - name: Generate SBOM
         if: always()
         run: python scripts/generate_sbom.py --requirements requirements.txt --output sbom.json
+        working-directory: umbrella-core-CURRENT
 
       - name: Upload SBOM
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: umbrella-core-sbom
-          path: sbom.json
+          path: umbrella-core-CURRENT/sbom.json
           retention-days: 90

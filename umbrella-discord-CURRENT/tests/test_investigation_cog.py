@@ -10,9 +10,71 @@ makes this much tested without one.
 
 import discord
 import pytest
+from unittest.mock import AsyncMock
 
 from bot.cogs.investigation_cog import InvestigationCog
 from bot.services.umbrella_core_client import UmbrellaCoreError
+
+
+@pytest.mark.asyncio
+async def test_investigation_response_and_result_are_ephemeral():
+    cog = InvestigationCog.__new__(InvestigationCog)
+    cog.bot = type(
+        "Bot",
+        (),
+        {
+            "core": type(
+                "Core",
+                (),
+                {"invoke": AsyncMock(return_value={"findings": [], "confidence": 0.9})},
+            )()
+        },
+    )()
+    interaction = type(
+        "Interaction",
+        (),
+        {
+            "user": type("User", (), {"id": 42})(),
+            "response": type("Response", (), {"defer": AsyncMock()})(),
+            "followup": type("Followup", (), {"send": AsyncMock()})(),
+        },
+    )()
+
+    await InvestigationCog.investigate.callback(cog, interaction, "check status")
+
+    interaction.response.defer.assert_awaited_once_with(
+        thinking=True, ephemeral=True
+    )
+    interaction.followup.send.assert_awaited_once()
+    assert interaction.followup.send.await_args.kwargs["ephemeral"] is True
+
+
+@pytest.mark.asyncio
+async def test_investigation_error_is_ephemeral_too():
+    core = type(
+        "Core",
+        (),
+        {
+            "invoke": AsyncMock(
+                side_effect=UmbrellaCoreError("unavailable", status_code=503)
+            )
+        },
+    )()
+    cog = InvestigationCog.__new__(InvestigationCog)
+    cog.bot = type("Bot", (), {"core": core})()
+    interaction = type(
+        "Interaction",
+        (),
+        {
+            "user": type("User", (), {"id": 42})(),
+            "response": type("Response", (), {"defer": AsyncMock()})(),
+            "followup": type("Followup", (), {"send": AsyncMock()})(),
+        },
+    )()
+
+    await InvestigationCog.investigate.callback(cog, interaction, "check status")
+
+    assert interaction.followup.send.await_args.kwargs["ephemeral"] is True
 
 
 def test_format_error_permission_denied():

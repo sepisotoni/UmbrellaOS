@@ -29,6 +29,8 @@ from api.middleware.auth import require_admin_key
 from api.dependencies.permissions import require_permission
 from services import ai_service
 from models import AITask, Appeal, AuditLog
+from models import User
+from models.api_key import ApiKey
 
 router = APIRouter(prefix="/api/v1/ai", tags=["ai"])
 
@@ -40,12 +42,18 @@ router = APIRouter(prefix="/api/v1/ai", tags=["ai"])
 
 class ApproveTaskRequest(BaseModel):
     action_taken: str
-    reviewed_by: str
 
 
 class DenyTaskRequest(BaseModel):
-    reviewed_by: str
     reason: str | None = None
+
+
+def _reviewer_identity(auth: User | ApiKey | str) -> str:
+    if isinstance(auth, User):
+        return auth.username
+    if isinstance(auth, ApiKey):
+        return f"api-key:{auth.name}"[:128]
+    return "admin-key"
 
 
 # ---------------------------------------------------------------------------
@@ -192,7 +200,7 @@ async def approve_ai_task(
     task_id: int,
     body: ApproveTaskRequest,
     db: AsyncSession = Depends(get_db),
-    _auth=Depends(require_permission("punishments.create")),
+    auth=Depends(require_permission("punishments.create")),
 ):
     """
     Staff approves AI recommendation.
@@ -206,13 +214,14 @@ async def approve_ai_task(
     if task.status != "pending":
         raise HTTPException(status_code=400, detail="Task is not pending")
 
+    reviewed_by = _reviewer_identity(auth)
     task.status = "approved"
-    task.reviewed_by = body.reviewed_by
+    task.reviewed_by = reviewed_by
     task.reviewed_at = datetime.now(timezone.utc)
     task.action_taken = body.action_taken
 
     audit = AuditLog(
-        actor=body.reviewed_by,
+        actor=reviewed_by,
         actor_type="staff",
         action="ai_task.approved",
         target=str(task_id),
@@ -236,7 +245,7 @@ async def deny_ai_task(
     task_id: int,
     body: DenyTaskRequest,
     db: AsyncSession = Depends(get_db),
-    _auth=Depends(require_permission("punishments.create")),
+    auth=Depends(require_permission("punishments.create")),
 ):
     """
     Staff denies AI recommendation.
@@ -250,12 +259,13 @@ async def deny_ai_task(
     if task.status != "pending":
         raise HTTPException(status_code=400, detail="Task is not pending")
 
+    reviewed_by = _reviewer_identity(auth)
     task.status = "denied"
-    task.reviewed_by = body.reviewed_by
+    task.reviewed_by = reviewed_by
     task.reviewed_at = datetime.now(timezone.utc)
 
     audit = AuditLog(
-        actor=body.reviewed_by,
+        actor=reviewed_by,
         actor_type="staff",
         action="ai_task.denied",
         target=str(task_id),

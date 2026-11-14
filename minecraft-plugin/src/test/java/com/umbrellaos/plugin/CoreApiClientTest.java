@@ -44,6 +44,26 @@ class CoreApiClientTest {
     }
 
     @Test
+    void buildServerRequest_usesBoundKeyWithoutSendingSharedKey() {
+        HttpRequest request = client.buildServerRequest(
+                "/api/v1/mc/commands/pending?server_id=survival", "server-secret").GET().build();
+
+        assertEquals("server-secret",
+                request.headers().firstValue("X-Plugin-Server-Key").orElseThrow());
+        assertTrue(request.headers().firstValue("X-Plugin-Key").isEmpty());
+    }
+
+    @Test
+    void buildServerRequest_usesSharedKeyDuringMigrationWhenNoServerKeyIsConfigured() {
+        HttpRequest request = client.buildServerRequest(
+                "/api/v1/mc/commands/pending?server_id=survival", " ").GET().build();
+
+        assertEquals("test-plugin-key",
+                request.headers().firstValue("X-Plugin-Key").orElseThrow());
+        assertTrue(request.headers().firstValue("X-Plugin-Server-Key").isEmpty());
+    }
+
+    @Test
     void buildRequest_setsJsonContentType() {
         HttpRequest request = client.buildRequest("/api/v1/plugin/config").GET().build();
 
