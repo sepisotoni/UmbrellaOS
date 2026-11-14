@@ -213,6 +213,7 @@ class RoleSchema(BaseModel):
     name: str  # role name (e.g. "Staff", "@everyone")
     color: int = 0  # Discord role color as int (0 = no color)
     mentionable: bool = True
+    is_default: bool = False
 
 
 class GuildRolesRequest(BaseModel):
@@ -382,7 +383,7 @@ async def sync_bot_guilds(
         guild.channels = json.dumps([channel.model_dump() for channel in item.channels])
         guild.roles = json.dumps([role.model_dump() for role in item.roles])
         channel_ids = {channel.id for channel in item.channels}
-        role_ids = {role.id for role in item.roles}
+        role_ids = {role.id for role in item.roles if not role.is_default}
         if guild.staff_alert_channel_id not in channel_ids:
             guild.staff_alert_channel_id = None
         for field in (
@@ -414,7 +415,11 @@ async def update_bot_guild_config(
         raise HTTPException(status_code=404, detail="Active Discord guild not found")
 
     channels = {channel["id"] for channel in json.loads(guild.channels)}
-    roles = {role["id"] for role in json.loads(guild.roles)}
+    roles = {
+        role["id"]
+        for role in json.loads(guild.roles)
+        if not role.get("is_default", False)
+    }
     role_fields = (
         "verified_role_id",
         "owner_role_id",

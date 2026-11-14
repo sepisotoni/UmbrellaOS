@@ -1,899 +1,801 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Bot, Hash, RefreshCw, Send, Radio, Copy, Check, Info,
-  Users, Server, Activity, Terminal, Shield, Layers, Box, Settings,
-  Pencil, X, Loader2
+  AlertCircle,
+  Bot,
+  CheckCircle2,
+  Clock3,
+  Hash,
+  Megaphone,
+  RefreshCw,
+  Send,
+  Server,
+  ShieldCheck,
+  Terminal,
+  Users,
 } from 'lucide-react';
 import {
   api,
-  SettingRecord,
-  GuildChannel,
-  GuildRole,
+  BotCommand,
   BotGuildConfig,
+  BotRegistrationStatus,
+  GuildChannel,
 } from '../../lib/api';
 import { useDashboard } from '../../context/DashboardContext';
 import { DisconnectedBanner } from '../common/DisconnectedBanner';
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+type GuildRoleField = 'owner_role_id' | 'verified_role_id';
+type GuildConfigPatch = Partial<
+  Pick<
+    BotGuildConfig,
+    'staff_alert_channel_id' | 'owner_role_id' | 'verified_role_id'
+  >
+>;
 
-function useSettings() {
-  const [map, setMap] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(true);
+const roleMappings: {
+  field: GuildRoleField;
+  title: string;
+  description: string;
+}[] = [
+  {
+    field: 'owner_role_id',
+    title: 'Owner command access',
+    description: 'Role required for owner-restricted slash commands.',
+  },
+  {
+    field: 'verified_role_id',
+    title: 'Verified member',
+    description: 'Role granted after a player links their Minecraft account.',
+  },
+];
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const records: SettingRecord[] = await api.getSettings();
-      const m: Record<string, string> = {};
-      for (const r of records) m[r.key] = r.value ?? '';
-      setMap(m);
-    } catch { /* silently */ }
-    finally { setLoading(false); }
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
-  return { map, loading, reload: load };
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Unexpected API error';
 }
 
-function CopyBtn({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-  const handle = () => {
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
+function timeAgo(value: string | null | undefined): string {
+  if (!value) return 'Not recorded';
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return 'Unknown';
+
+  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+  if (seconds < 60) return 'just now';
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+  return `${Math.floor(seconds / 86400)}d ago`;
+}
+
+function fullDate(value: string | null | undefined): string {
+  if (!value) return 'Not recorded';
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp)
+    ? new Date(timestamp).toLocaleString()
+    : 'Unknown';
+}
+
+function Card({
+  children,
+  className = '',
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <button onClick={handle} className="ml-2 p-1.5 rounded bg-indigo-950/40 text-slate-400 hover:text-white transition cursor-pointer">
-      {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
-    </button>
+    <section
+      className={`rounded-2xl border border-[#1b2445] bg-[#090e20]/90 p-5 shadow-[0_12px_40px_rgba(0,0,0,0.16)] ${className}`}
+    >
+      {children}
+    </section>
   );
 }
 
-function Skeleton({ className = '' }: { className?: string }) {
-  return <div className={`animate-pulse bg-[#141d3d] rounded ${className}`} />;
+function CardTitle({
+  icon,
+  children,
+}: {
+  icon: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold text-white">
+      <span className="text-indigo-300">{icon}</span>
+      {children}
+    </h2>
+  );
 }
 
-function timeAgo(iso: string): string {
-  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
-  if (diff < 60) return `${diff}s ago`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
+function Metric({
+  label,
+  value,
+  detail,
+  icon,
+  color = 'text-indigo-300',
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  icon: React.ReactNode;
+  color?: string;
+}) {
+  return (
+    <Card>
+      <div className="mb-4 flex items-center justify-between">
+        <span className="text-xs font-medium text-slate-400">{label}</span>
+        <span className={color}>{icon}</span>
+      </div>
+      <div className="text-2xl font-semibold tracking-tight text-white">{value}</div>
+      <div className="mt-1 truncate text-xs text-slate-500">{detail}</div>
+    </Card>
+  );
 }
 
-// ─── Static command list (authoritative — mirrors actual cogs) ─────────────────
-
-const STATIC_COMMANDS = [
-  { name: '/server_list',           args: '',                       owner_only: false, description: 'List all registered Minecraft servers' },
-  { name: '/server_status',         args: '<server_id>',            owner_only: false, description: 'Get status of a specific server' },
-  { name: '/server_stats',          args: '<server_id>',            owner_only: false, description: 'Show TPS, player count, RAM for a server' },
-  { name: '/server_start',          args: '<server_id>',            owner_only: true,  description: 'Start a server' },
-  { name: '/server_stop',           args: '<server_id>',            owner_only: true,  description: 'Stop a server' },
-  { name: '/server_restart',        args: '<server_id>',            owner_only: true,  description: 'Restart a server' },
-  { name: '/server_kill',           args: '<server_id>',            owner_only: true,  description: 'Force-kill a server process' },
-  { name: '/server_delete',         args: '<server_id>',            owner_only: true,  description: 'Permanently delete a server record' },
-  { name: '/player_risk',           args: '<player>',               owner_only: true,  description: 'Get AI risk assessment for a player' },
-  { name: '/player_risk_by_discord',args: '<discord_id>',           owner_only: true,  description: 'Risk assessment by Discord ID' },
-  { name: '/memory_list',           args: '',                       owner_only: false, description: 'List bot memory entries' },
-  { name: '/memory_set',            args: '<key> <value>',          owner_only: true,  description: 'Set a memory key' },
-  { name: '/memory_purge',          args: '',                       owner_only: true,  description: 'Clear all memory' },
-  { name: '/knowledge_search',      args: '<query>',                owner_only: false, description: 'Search knowledge base' },
-  { name: '/report',                args: '<player> <reason>',      owner_only: false, description: 'Report a player' },
-  { name: '/crash_risk',            args: '<server_id>',            owner_only: true,  description: 'Predict crash risk from TPS trend' },
-  { name: '/ops_query',             args: '<question>',             owner_only: true,  description: 'Run operational intelligence query' },
-  { name: '/postmortem',            args: '<server_id>',            owner_only: true,  description: 'Generate incident postmortem' },
-  { name: '/archive_search',        args: '<query>',                owner_only: true,  description: 'Search archived chat history' },
-  { name: '/investigate',           args: '<player>',               owner_only: true,  description: 'Run full investigation on a player' },
-  { name: '/ask',                   args: '<question>',             owner_only: false, description: 'Ask the AI copilot a question' },
-];
-
-// ─── Main ─────────────────────────────────────────────────────────────────────
+function EmptyState({
+  title,
+  detail,
+}: {
+  title: string;
+  detail: string;
+}) {
+  return (
+    <div className="rounded-xl border border-dashed border-[#293252] bg-[#070b18] px-5 py-8 text-center">
+      <p className="text-sm font-medium text-slate-300">{title}</p>
+      <p className="mx-auto mt-1 max-w-lg text-xs leading-relaxed text-slate-500">
+        {detail}
+      </p>
+    </div>
+  );
+}
 
 export const DiscordView: React.FC = () => {
   const { addToast } = useDashboard();
-  const { map: settings, loading: settingsLoading, reload: reloadSettings } = useSettings();
-
-  // ── Verified player count ──
-  const [verifiedCount, setVerifiedCount] = useState<number | null>(null);
-  const [verifiedLoading, setVerifiedLoading] = useState(true);
-
-  // ── Bot registration status ──
-  const [botReg, setBotReg] = useState<{ registered: boolean; callback_url: string | null; registered_at: string | null } | null>(null);
-  const [botRegLoading, setBotRegLoading] = useState(true);
-
-  // ── Roles ──
-  const [roles, setRoles] = useState<{ id: string; name: string; description: string; permissions: string[] }[]>([]);
-  const [rolesLoading, setRolesLoading] = useState(true);
-
-  // ── Bot commands ──
-  const [botCommands, setBotCommands] = useState<{ name: string; description: string; args: string; owner_only: boolean }[]>([]);
-  const [commandsLastPushed, setCommandsLastPushed] = useState<string | null>(null);
-  const [commandsLoading, setCommandsLoading] = useState(true);
-
-  // ── Per-guild data and configuration (from bot push) ──
-  const [botGuilds, setBotGuilds] = useState<BotGuildConfig[]>([]);
+  const [guilds, setGuilds] = useState<BotGuildConfig[]>([]);
   const [selectedGuildId, setSelectedGuildId] = useState('');
-  const selectedGuild = botGuilds.find(guild => guild.guild_id === selectedGuildId);
-  const guildChannels: GuildChannel[] = selectedGuild?.channels ?? [];
-  const guildRoles: GuildRole[] = selectedGuild?.roles ?? [];
+  const [commands, setCommands] = useState<BotCommand[]>([]);
+  const [commandsPushedAt, setCommandsPushedAt] = useState<string | null>(null);
+  const [registration, setRegistration] = useState<BotRegistrationStatus | null>(
+    null,
+  );
+  const [verifiedCount, setVerifiedCount] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadErrors, setLoadErrors] = useState<string[]>([]);
+  const [savingField, setSavingField] = useState<string | null>(null);
+  const [targetChannelId, setTargetChannelId] = useState('');
+  const [broadcastText, setBroadcastText] = useState('');
+  const [sending, setSending] = useState(false);
 
-  // ── Broadcast ──
-  const [embedTitle, setEmbedTitle] = useState('');
-  const [embedDescription, setEmbedDescription] = useState('');
-  const [embedChannel, setEmbedChannel] = useState('');
-  const [embedMention, setEmbedMention] = useState('none');
-  const [embedColor, setEmbedColor] = useState('bg-indigo-500');
-  const [isBroadcasting, setIsBroadcasting] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
+  const selectedGuild = guilds.find(
+    guild => guild.guild_id === selectedGuildId,
+  );
+  const channels = selectedGuild?.channels ?? [];
+  const roles = selectedGuild?.roles ?? [];
 
-  // ── Role Discord ID inline editing ──
-  const [editingRole, setEditingRole] = useState<string | null>(null);
-  const [editRoleValue, setEditRoleValue] = useState('');
-  const [savingRole, setSavingRole] = useState<string | null>(null);
+  const loadData = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
 
-  const colors = ['bg-indigo-500', 'bg-emerald-500', 'bg-rose-500', 'bg-amber-500', 'bg-sky-500'];
-
-  // ── Loaders ──
-  const loadVerified = useCallback(async () => {
-    setVerifiedLoading(true);
-    try {
-      const res = await api.getVerificationCount();
-      setVerifiedCount(res.count);
-    } catch {
-      setVerifiedCount(null);
-    } finally {
-      setVerifiedLoading(false);
-    }
-  }, []);
-
-  const loadBotReg = useCallback(async () => {
-    setBotRegLoading(true);
-    try {
-      const reg = await api.getBotRegistration();
-      setBotReg(reg);
-    } catch {
-      setBotReg({ registered: false, callback_url: null, registered_at: null });
-    } finally {
-      setBotRegLoading(false);
-    }
-  }, []);
-
-  const loadRoles = useCallback(async () => {
-    setRolesLoading(true);
-    try {
-      const r = await api.getRoles();
-      setRoles(r);
-    } catch {
-      setRoles([]);
-    } finally {
-      setRolesLoading(false);
-    }
-  }, []);
-
-  const loadCommands = useCallback(async () => {
-    setCommandsLoading(true);
-    try {
-      const res = await api.getBotCommands();
-      if (res.commands && res.commands.length > 0) {
-        setBotCommands(res.commands);
-        setCommandsLastPushed(res.pushed_at);
-      } else {
-        // Fall back to static list — bot hasn't pushed yet
-        setBotCommands([]);
-        setCommandsLastPushed(null);
-      }
-    } catch {
-      setBotCommands([]);
-      setCommandsLastPushed(null);
-    } finally {
-      setCommandsLoading(false);
-    }
-  }, []);
-
-  const loadBotGuilds = useCallback(async () => {
-    try {
-      const result = await api.getBotGuilds();
-      setBotGuilds(result.guilds);
-      setSelectedGuildId(current =>
-        result.guilds.some(guild => guild.guild_id === current)
-          ? current
-          : result.guilds[0]?.guild_id ?? '',
-      );
-    } catch {
-      setBotGuilds([]);
-      setSelectedGuildId('');
-    }
-  }, []);
-
-  useEffect(() => {
-    loadVerified();
-    loadBotReg();
-    loadRoles();
-    loadCommands();
-  }, [loadVerified, loadBotReg, loadRoles, loadCommands]);
-
-  useEffect(() => { loadBotGuilds(); }, [loadBotGuilds]);
-
-  // ── Set initial channel after settings load ──
-  useEffect(() => {
-    if (selectedGuild && !selectedGuild.channels.some(channel => channel.id === embedChannel)) {
-      setEmbedChannel(selectedGuild.channels[0]?.id ?? '');
-    } else if (!selectedGuild && !settingsLoading && !embedChannel) {
-      const firstChannel =
-        settings['discord.announcements_channel'] ||
-        settings['discord.staff_alerts_channel_id'] ||
-        settings['discord.staff_alert_channel_id'] ||
-        '';
-      setEmbedChannel(firstChannel);
-    }
-  }, [selectedGuild, settingsLoading, settings, embedChannel]);
-
-  const handleRefresh = async () => {
-    setIsSyncing(true);
-    await Promise.all([
-      reloadSettings(),
-      loadVerified(),
-      loadBotReg(),
-      loadRoles(),
-      loadCommands(),
-      loadBotGuilds(),
+    const errors: string[] = [];
+    const [
+      guildsResult,
+      commandsResult,
+      registrationResult,
+      verificationResult,
+    ] = await Promise.allSettled([
+      api.getBotGuilds(),
+      api.getBotCommands(),
+      api.getBotRegistration(),
+      api.getVerificationCount(),
     ]);
-    setIsSyncing(false);
-    addToast({ type: 'success', title: 'Refreshed', message: 'Discord hub data reloaded.' });
+
+    if (guildsResult.status === 'fulfilled') {
+      const nextGuilds = guildsResult.value.guilds;
+      setGuilds(nextGuilds);
+      setSelectedGuildId(current =>
+        nextGuilds.some(guild => guild.guild_id === current)
+          ? current
+          : nextGuilds[0]?.guild_id ?? '',
+      );
+    } else {
+      errors.push(`Server list: ${errorMessage(guildsResult.reason)}`);
+    }
+
+    if (commandsResult.status === 'fulfilled') {
+      setCommands(commandsResult.value.commands);
+      setCommandsPushedAt(commandsResult.value.pushed_at);
+    } else {
+      errors.push(`Command manifest: ${errorMessage(commandsResult.reason)}`);
+    }
+
+    if (registrationResult.status === 'fulfilled') {
+      setRegistration(registrationResult.value);
+    } else {
+      errors.push(`Webhook registration: ${errorMessage(registrationResult.reason)}`);
+    }
+
+    if (verificationResult.status === 'fulfilled') {
+      setVerifiedCount(verificationResult.value.count);
+    } else {
+      errors.push(`Verified account count: ${errorMessage(verificationResult.reason)}`);
+    }
+
+    setLoadErrors(errors);
+    setLoading(false);
+    setRefreshing(false);
+  }, []);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  useEffect(() => {
+    setTargetChannelId(current =>
+      channels.some(channel => channel.id === current)
+        ? current
+        : channels[0]?.id ?? '',
+    );
+  }, [selectedGuildId, channels]);
+
+  const channelById = useMemo(
+    () => new Map(channels.map(channel => [channel.id, channel])),
+    [channels],
+  );
+
+  const configuredItems = selectedGuild
+    ? [
+        selectedGuild.staff_alert_channel_id,
+        selectedGuild.owner_role_id,
+        selectedGuild.verified_role_id,
+      ].filter(Boolean).length
+    : 0;
+
+  const updateGuildConfig = async (
+    field: string,
+    patch: GuildConfigPatch,
+  ) => {
+    if (!selectedGuild) return;
+    setSavingField(field);
+    try {
+      const updated = await api.updateBotGuildConfig(
+        selectedGuild.guild_id,
+        patch,
+      );
+      setGuilds(current =>
+        current.map(guild =>
+          guild.guild_id === updated.guild_id ? updated : guild,
+        ),
+      );
+      addToast({
+        type: 'success',
+        title: 'Server settings saved',
+        message: `Updated ${selectedGuild.name}.`,
+      });
+    } catch (error) {
+      addToast({
+        type: 'error',
+        title: 'Could not save setting',
+        message: errorMessage(error),
+      });
+    } finally {
+      setSavingField(null);
+    }
   };
 
   const handleBroadcast = async () => {
-    if (!embedDescription.trim()) {
-      addToast({ type: 'error', title: 'Empty message', message: 'Write a message before broadcasting.' });
+    const message = broadcastText.trim();
+    if (!selectedGuild || !targetChannelId) {
+      addToast({
+        type: 'error',
+        title: 'Choose a destination',
+        message: 'Select a server and text channel before sending.',
+      });
       return;
     }
-    setIsBroadcasting(true);
-    try {
-      await api.broadcastMessage(`**${embedTitle ? embedTitle + '**\n' : ''}${embedDescription}`, 'Staff', embedChannel || undefined);
-      addToast({ type: 'success', title: 'Broadcast sent', message: 'Message dispatched to the network.' });
-      setEmbedTitle('');
-      setEmbedDescription('');
-    } catch (err: any) {
-      addToast({ type: 'error', title: 'Broadcast failed', message: err.message });
-    } finally {
-      setIsBroadcasting(false);
-    }
-  };
-
-  // ── Derived data ──
-  const guildId = selectedGuild?.guild_id || '';
-  const clientId = settings['discord.client_id'] || '';
-
-  const guildConfigKeys: (keyof BotGuildConfig)[] = [
-    'staff_alert_channel_id',
-    'verified_role_id',
-    'owner_role_id',
-    'admin_role_id',
-    'moderator_role_id',
-    'helper_role_id',
-  ];
-  const configuredCount = guildConfigKeys.filter(key => selectedGuild?.[key]).length;
-
-  // Channel options are scoped to the selected guild.
-  const channelOptions: { value: string; label: string; category?: string }[] =
-    selectedGuild
-      ? guildChannels.map(ch => ({ value: ch.id, label: `#${ch.name}`, category: ch.category ?? undefined }))
-      : (() => {
-          const opts: { value: string; label: string }[] = [];
-          if (settings['discord.announcements_channel']) opts.push({ value: settings['discord.announcements_channel'], label: '#announcements' });
-          const staffAlertKey = settings['discord.staff_alerts_channel_id'] || settings['discord.staff_alert_channel_id'] || '';
-          if (staffAlertKey) opts.push({ value: staffAlertKey, label: '#staff-alerts' });
-          return opts;
-        })();
-
-  // Group channels by category for <optgroup> rendering
-  const channelsByCategory = channelOptions.reduce((acc, ch) => {
-    const cat = (ch as any).category ?? 'Uncategorized';
-    if (!acc[cat]) acc[cat] = [];
-    acc[cat].push(ch);
-    return acc;
-  }, {} as Record<string, typeof channelOptions>);
-
-  // Role mention options are scoped to the selected guild.
-  const roleMentionOptions: { value: string; label: string }[] =
-    selectedGuild
-      ? [
-          { value: 'everyone', label: '@everyone' },
-          { value: 'here', label: '@here' },
-          ...guildRoles
-            .filter(role => role.name !== '@everyone' && role.mentionable !== false)
-            .map(role => ({ value: role.id, label: `@${role.name}` })),
-        ]
-      : [
-          { value: 'everyone', label: '@everyone' },
-          { value: 'here', label: '@here' },
-          { value: 'Staff', label: '@Staff' },
-        ];
-
-  // Role → dashboard clearance mapping
-  const clearanceMap: Record<string, string> = {
-    owner: 'SUPERADMIN',
-    admin: 'ADMIN',
-    moderator: 'MODERATOR',
-    helper: 'SUPPORT',
-    member: 'VIEWER',
-  };
-
-  type GuildRoleIdKey = 'owner_role_id' | 'admin_role_id' | 'moderator_role_id' |
-    'helper_role_id' | 'verified_role_id';
-
-  const roleSettingKey = (roleName: string): GuildRoleIdKey | null => {
-    if (roleName === 'owner') return 'owner_role_id';
-    if (roleName === 'admin') return 'admin_role_id';
-    if (roleName === 'moderator') return 'moderator_role_id';
-    if (roleName === 'helper') return 'helper_role_id';
-    if (roleName === 'member') return 'verified_role_id';
-    return null;
-  };
-
-  const roleDiscordId = (roleName: string): string => {
-    const key = roleSettingKey(roleName);
-    return key ? selectedGuild?.[key] || '—' : '—';
-  };
-
-  const startEditingRole = (roleName: string) => {
-    const current = roleDiscordId(roleName);
-    setEditingRole(roleName);
-    setEditRoleValue(current === '—' ? '' : current);
-  };
-
-  const cancelEditingRole = () => {
-    setEditingRole(null);
-    setEditRoleValue('');
-  };
-
-  const saveRoleDiscordId = async (roleName: string) => {
-    const key = roleSettingKey(roleName);
-    if (!key || !selectedGuildId) return;
-    setSavingRole(roleName);
-    try {
-      await api.updateBotGuildConfig(selectedGuildId, {
-        [key]: editRoleValue.trim() || null,
+    if (!message) {
+      addToast({
+        type: 'error',
+        title: 'Message is empty',
+        message: 'Write a message before sending it to Discord.',
       });
-      await loadBotGuilds();
+      return;
+    }
+
+    setSending(true);
+    try {
+      const result = await api.broadcastMessage(
+        message,
+        'Staff',
+        targetChannelId,
+      );
+      if (!result.forwarded || !result.targets.includes('discord')) {
+        addToast({
+          type: 'warning',
+          title: 'Message was not sent',
+          message:
+            'Core accepted the request, but Discord forwarding is disabled or unavailable.',
+        });
+        return;
+      }
+
       addToast({
         type: 'success',
-        title: 'Role mapping saved',
-        message: `@${roleName} mapping saved for ${selectedGuild?.name}.`,
+        title: 'Broadcast sent',
+        message: `Delivered to #${channelById.get(targetChannelId)?.name ?? 'the selected channel'} in ${selectedGuild.name}.`,
       });
-      setEditingRole(null);
-      setEditRoleValue('');
-    } catch (err: any) {
-      addToast({ type: 'error', title: 'Save failed', message: err.message || 'Only the owner role can edit settings.' });
-    } finally {
-      setSavingRole(null);
-    }
-  };
-
-  const saveStaffAlertChannel = async (channelId: string) => {
-    if (!selectedGuildId) return;
-    try {
-      await api.updateBotGuildConfig(selectedGuildId, {
-        staff_alert_channel_id: channelId || null,
-      });
-      await loadBotGuilds();
+      setBroadcastText('');
+    } catch (error) {
       addToast({
-        type: 'success',
-        title: 'Staff alert channel saved',
-        message: `Updated for ${selectedGuild?.name}.`,
+        type: 'error',
+        title: 'Broadcast failed',
+        message: errorMessage(error),
       });
-    } catch (err: any) {
-      addToast({ type: 'error', title: 'Save failed', message: err.message });
+    } finally {
+      setSending(false);
     }
   };
 
-  // Role color dots
-  const roleColor: Record<string, string> = {
-    owner: 'bg-rose-500',
-    admin: 'bg-amber-500',
-    moderator: 'bg-purple-500',
-    helper: 'bg-blue-500',
-    member: 'bg-emerald-500',
-  };
-
-  // Commands to display
-  const displayCommands = botCommands.length > 0 ? botCommands : STATIC_COMMANDS;
-  const commandsSource = botCommands.length > 0 ? 'live' : 'static'; // static = bot hasn't pushed manifest yet
+  const configuredCommands = commands.filter(command => command.owner_only).length;
 
   return (
-    <div className="space-y-6 max-w-7xl">
+    <div className="mx-auto max-w-7xl space-y-6">
       <DisconnectedBanner />
 
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-slate-400">
-          Discord Gateway, per-server role mappings, channel discovery, and broadcast tools.
-        </p>
-        <div className="flex items-center gap-2">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-indigo-300">
+            <Bot className="h-4 w-4" />
+            Integrations / Discord
+          </div>
+          <h1 className="text-2xl font-semibold tracking-tight text-white">
+            Discord bot
+          </h1>
+          <p className="mt-1 max-w-2xl text-sm text-slate-400">
+            Review the bot's synced servers and commands, configure server roles,
+            and send a dashboard announcement.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="sr-only" htmlFor="discord-server-select">
+            Select Discord server
+          </label>
           <select
+            id="discord-server-select"
             value={selectedGuildId}
             onChange={event => setSelectedGuildId(event.target.value)}
-            disabled={botGuilds.length === 0}
-            aria-label="Select Discord server"
-            className="max-w-56 rounded-lg border border-[#141d3d] bg-[#060b1c]/80 px-3 py-2 text-xs text-white disabled:opacity-50"
+            disabled={guilds.length === 0 || loading}
+            className="min-w-48 rounded-lg border border-[#293252] bg-[#0a1023] px-3 py-2.5 text-sm text-white outline-none focus:border-indigo-400 disabled:opacity-50"
           >
-            {botGuilds.length === 0 ? (
+            {guilds.length === 0 ? (
               <option value="">No servers connected</option>
-            ) : botGuilds.map(guild => (
-              <option key={guild.guild_id} value={guild.guild_id}>{guild.name}</option>
-            ))}
+            ) : (
+              guilds.map(guild => (
+                <option key={guild.guild_id} value={guild.guild_id}>
+                  {guild.name}
+                </option>
+              ))
+            )}
           </select>
           <button
-            onClick={handleRefresh}
-            disabled={isSyncing}
-            className="inline-flex items-center gap-2 rounded-lg border border-[#141d3d] bg-[#060b1c]/80 px-3 py-2 text-xs text-slate-400 hover:text-white transition cursor-pointer disabled:opacity-50"
+            type="button"
+            onClick={() => void loadData(true)}
+            disabled={refreshing}
+            className="inline-flex items-center gap-2 rounded-lg border border-[#293252] bg-[#0a1023] px-3 py-2.5 text-sm text-slate-300 transition hover:border-indigo-400/60 hover:text-white disabled:opacity-50"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+            <RefreshCw
+              className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`}
+            />
             Refresh
           </button>
         </div>
+      </header>
+
+      {loadErrors.length > 0 && (
+        <div
+          role="alert"
+          className="rounded-xl border border-amber-500/25 bg-amber-950/20 p-4"
+        >
+          <div className="mb-2 flex items-center gap-2 text-sm font-medium text-amber-200">
+            <AlertCircle className="h-4 w-4" />
+            Some Discord data could not be loaded
+          </div>
+          <ul className="space-y-1 text-xs text-amber-100/70">
+            {loadErrors.map(error => <li key={error}>{error}</li>)}
+          </ul>
+        </div>
+      )}
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Metric
+          label="Server records"
+          value={loading ? '-' : guilds.length.toLocaleString()}
+          detail="Per-server configurations in Core"
+          icon={<Server className="h-4 w-4" />}
+        />
+        <Metric
+          label="Slash commands"
+          value={loading ? '-' : commands.length.toLocaleString()}
+          detail={commandsPushedAt ? `Manifest synced ${timeAgo(commandsPushedAt)}` : 'No bot manifest received'}
+          icon={<Terminal className="h-4 w-4" />}
+          color="text-sky-300"
+        />
+        <Metric
+          label="Verified accounts"
+          value={loading || verifiedCount === null ? '-' : verifiedCount.toLocaleString()}
+          detail="Linked Minecraft accounts"
+          icon={<ShieldCheck className="h-4 w-4" />}
+          color="text-emerald-300"
+        />
+        <Metric
+          label="Server setup"
+          value={selectedGuild ? `${configuredItems}/3` : '-'}
+          detail={selectedGuild ? `Configured for ${selectedGuild.name}` : 'Select a connected server'}
+          icon={<CheckCircle2 className="h-4 w-4" />}
+          color="text-violet-300"
+        />
       </div>
 
-      {/* Top 4 Stat Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-
-        {/* Bot Status */}
-        <div className="rounded-xl border border-[#141d3d] bg-[#060b1c]/80 p-5">
-          <div className="text-[10px] font-mono text-slate-500 font-bold mb-3 uppercase tracking-wider flex items-center justify-between">
-            DISCORD BOT STATUS
-            <div className="h-6 w-6 rounded flex items-center justify-center bg-indigo-950/40 text-indigo-400 border border-indigo-500/20">
-              <Bot className="h-3.5 w-3.5" />
+      <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+        <Card>
+          <CardTitle icon={<Server className="h-4 w-4" />}>
+            Server snapshots
+          </CardTitle>
+          {loading && guilds.length === 0 ? (
+            <div className="space-y-2">
+              {[0, 1].map(item => (
+                <div key={item} className="h-24 animate-pulse rounded-xl bg-[#111a31]" />
+              ))}
             </div>
-          </div>
-          {botRegLoading ? (
-            <><Skeleton className="h-5 w-32 mb-2" /><Skeleton className="h-3 w-40" /></>
-          ) : botReg?.registered ? (
-            <>
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                <div className="text-sm font-bold text-emerald-400 leading-none">REGISTERED</div>
-              </div>
-              <div className="text-xs text-slate-400 truncate">
-                {botReg.registered_at ? `Last seen ${timeAgo(botReg.registered_at)}` : 'Registration time unknown'}
-              </div>
-              {botReg.callback_url && (
-                <div className="text-[10px] font-mono text-slate-600 mt-1 truncate">
-                  {new URL(botReg.callback_url).host}
-                </div>
-              )}
-            </>
-          ) : (
-            <>
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-2 h-2 rounded-full bg-slate-600" />
-                <div className="text-sm font-bold text-slate-400 leading-none">NOT REGISTERED</div>
-              </div>
-              <div className="text-xs text-slate-500">Bot hasn't registered its callback URL</div>
-            </>
-          )}
-        </div>
-
-        {/* Community Guild */}
-        <div className="rounded-xl border border-[#141d3d] bg-[#060b1c]/80 p-5">
-          <div className="text-[10px] font-mono text-slate-500 font-bold mb-3 uppercase tracking-wider flex items-center justify-between">
-            CONNECTED SERVERS
-            <div className="h-6 w-6 rounded flex items-center justify-center bg-indigo-950/40 text-indigo-400 border border-indigo-500/20">
-              <Users className="h-3.5 w-3.5" />
-            </div>
-          </div>
-          {settingsLoading ? (
-            <><Skeleton className="h-5 w-36 mb-2" /><Skeleton className="h-3 w-44" /></>
-          ) : selectedGuild ? (
-            <>
-              <div className="text-sm font-bold text-white leading-none mb-1 truncate">
-                {botGuilds.length} {botGuilds.length === 1 ? 'server' : 'servers'} connected
-              </div>
-              <div className="text-xs text-slate-500 truncate">Selected: {selectedGuild.name}</div>
-            </>
-          ) : (
-            <>
-              <div className="text-sm font-bold text-slate-400 leading-none mb-1">No servers connected</div>
-              <div className="text-xs text-slate-500">Invite the bot to a Discord server.</div>
-            </>
-          )}
-        </div>
-
-        {/* Minecraft Linked */}
-        <div className="rounded-xl border border-[#141d3d] bg-[#060b1c]/80 p-5">
-          <div className="text-[10px] font-mono text-slate-500 font-bold mb-3 uppercase tracking-wider flex items-center justify-between">
-            MINECRAFT LINKED
-            <div className="h-6 w-6 rounded flex items-center justify-center bg-emerald-950/40 text-emerald-400 border border-emerald-500/20">
-              <Shield className="h-3.5 w-3.5" />
-            </div>
-          </div>
-          {verifiedLoading ? (
-            <><Skeleton className="h-5 w-24 mb-2" /><Skeleton className="h-3 w-28" /></>
-          ) : verifiedCount !== null ? (
-            <>
-              <div className="text-lg font-bold text-emerald-400 leading-none mb-1">
-                {verifiedCount.toLocaleString()} Verified
-              </div>
-              <div className="text-xs text-slate-400">/verify active</div>
-            </>
-          ) : (
-            <>
-              <div className="text-lg font-bold text-slate-400 leading-none mb-1">— Verified</div>
-              <div className="text-xs text-slate-500">Could not load player data</div>
-            </>
-          )}
-        </div>
-
-        {/* Discord Settings Configured */}
-        <div className="rounded-xl border border-[#141d3d] bg-[#060b1c]/80 p-5">
-          <div className="text-[10px] font-mono text-slate-500 font-bold mb-3 uppercase tracking-wider flex items-center justify-between">
-            SETTINGS CONFIGURED
-            <div className="h-6 w-6 rounded flex items-center justify-center bg-purple-950/40 text-purple-400 border border-purple-500/20">
-              <Settings className="h-3.5 w-3.5" />
-            </div>
-          </div>
-          {settingsLoading ? (
-            <><Skeleton className="h-5 w-20 mb-2" /><Skeleton className="h-3 w-36" /></>
-          ) : (
-            <>
-              <div className="text-lg font-bold text-white leading-none mb-1">
-                {configuredCount} / {guildConfigKeys.length}
-              </div>
-              <div className="text-xs text-slate-400">selected server settings</div>
-            </>
-          )}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_2fr] gap-6">
-
-        {/* Discord Server Identity */}
-        <div className="rounded-2xl border border-[#141d3d] bg-[#060b1c]/80 p-6 flex flex-col">
-          <h2 className="text-sm font-bold text-white flex items-center gap-2 mb-6">
-            <Radio className="h-4 w-4 text-indigo-400" /> DISCORD SERVER IDENTITY
-          </h2>
-
-          <div className="space-y-4">
-            <div className="rounded-lg border border-[#141d3d] bg-[#070914] p-4 flex items-center justify-between">
-              <div>
-                <div className="text-[10px] font-mono text-slate-500 uppercase mb-1">DISCORD GUILD ID</div>
-                {settingsLoading ? (
-                  <Skeleton className="h-4 w-40 mt-1" />
-                ) : (
-                  <div className="text-sm font-mono text-white">{guildId || 'Not configured'}</div>
-                )}
-              </div>
-              {guildId && <CopyBtn text={guildId} />}
-            </div>
-
-            <div className="rounded-lg border border-[#141d3d] bg-[#070914] p-4">
-              <label className="block text-[10px] font-mono text-slate-500 uppercase mb-2">
-                STAFF ALERT CHANNEL
-              </label>
-              <select
-                value={selectedGuild?.staff_alert_channel_id ?? ''}
-                onChange={event => saveStaffAlertChannel(event.target.value)}
-                disabled={!selectedGuild}
-                className="w-full rounded-lg border border-[#1e1b4b] bg-[#02040a] px-3 py-2 text-sm text-white disabled:opacity-50"
-              >
-                <option value="">Not configured</option>
-                {guildChannels.map(channel => (
-                  <option key={channel.id} value={channel.id}>#{channel.name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="rounded-lg border border-[#141d3d] bg-[#070914] p-4 flex items-center justify-between">
-              <div>
-                <div className="text-[10px] font-mono text-slate-500 uppercase mb-1">BOT CLIENT ID</div>
-                {settingsLoading ? (
-                  <Skeleton className="h-4 w-40 mt-1" />
-                ) : (
-                  <div className="text-sm font-mono text-white">{clientId || 'Not configured'}</div>
-                )}
-              </div>
-              {clientId && <CopyBtn text={clientId} />}
-            </div>
-
-            {botReg?.registered && botReg.callback_url && (
-              <div className="rounded-lg border border-[#141d3d] bg-[#070914] p-4 flex items-center justify-between">
-                <div className="min-w-0">
-                  <div className="text-[10px] font-mono text-slate-500 uppercase mb-1">BOT CALLBACK URL</div>
-                  <div className="text-xs font-mono text-slate-300 truncate">{botReg.callback_url}</div>
-                </div>
-                <CopyBtn text={botReg.callback_url} />
-              </div>
-            )}
-
-            <div className="rounded-lg border border-indigo-500/20 bg-indigo-950/10 p-4 mt-2">
-              <div className="flex items-center gap-2 text-indigo-300 text-xs font-bold mb-2">
-                <Bot className="h-4 w-4" /> FastAPI Discord Gateway Integration
-              </div>
-              <div className="text-xs text-slate-400 leading-relaxed">
-                Umbrella Sentinel handles automated verification codes, synced punishment announcements, AI appeal tickets, and live server TPS monitoring.
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Direct Discord Embed Broadcaster */}
-        <div className="rounded-2xl border border-[#141d3d] bg-[#060b1c]/80 p-6 flex flex-col">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-sm font-bold text-white flex items-center gap-2">
-              <Send className="h-4 w-4 text-indigo-400" /> DIRECT DISCORD EMBED BROADCASTER
-            </h2>
-            <div className="text-[10px] font-mono text-slate-500 uppercase">
-              DISPATCH VIA BOT WEBHOOK
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className="block text-xs text-slate-400 mb-1.5 font-mono">Target Discord Channel</label>
-              <select
-                value={embedChannel}
-                onChange={e => setEmbedChannel(e.target.value)}
-                className="w-full rounded-lg border border-[#1e1b4b] bg-[#070914] px-3 py-2.5 text-sm text-white focus:border-indigo-500 focus:outline-none appearance-none"
-              >
-                {channelOptions.length > 0 ? (
-                  guildChannels.length > 0
-                    ? Object.entries(channelsByCategory).map(([cat, opts]) => (
-                        <optgroup key={cat} label={cat}>
-                          {opts.map(opt => (
-                            <option key={opt.value} value={opt.value}>#{(opt.label as string).replace(/^#/, '')}</option>
-                          ))}
-                        </optgroup>
-                      ))
-                    : channelOptions.map(opt => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))
-                ) : (
-                  <option value="" disabled>No channels available — bot offline</option>
-                )}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs text-slate-400 mb-1.5 font-mono">Role Mention</label>
-              <select
-                value={embedMention}
-                onChange={e => setEmbedMention(e.target.value)}
-                className="w-full rounded-lg border border-[#1e1b4b] bg-[#070914] px-3 py-2.5 text-sm text-white focus:border-indigo-500 focus:outline-none appearance-none"
-              >
-                <option value="none">No Mention (Silent)</option>
-                {roleMentionOptions.map(r => (
-                  <option key={r.value} value={r.value}>{r.label}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="mb-4">
-            <label className="block text-xs text-slate-400 mb-1.5 font-mono">Embed Header Title</label>
-            <input
-              type="text"
-              value={embedTitle}
-              onChange={(e) => setEmbedTitle(e.target.value)}
-              className="w-full rounded-lg border border-[#1e1b4b] bg-[#070914] px-3 py-2.5 text-sm text-white focus:border-indigo-500 focus:outline-none"
-            />
-          </div>
-
-          <div className="mb-6">
-            <label className="block text-xs text-slate-400 mb-1.5 font-mono">Embed Message Description</label>
-            <textarea
-              value={embedDescription}
-              onChange={(e) => setEmbedDescription(e.target.value)}
-              rows={3}
-              className="w-full rounded-lg border border-[#1e1b4b] bg-[#070914] px-3 py-2.5 text-sm text-white focus:border-indigo-500 focus:outline-none resize-none"
-            />
-          </div>
-
-          <div className="rounded-lg border border-[#141d3d] bg-[#070914] p-4 mb-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="text-[10px] font-mono text-slate-500 uppercase">DISCORD CLIENT EMBED PREVIEW</div>
-              <div className="text-[10px] font-mono text-indigo-400 font-bold uppercase">UMBRELLA SENTINEL • TODAY AT {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
-            </div>
-            <div className="flex">
-              <div className={`w-1 rounded-l ${embedColor} shrink-0`}></div>
-              <div className="bg-[#2b2d31] rounded-r p-4 flex-1">
-                <div className="font-bold text-white text-[15px] mb-1">{embedTitle || 'Empty Title'}</div>
-                <div className="text-[#dbdee1] text-sm whitespace-pre-wrap">{embedDescription || 'Empty description...'}</div>
-                <div className="text-[11px] text-[#80848e] mt-3 font-mono">
-                  UmbrellaOS Core Relay • Automated Dispatch
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between mt-auto">
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-slate-400 font-mono">Accent Color:</span>
-              <div className="flex gap-2">
-                {colors.map(c => (
+          ) : guilds.length > 0 ? (
+            <div className="space-y-2">
+              {guilds.map(guild => {
+                const isSelected = guild.guild_id === selectedGuildId;
+                const configured = [
+                  guild.staff_alert_channel_id,
+                  guild.owner_role_id,
+                  guild.verified_role_id,
+                ].filter(Boolean).length;
+                return (
                   <button
-                    key={c}
-                    onClick={() => setEmbedColor(c)}
-                    className={`w-4 h-4 rounded-full ${c} ${embedColor === c ? 'ring-2 ring-offset-2 ring-offset-[#060b1c] ring-white' : 'opacity-70 hover:opacity-100'}`}
-                  />
-                ))}
-              </div>
-            </div>
-            <button
-              onClick={handleBroadcast}
-              disabled={isBroadcasting}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 px-6 py-2.5 text-sm font-bold text-white transition cursor-pointer disabled:opacity-50"
-            >
-              <Send className="h-4 w-4" /> Dispatch Embed to Discord
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Role Sync Mapping */}
-      <div className="rounded-2xl border border-[#141d3d] bg-[#060b1c]/80 p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-sm font-bold text-white flex items-center gap-2">
-            <Layers className="h-4 w-4 text-indigo-400" /> DISCORD ROLE SYNC & DASHBOARD CLEARANCE MAPPING
-          </h2>
-          <div className="text-[10px] font-mono text-slate-500 uppercase">
-            FROM ROLES API
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm whitespace-nowrap">
-            <thead>
-              <tr className="border-b border-[#141d3d] text-[10px] font-mono text-slate-500 uppercase">
-                <th className="pb-3 font-semibold">ROLE NAME</th>
-                <th className="pb-3 font-semibold">DASHBOARD CLEARANCE</th>
-                <th className="pb-3 font-semibold">DISCORD ROLE ID</th>
-                <th className="pb-3 font-semibold text-right">PERMISSIONS</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#141d3d]/50">
-              {rolesLoading ? (
-                [0,1,2,3,4].map(i => (
-                  <tr key={i}>
-                    <td className="py-4"><Skeleton className="h-4 w-32" /></td>
-                    <td className="py-4"><Skeleton className="h-4 w-24" /></td>
-                    <td className="py-4"><Skeleton className="h-4 w-36" /></td>
-                    <td className="py-4 text-right"><Skeleton className="h-4 w-20 ml-auto" /></td>
-                  </tr>
-                ))
-              ) : roles.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="py-8 text-center text-slate-500 text-sm">
-                    No roles found — check /api/v1/roles
-                  </td>
-                </tr>
-              ) : (
-                roles.map((role) => {
-                  const discordRoleId = roleDiscordId(role.name);
-                  const clearance = clearanceMap[role.name] || 'VIEWER';
-                  return (
-                    <tr key={role.id} className="hover:bg-[#070914]/50 transition-colors">
-                      <td className="py-4 flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full shrink-0 ${roleColor[role.name] || 'bg-slate-500'}`} />
-                        <span className="font-bold text-white capitalize">@{role.name}</span>
-                      </td>
-                      <td className="py-4">
-                        <span className="inline-flex px-2 py-0.5 rounded bg-indigo-950/40 border border-indigo-500/20 text-indigo-300 font-mono text-[11px] font-bold">
-                          {clearance}
-                        </span>
-                      </td>
-                      <td className="py-4 font-mono text-xs text-slate-400">
-                        {editingRole === role.name ? (
-                          <div className="flex items-center gap-1.5">
-                            <input
-                              autoFocus
-                              value={editRoleValue}
-                              onChange={(e) => setEditRoleValue(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') saveRoleDiscordId(role.name);
-                                if (e.key === 'Escape') cancelEditingRole();
-                              }}
-                              placeholder="Discord role ID"
-                              className="w-40 rounded border border-indigo-500/40 bg-[#070914] px-2 py-1 text-xs text-white font-mono focus:outline-none focus:border-indigo-400"
-                            />
-                            <button
-                              onClick={() => saveRoleDiscordId(role.name)}
-                              disabled={savingRole === role.name}
-                              className="p-1 rounded text-emerald-400 hover:bg-emerald-950/40 transition cursor-pointer disabled:opacity-50"
-                              title="Save"
-                            >
-                              {savingRole === role.name ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-                            </button>
-                            <button
-                              onClick={cancelEditingRole}
-                              disabled={savingRole === role.name}
-                              className="p-1 rounded text-slate-500 hover:bg-slate-800 hover:text-white transition cursor-pointer disabled:opacity-50"
-                              title="Cancel"
-                            >
-                              <X className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="group flex items-center gap-2">
-                            {discordRoleId === '—' ? (
-                              <span className="text-slate-600">Not mapped</span>
-                            ) : (
-                              <span className="text-slate-300">{discordRoleId}</span>
-                            )}
-                            {roleSettingKey(role.name) && (
-                              <button
-                                onClick={() => startEditingRole(role.name)}
-                                className="p-1 rounded text-slate-600 hover:text-indigo-300 hover:bg-indigo-950/40 transition cursor-pointer opacity-0 group-hover:opacity-100"
-                                title="Edit Discord role ID"
-                              >
-                                <Pencil className="h-3 w-3" />
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </td>
-                      <td className="py-4 text-right text-slate-400 font-mono text-xs">
-                        {role.permissions.length} permissions
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Slash Commands */}
-      <div className="rounded-2xl border border-[#141d3d] bg-[#060b1c]/80 p-6">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-sm font-bold text-white flex items-center gap-2">
-            <Terminal className="h-4 w-4 text-sky-400" /> REGISTERED DISCORD SLASH COMMANDS
-          </h2>
-          <div className="text-[10px] font-mono text-slate-500 uppercase">
-            {commandsSource === 'live' ? 'LIVE FROM BOT MANIFEST' : 'STATIC — BOT OFFLINE'}
-          </div>
-        </div>
-        <div className="mb-4 text-xs text-slate-500 font-mono">
-          {commandsLoading ? (
-            <Skeleton className="h-3 w-48" />
-          ) : commandsLastPushed ? (
-            `Last synced by bot: ${timeAgo(commandsLastPushed)}`
-          ) : (
-            'No manifest pushed — bot is offline or hasn\'t started yet. Showing static command list.'
-          )}
-        </div>
-
-        {commandsLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[0,1,2,3,4,5].map(i => (
-              <div key={i} className="rounded-xl border border-[#141d3d] bg-[#070914] p-4">
-                <Skeleton className="h-4 w-32 mb-2" />
-                <Skeleton className="h-3 w-full mb-1" />
-                <Skeleton className="h-3 w-3/4" />
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {displayCommands.map((cmd, i) => (
-              <div key={i} className="rounded-xl border border-[#141d3d] bg-[#070914] p-4 flex flex-col justify-between">
-                <div className="flex items-start justify-between mb-2">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <div className="font-bold text-white text-sm">
-                      {cmd.name.startsWith('/') ? cmd.name : `/${cmd.name}`}
-                      {cmd.args && <span className="text-slate-400 font-mono text-xs ml-1">{cmd.args}</span>}
+                    key={guild.guild_id}
+                    type="button"
+                    onClick={() => setSelectedGuildId(guild.guild_id)}
+                    aria-pressed={isSelected}
+                    className={`w-full rounded-xl border p-4 text-left transition ${
+                      isSelected
+                        ? 'border-indigo-400/50 bg-indigo-500/[0.08]'
+                        : 'border-[#202a49] bg-[#070b18] hover:border-[#39466d]'
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold text-white">
+                          {guild.name}
+                        </div>
+                        <div className="mt-1 break-all font-mono text-[11px] text-slate-500">
+                          {guild.guild_id}
+                        </div>
+                      </div>
+                      <span className={`rounded-full px-2 py-1 text-[10px] ${
+                        isSelected
+                          ? 'bg-indigo-400/15 text-indigo-200'
+                          : 'bg-[#111a31] text-slate-400'
+                      }`}>
+                        {isSelected ? 'Selected' : 'Select server'}
+                      </span>
                     </div>
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono border ${cmd.owner_only ? 'bg-rose-950/40 text-rose-300 border-rose-700/40' : 'bg-slate-800 text-slate-300 border-slate-700'}`}>
-                      {cmd.owner_only ? 'owner only' : '@everyone'}
-                    </span>
+                    <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-xs text-slate-400">
+                      <span className="inline-flex items-center gap-1.5">
+                        <Hash className="h-3.5 w-3.5 text-indigo-300" />
+                        {guild.channels.length} text channels
+                      </span>
+                      <span className="inline-flex items-center gap-1.5">
+                        <Users className="h-3.5 w-3.5 text-indigo-300" />
+                        {guild.roles.length} roles
+                      </span>
+                      <span className="inline-flex items-center gap-1.5">
+                        <ShieldCheck className="h-3.5 w-3.5 text-indigo-300" />
+                        {configured}/3 settings
+                      </span>
+                      <span className="inline-flex items-center gap-1.5">
+                        <Clock3 className="h-3.5 w-3.5 text-indigo-300" />
+                        Synced {timeAgo(guild.pushed_at)}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <EmptyState
+              title={loadErrors.length ? 'Server data is unavailable' : 'No Discord servers synced'}
+              detail="When the bot starts and joins a server, its server snapshot will appear here. Bot gateway presence is not reported by this configuration endpoint."
+            />
+          )}
+        </Card>
+
+        <Card>
+          <CardTitle icon={<Bot className="h-4 w-4" />}>
+            Webhook registration
+          </CardTitle>
+          {registration ? (
+            <div className="space-y-4">
+              <div className="flex items-start gap-3">
+                <span className={`mt-0.5 h-2.5 w-2.5 rounded-full ${registration.registered ? 'bg-emerald-400' : 'bg-slate-600'}`} />
+                <div>
+                  <div className="text-sm font-medium text-white">
+                    {registration.registered ? 'Callback registered' : 'No callback registered'}
+                  </div>
+                  <div className="mt-1 text-xs text-slate-400">
+                    {registration.registered
+                      ? `Last registered ${timeAgo(registration.registered_at)}`
+                      : 'Push events need a registered callback URL.'}
                   </div>
                 </div>
-                <div className="text-xs text-slate-400 leading-relaxed">
-                  {cmd.description}
-                </div>
               </div>
-            ))}
-          </div>
-        )}
+              {registration.callback_url && (
+                <div className="rounded-xl border border-[#202a49] bg-[#070b18] p-3">
+                  <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                    Callback endpoint
+                  </div>
+                  <a
+                    href={registration.callback_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-1 block break-all text-xs text-indigo-300 hover:text-indigo-200"
+                  >
+                    {registration.callback_url}
+                  </a>
+                </div>
+              )}
+              <p className="text-xs leading-relaxed text-slate-500">
+                Registration is not a live gateway heartbeat. The Core API
+                currently reports the callback registration time only.
+              </p>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500">
+              {loading ? 'Loading registration...' : 'Registration data unavailable.'}
+            </p>
+          )}
+        </Card>
       </div>
 
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardTitle icon={<ShieldCheck className="h-4 w-4" />}>
+            Server configuration
+          </CardTitle>
+          {!selectedGuild ? (
+            <EmptyState
+              title="Select a connected server"
+              detail="Per-server settings become available after the bot syncs at least one Discord server."
+            />
+          ) : (
+            <div className="space-y-4">
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-medium text-slate-300">
+                  Staff alert channel
+                </span>
+                <select
+                  value={selectedGuild.staff_alert_channel_id ?? ''}
+                  onChange={event =>
+                    void updateGuildConfig('staff_alert_channel_id', {
+                      staff_alert_channel_id: event.target.value || null,
+                    })
+                  }
+                  disabled={savingField === 'staff_alert_channel_id'}
+                  className="w-full rounded-lg border border-[#293252] bg-[#070b18] px-3 py-2.5 text-sm text-white outline-none focus:border-indigo-400 disabled:opacity-60"
+                >
+                  <option value="">Not configured</option>
+                  {channels.map(channel => (
+                    <option key={channel.id} value={channel.id}>
+                      #{channel.name}
+                    </option>
+                  ))}
+                </select>
+                <span className="mt-1 block text-[11px] text-slate-500">
+                  Destination for moderation and investigation escalations.
+                </span>
+              </label>
+
+              {roleMappings.map(mapping => (
+                <label key={mapping.field} className="block">
+                  <span className="mb-1.5 block text-xs font-medium text-slate-300">
+                    {mapping.title}
+                  </span>
+                  <select
+                    value={selectedGuild[mapping.field] ?? ''}
+                    onChange={event => {
+                      const value = event.target.value || null;
+                      const patch = mapping.field === 'owner_role_id'
+                        ? { owner_role_id: value }
+                        : { verified_role_id: value };
+                      void updateGuildConfig(mapping.field, patch);
+                    }}
+                    disabled={savingField === mapping.field}
+                    className="w-full rounded-lg border border-[#293252] bg-[#070b18] px-3 py-2.5 text-sm text-white outline-none focus:border-indigo-400 disabled:opacity-60"
+                  >
+                    <option value="">Not configured</option>
+                    {roles.filter(role => !role.is_default).map(role => (
+                      <option key={role.id} value={role.id}>
+                        {role.name}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="mt-1 block text-[11px] text-slate-500">
+                    {mapping.description}
+                  </span>
+                </label>
+              ))}
+              {channels.length === 0 && (
+                <p className="rounded-lg border border-amber-500/20 bg-amber-950/20 p-3 text-xs text-amber-200">
+                  No text channels were discovered for this server. Refresh the
+                  bot's Discord connection before choosing a staff alert channel.
+                </p>
+              )}
+              {roles.length === 0 && (
+                <p className="rounded-lg border border-amber-500/20 bg-amber-950/20 p-3 text-xs text-amber-200">
+                  No Discord roles were discovered for this server. Refresh the
+                  bot's Discord connection before configuring role mappings.
+                </p>
+              )}
+            </div>
+          )}
+        </Card>
+
+        <Card>
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <CardTitle icon={<Terminal className="h-4 w-4" />}>
+              Slash command manifest
+            </CardTitle>
+            <span className="shrink-0 text-[11px] text-slate-500">
+              {commandsPushedAt ? `Synced ${timeAgo(commandsPushedAt)}` : 'No sync recorded'}
+            </span>
+          </div>
+          {commands.length === 0 ? (
+            <EmptyState
+              title="No command manifest"
+              detail="The dashboard will show commands reported by the running bot. It does not substitute a hard-coded list."
+            />
+          ) : (
+            <>
+              <div className="mb-3 flex items-center gap-2 text-xs text-slate-500">
+                {commands.length} commands
+                <span className="text-slate-700">/</span>
+                {configuredCommands} owner-restricted
+              </div>
+              <div className="max-h-[28rem] space-y-2 overflow-y-auto pr-1">
+                {commands.map(command => (
+                  <div
+                    key={command.name}
+                    className="rounded-xl border border-[#202a49] bg-[#070b18] p-3"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <code className="text-sm font-semibold text-sky-200">
+                        /{command.name}
+                        {command.args && (
+                          <span className="ml-2 text-xs font-normal text-slate-500">
+                            {command.args}
+                          </span>
+                        )}
+                      </code>
+                      {command.owner_only && (
+                        <span className="rounded-full border border-rose-400/20 bg-rose-400/10 px-2 py-0.5 text-[10px] text-rose-200">
+                          Owner restricted
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 text-xs leading-relaxed text-slate-400">
+                      {command.description || 'No description supplied.'}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </Card>
+      </div>
+
+      <Card>
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <CardTitle icon={<Megaphone className="h-4 w-4" />}>
+              Dashboard announcement
+            </CardTitle>
+            <p className="-mt-2 text-xs text-slate-500">
+              Sends the standard Staff Broadcast embed through Core to the
+              selected server's text channel.
+            </p>
+          </div>
+          {selectedGuild && (
+            <span className="rounded-full border border-[#293252] bg-[#070b18] px-2.5 py-1 text-xs text-slate-400">
+              {selectedGuild.name}
+            </span>
+          )}
+        </div>
+
+        {!selectedGuild ? (
+          <EmptyState
+            title="No destination available"
+            detail="Connect the bot to a Discord server and refresh this page to send an announcement."
+          />
+        ) : channels.length === 0 ? (
+          <EmptyState
+            title="No text channels discovered"
+            detail="The bot needs access to a text channel before announcements can be sent."
+          />
+        ) : (
+          <div className="grid gap-5 lg:grid-cols-[1fr_0.8fr]">
+            <div className="space-y-4">
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-medium text-slate-300">
+                  Destination channel
+                </span>
+                <select
+                  value={targetChannelId}
+                  onChange={event => setTargetChannelId(event.target.value)}
+                  className="w-full rounded-lg border border-[#293252] bg-[#070b18] px-3 py-2.5 text-sm text-white outline-none focus:border-indigo-400"
+                >
+                  {channels.map((channel: GuildChannel) => (
+                    <option key={channel.id} value={channel.id}>
+                      #{channel.name}
+                      {channel.category ? ` - ${channel.category}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-medium text-slate-300">
+                  Message
+                </span>
+                <textarea
+                  value={broadcastText}
+                  onChange={event => setBroadcastText(event.target.value)}
+                  maxLength={4000}
+                  rows={5}
+                  placeholder="Write an announcement for your Discord server..."
+                  className="w-full resize-y rounded-lg border border-[#293252] bg-[#070b18] px-3 py-2.5 text-sm leading-relaxed text-white outline-none placeholder:text-slate-600 focus:border-indigo-400"
+                />
+                <span className="mt-1 block text-right text-[11px] text-slate-500">
+                  {broadcastText.length}/4000
+                </span>
+              </label>
+              <button
+                type="button"
+                onClick={() => void handleBroadcast()}
+                disabled={sending || !broadcastText.trim()}
+                className="inline-flex items-center gap-2 rounded-lg bg-indigo-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Send className="h-4 w-4" />
+                {sending ? 'Sending...' : 'Send announcement'}
+              </button>
+            </div>
+
+            <div className="rounded-xl border border-[#293252] bg-[#070b18] p-4">
+              <div className="mb-3 flex items-center justify-between text-xs">
+                <span className="font-medium text-slate-300">Message preview</span>
+                <span className="text-slate-500">Staff Broadcast</span>
+              </div>
+              <div className="flex min-h-32 overflow-hidden rounded-lg bg-[#2b2d31]">
+                <div className="w-1 shrink-0 bg-indigo-400" />
+                <div className="min-w-0 p-4">
+                  <div className="mb-2 text-sm font-semibold text-white">
+                    Staff Broadcast
+                  </div>
+                  <p className="whitespace-pre-wrap break-words text-sm text-[#dbdee1]">
+                    {broadcastText.trim() || 'Your announcement will appear here.'}
+                  </p>
+                  <p className="mt-4 text-[11px] text-[#949ba4]">
+                    Sent by Staff via UmbrellaOS Dashboard
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3 flex items-center gap-1.5 text-[11px] text-slate-500">
+                <Hash className="h-3 w-3" />
+                #{channelById.get(targetChannelId)?.name ?? 'Select a channel'}
+              </div>
+            </div>
+          </div>
+        )}
+      </Card>
     </div>
   );
 };

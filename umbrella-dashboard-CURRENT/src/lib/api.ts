@@ -111,6 +111,7 @@ export interface GuildRole {
   name: string;
   color: number;
   mentionable?: boolean;
+  is_default?: boolean;
 }
 
 export interface BotGuildConfig {
@@ -1230,12 +1231,12 @@ export class UmbrellaApiClient {
   // --------------------------------------------------------------------------
   // Global Broadcast & Shortcuts
   // --------------------------------------------------------------------------
-  public async broadcast(message: string, serverId?: string): Promise<any> {
+  public async broadcast(message: string, serverId?: string): Promise<BridgeMessageResponse> {
     return this.broadcastMessage(message, 'Admin');
   }
 
-  public async broadcastMessage(message: string, playerName: string = 'Staff', channelId?: string): Promise<any> {
-    return this.request<any>('/api/v1/bridge/message', {
+  public async broadcastMessage(message: string, playerName: string = 'Staff', channelId?: string): Promise<BridgeMessageResponse> {
+    return this.request<BridgeMessageResponse>('/api/v1/bridge/message', {
       method: 'POST',
       body: JSON.stringify({
         source: 'DASHBOARD',
@@ -1255,6 +1256,13 @@ export interface BotRegistrationStatus {
   registered: boolean;
   callback_url: string | null;
   registered_at: string | null;
+}
+
+export interface BridgeMessageResponse {
+  forwarded: boolean;
+  targets: string[];
+  message_id: number;
+  translated_message: string | null;
 }
 
 export interface BotCommand {

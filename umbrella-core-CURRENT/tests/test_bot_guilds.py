@@ -32,6 +32,12 @@ async def test_bot_guild_sync_tracks_multiple_guilds_and_preserves_legacy_config
             ],
             "roles": [
                 {"id": role_id, "name": "Verified", "color": 0},
+                {
+                    "id": guild_id,
+                    "name": "@everyone",
+                    "color": 0,
+                    "is_default": True,
+                },
             ],
         }
 
@@ -69,6 +75,12 @@ async def test_bot_guild_sync_tracks_multiple_guilds_and_preserves_legacy_config
         "/api/v1/bot/guilds/200",
         headers=ADMIN_HEADERS,
         json={"owner_role_id": "999"},
+    )
+    assert response.status_code == 422
+    response = await client.patch(
+        "/api/v1/bot/guilds/200",
+        headers=ADMIN_HEADERS,
+        json={"owner_role_id": "200"},
     )
     assert response.status_code == 422
 

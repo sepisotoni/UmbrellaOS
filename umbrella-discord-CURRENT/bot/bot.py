@@ -219,6 +219,7 @@ class UmbrellaBot(commands.Bot):
                         "name": role.name,
                         "color": role.color.value,
                         "mentionable": role.mentionable,
+                        "is_default": role.is_default(),
                     }
                     for role in guild.roles
                 ],
