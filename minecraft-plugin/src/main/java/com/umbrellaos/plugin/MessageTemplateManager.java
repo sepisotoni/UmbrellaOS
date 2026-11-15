@@ -12,10 +12,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 
 /**
- * Fetches configurable message templates from
- * {@code GET /api/v1/settings/{key}} on startup and refreshes them every
- * 5 minutes so staff can edit wording from the dashboard without a
- * plugin reload.
+ * Fetches configurable message templates from the authenticated,
+ * non-sensitive {@code GET /api/v1/plugin/config} bundle on startup and
+ * refreshes them every 5 minutes so staff can edit wording from the
+ * dashboard without a plugin reload.
  *
  * <p>Only the two in-game verification messages are fetched by the plugin:
  * <ul>
@@ -154,26 +154,30 @@ public class MessageTemplateManager {
     // Internal fetch logic
     // ------------------------------------------------------------------
 
-    /** Fetch all managed template keys from core. Runs on an async thread. */
-    private void fetchAll() {
+    /** Fetch managed template keys from core. Runs on an async thread. */
+    void fetchAll() {
+        try {
+            HttpResponse<String> response = apiClient.get("/api/v1/plugin/config");
+            if (response.statusCode() != 200) {
+                apiClient.logger().warning(
+                        "MessageTemplate bundle fetch rejected: HTTP " + response.statusCode());
+                return;
+            }
+            applyBundle(response.body());
+        } catch (Exception e) {
+            apiClient.logger().log(Level.WARNING,
+                    "MessageTemplate bundle fetch failed — keeping cached values", e);
+        }
+    }
+
+    void applyBundle(String responseBody) {
+        JSONObject root = new JSONObject(responseBody);
+        JSONObject settings = root.optJSONObject("settings", new JSONObject());
         for (String key : KEYS) {
-            try {
-                HttpResponse<String> response = apiClient.get("/api/v1/settings/" + key);
-                if (response.statusCode() == 200) {
-                    JSONObject body = new JSONObject(response.body());
-                    String value = body.optString("value", "").trim();
-                    if (!value.isEmpty() && !value.equals("***")) {
-                        cache.put(key, value);
-                        apiClient.logger().fine("MessageTemplate loaded: " + key);
-                    }
-                } else {
-                    apiClient.logger().warning(
-                            "MessageTemplate fetch rejected for " + key
-                                    + ": HTTP " + response.statusCode());
-                }
-            } catch (Exception e) {
-                apiClient.logger().log(Level.WARNING,
-                        "MessageTemplate fetch failed for " + key + " — keeping cached value", e);
+            String value = settings.optString(key, "").trim();
+            if (!value.isEmpty() && !value.equals("***")) {
+                cache.put(key, value);
+                apiClient.logger().fine("MessageTemplate loaded: " + key);
             }
         }
     }
