@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { api, AITask, ServerRecord } from '../../lib/api';
 import { useDashboard } from '../../context/DashboardContext';
 import { DisconnectedBanner } from '../common/DisconnectedBanner';
@@ -34,6 +34,7 @@ export const AITasksView: React.FC = () => {
   ]);
   const [copilotInput, setCopilotInput] = useState<string>('');
   const [copilotLoading, setCopilotLoading] = useState<boolean>(false);
+  const copilotScrollRef = useRef<HTMLDivElement>(null);
 
   // Crash Risk State
   const [servers, setServers] = useState<ServerRecord[]>([]);
@@ -75,6 +76,12 @@ export const AITasksView: React.FC = () => {
         );
       });
   }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'copilot' || !copilotScrollRef.current) return;
+    const chat = copilotScrollRef.current;
+    chat.scrollTo({ top: chat.scrollHeight, behavior: 'smooth' });
+  }, [activeTab, copilotMessages, copilotLoading]);
 
   const handleApproveTask = async (taskId: number) => {
     try {
@@ -308,12 +315,16 @@ export const AITasksView: React.FC = () => {
 
       {/* TAB 2: AI Copilot Chat */}
       {activeTab === 'copilot' && (
-        <div className="rounded-xl border border-[#1e1b4b] bg-[#0d1127] p-5 shadow-xl flex flex-col h-[560px]">
-          <div className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-thin scrollbar-thumb-purple-900">
+        <div className="w-full min-w-0 max-w-full h-[min(70vh,560px)] min-h-[320px] overflow-hidden rounded-xl border border-[#1e1b4b] bg-[#0d1127] p-5 shadow-xl flex flex-col">
+          <div
+            ref={copilotScrollRef}
+            aria-live="polite"
+            className="min-h-0 min-w-0 w-full flex-1 overflow-x-hidden overflow-y-auto overscroll-contain space-y-3 pr-2 scrollbar-thin scrollbar-thumb-purple-900"
+          >
             {copilotMessages.map((msg, idx) => (
               <div
                 key={idx}
-                className={`flex gap-3 text-xs font-sans ${
+                className={`flex min-w-0 gap-3 text-xs font-sans ${
                   msg.sender === 'user' ? 'justify-end' : 'justify-start'
                 }`}
               >
@@ -323,7 +334,7 @@ export const AITasksView: React.FC = () => {
                   </div>
                 )}
                 <div
-                  className={`rounded-xl p-3.5 max-w-lg leading-relaxed ${
+                  className={`min-w-0 max-w-[85%] break-words [overflow-wrap:anywhere] rounded-xl p-3.5 leading-relaxed ${
                     msg.sender === 'user'
                       ? 'bg-purple-600 text-white font-medium shadow-md'
                       : 'bg-[#070914] text-slate-200 border border-[#1e1b4b]'
@@ -335,14 +346,14 @@ export const AITasksView: React.FC = () => {
             ))}
           </div>
 
-          <form onSubmit={handleSendCopilot} className="mt-4 pt-3 border-t border-[#1e1b4b] flex gap-2">
+          <form onSubmit={handleSendCopilot} className="mt-4 flex shrink-0 gap-2 border-t border-[#1e1b4b] pt-3">
             <input
               id="copilot-query-input"
               type="text"
               value={copilotInput}
               onChange={(e) => setCopilotInput(e.target.value)}
               placeholder="Ask Copilot about GrimAC logs, player trends, or server triage..."
-              className="flex-1 rounded-xl border border-[#1e1b4b] bg-[#070914] px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none font-sans"
+              className="min-w-0 flex-1 rounded-xl border border-[#1e1b4b] bg-[#070914] px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none font-sans"
             />
             <button
               id="submit-copilot-query"

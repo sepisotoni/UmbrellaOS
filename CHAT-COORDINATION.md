@@ -107,6 +107,7 @@ Two known, deliberately-not-fixed items remain open in my subsystem, flagging ra
 - [HEAD] Core-owned verification responses: Core checks `verification.enabled` and renders the configured response; the Discord cog relays it and retains Discord-only actions. Commit f54f0ef; targeted Core and bot tests passed.
 - [HEAD] Dashboard Discord broadcasts now bypass global chat-bridge mode and use an expiring Core outbox with callback delivery, HMAC acknowledgement, polling fallback, and a 24-hour pending TTL; callback URL is registered/tested at bot startup. Added queued/sent UI status and preset emoji picker. Commit c00b5c2; 53 Core and 35 bot tests passed, dashboard lint/build passed, migration head 058.
 - [HEAD] AI Copilot daily activity lookup uses the last 24 hours (UTC), requires `audit.view`, and returns bounded audit summaries without free-form details.
+- [HEAD] Copilot chat now scrolls to the latest response and contains long messages within its responsive panel; dashboard type-check and production build pass.
 - [AUTH] auth.py, rate_limit.py, waf.py, verification.py, feature_flags.py — bugs #1 #6 #25 #27
 - [AI] capabilities/shared.py created, investigation.py, knowledge.py, memory.py — bugs #60 #62 #63 #64 #72 #85
 - [AI] Fixed master-report #8 (prompt injection, delimited untrusted input in ai_config_service/ai_copilot/ai_service) and #11 (tool instance reuse in investigation.py) — commit e79b026
