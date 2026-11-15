@@ -6,7 +6,7 @@
 - Migrations via Alembic (umbrella-core-CURRENT/alembic/versions/)
 
 ## Migration rules
-- Always use `if not inspect(bind).has_column(table, col)` before adding columns
+- SQLAlchemy Inspector has no `has_column`; use `column_names = {c["name"] for c in inspect(bind).get_columns(table)}` before adding columns.
 - Alembic revision IDs must be ≤32 chars (alembic_version column is VARCHAR(32))
 - Current head: migration 053
 - Chain 001→053 is clean and verified — don't break it

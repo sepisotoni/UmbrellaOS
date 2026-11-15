@@ -16,12 +16,13 @@ depends_on = None
 def upgrade() -> None:
     bind = op.get_bind()
     inspector = sa.inspect(bind)
-    if not inspector.has_column("users", "supabase_auth_id"):
+    user_columns = {column["name"] for column in inspector.get_columns("users")}
+    if "supabase_auth_id" not in user_columns:
         op.add_column(
             "users",
             sa.Column("supabase_auth_id", sa.String(length=36), nullable=True),
         )
-    if not inspector.has_column("users", "authz_version"):
+    if "authz_version" not in user_columns:
         op.add_column(
             "users",
             sa.Column(
@@ -41,7 +42,9 @@ def upgrade() -> None:
             unique=True,
         )
 
-    if inspector.has_table("sessions") and inspector.has_column("sessions", "revoked"):
+    if inspector.has_table("sessions") and "revoked" in {
+        column["name"] for column in inspector.get_columns("sessions")
+    }:
         op.execute("UPDATE sessions SET revoked = TRUE WHERE revoked = FALSE")
 
     op.execute(
