@@ -119,23 +119,34 @@ def upgrade() -> None:
             RETURN jsonb_set(event, '{claims}', claims, true);
         END;
         $function$;
-
+        """
+    )
+    op.execute(
+        """
         REVOKE ALL ON FUNCTION public.custom_access_token_hook(jsonb)
-            FROM PUBLIC, anon, authenticated;
+            FROM PUBLIC, anon, authenticated
+        """
+    )
+    op.execute(
+        """
         GRANT EXECUTE ON FUNCTION public.custom_access_token_hook(jsonb)
-            TO supabase_auth_admin;
+            TO supabase_auth_admin
+        """
+    )
+    op.execute(
+        """
         GRANT SELECT ON public.users, public.roles, public.permissions,
-            public.role_permissions TO supabase_auth_admin;
+            public.role_permissions TO supabase_auth_admin
         """
     )
 
 
 def downgrade() -> None:
+    op.execute("DROP FUNCTION IF EXISTS public.custom_access_token_hook(jsonb)")
     op.execute(
         """
-        DROP FUNCTION IF EXISTS public.custom_access_token_hook(jsonb);
         REVOKE SELECT ON public.users, public.roles, public.permissions,
-            public.role_permissions FROM supabase_auth_admin;
+            public.role_permissions FROM supabase_auth_admin
         """
     )
     op.drop_index("ix_users_supabase_auth_id", table_name="users")
