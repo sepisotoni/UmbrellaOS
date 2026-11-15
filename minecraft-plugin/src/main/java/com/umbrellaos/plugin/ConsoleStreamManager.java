@@ -3,6 +3,12 @@ package com.umbrellaos.plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.Appender;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.LoggerContext;
+import org.apache.logging.log4j.core.appender.AbstractAppender;
+import org.apache.logging.log4j.core.config.LoggerConfig;
 import org.json.JSONArray;
 
 import java.io.IOException;
@@ -12,11 +18,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.List;
-import java.util.logging.Formatter;
-import java.util.logging.Handler;
-import java.util.logging.LogRecord;
-import java.util.logging.Logger;
-import java.util.logging.SimpleFormatter;
 
 /**
  * Thread-safe manager for capturing and buffering server console log lines.
@@ -32,7 +33,8 @@ public class ConsoleStreamManager {
     private final Deque<BufferedLine> buffer;
     private final Object lock = new Object();
     private final Object pushLock = new Object();
-    private Handler logHandler;
+    private LoggerContext loggerContext;
+    private Appender logAppender;
     /** The repeating task scheduled by startPushing(), cancelled in stopPushing(). */
     private volatile BukkitTask pushTask;
     private long nextSequence = 0;
@@ -137,34 +139,25 @@ public class ConsoleStreamManager {
     }
 
     /**
-     * Attaches a logging handler to the root logger to capture console log records automatically.
+     * Attaches an appender to Paper's Log4j2 root logger to capture console output.
      */
     public synchronized void startCapture() {
-        if (logHandler != null) return;
-        logHandler = new Handler() {
-            private final Formatter formatter = new SimpleFormatter();
-
+        if (logAppender != null) return;
+        LoggerContext context = (LoggerContext) LogManager.getContext(false);
+        Appender appender = new AbstractAppender("UmbrellaOSConsoleStream", null, null, false) {
             @Override
-            public void publish(LogRecord record) {
-                if (record == null || record.getMessage() == null) return;
-                try {
-                    String msg = formatter.formatMessage(record);
-                    String level = record.getLevel() != null ? record.getLevel().getName() : "INFO";
-                    String line = "[" + level + "] " + msg;
-                    appendLine(line);
-                } catch (Exception ignored) {}
+            public void append(LogEvent event) {
+                if (event == null || event.getMessage() == null) return;
+                String level = event.getLevel() == null ? "INFO" : event.getLevel().name();
+                appendLine("[" + level + "] " + event.getMessage().getFormattedMessage());
             }
-
-            @Override
-            public void flush() {}
-
-            @Override
-            public void close() throws SecurityException {}
         };
-
-        try {
-            Logger.getLogger("").addHandler(logHandler);
-        } catch (Exception ignored) {}
+        appender.start();
+        LoggerConfig rootLogger = context.getConfiguration().getRootLogger();
+        rootLogger.addAppender(appender, null, null);
+        context.updateLoggers();
+        loggerContext = context;
+        logAppender = appender;
     }
 
     /** Returns the oldest unsent lines without advancing the upload cursor. */
@@ -251,18 +244,20 @@ public class ConsoleStreamManager {
     }
 
     /**
-     * Removes the logging handler from the root logger.
+     * Removes the appender from Paper's Log4j2 root logger.
      */
     public synchronized void stopCapture() {
-        if (logHandler != null) {
-            try {
-                Logger.getLogger("").removeHandler(logHandler);
-            } catch (Exception ignored) {}
-            logHandler = null;
+        if (loggerContext != null && logAppender != null) {
+            LoggerConfig rootLogger = loggerContext.getConfiguration().getRootLogger();
+            rootLogger.removeAppender(logAppender.getName());
+            loggerContext.updateLoggers();
+            logAppender.stop();
+            loggerContext = null;
+            logAppender = null;
         }
     }
 
     public synchronized boolean isCapturing() {
-        return logHandler != null;
+        return logAppender != null;
     }
 }

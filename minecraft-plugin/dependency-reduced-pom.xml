@@ -74,6 +74,12 @@
       <scope>provided</scope>
     </dependency>
     <dependency>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-core</artifactId>
+      <version>2.26.0</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
       <groupId>ac.grim.grimac</groupId>
       <artifactId>GrimAPI</artifactId>
       <version>1.1.0.0</version>
@@ -138,6 +144,7 @@
     <grimapi.version>1.1.0.0</grimapi.version>
     <json.version>20240303</json.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <log4j.version>2.26.0</log4j.version>
     <junit.version>5.10.2</junit.version>
     <mockito.version>5.14.2</mockito.version>
     <paper.api.version>26.2.build.135-stable</paper.api.version>

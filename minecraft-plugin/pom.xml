@@ -25,6 +25,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <paper.api.version>26.2.build.135-stable</paper.api.version>
         <grimapi.version>1.1.0.0</grimapi.version>
+        <log4j.version>2.26.0</log4j.version>
         <json.version>20240303</json.version>
         <junit.version>5.10.2</junit.version>
         <mockito.version>5.14.2</mockito.version>
@@ -48,6 +49,14 @@
             <groupId>io.papermc.paper</groupId>
             <artifactId>paper-api</artifactId>
             <version>${paper.api.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Capture Paper's actual console pipeline; provided by the server at runtime. -->
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-core</artifactId>
+            <version>${log4j.version}</version>
             <scope>provided</scope>
         </dependency>
 

@@ -1,6 +1,7 @@
 package com.umbrellaos.plugin;
 
 import org.json.JSONArray;
+import org.apache.logging.log4j.LogManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -205,5 +206,19 @@ class ConsoleStreamManagerTest {
     void constructor_negativeCapacity_throws() {
         assertThrows(IllegalArgumentException.class, () -> new ConsoleStreamManager(0));
         assertThrows(IllegalArgumentException.class, () -> new ConsoleStreamManager(-1));
+    }
+
+    @Test
+    void startCapture_capturesLog4jConsoleEvents_andStopCaptureDetachesAppender() {
+        manager.startCapture();
+        assertTrue(manager.isCapturing());
+
+        LogManager.getLogger("ConsoleStreamManagerTest").error("captured Paper console event");
+
+        assertTrue(manager.getRecentLines().stream()
+                .anyMatch(line -> line.contains("captured Paper console event")));
+
+        manager.stopCapture();
+        assertFalse(manager.isCapturing());
     }
 }
