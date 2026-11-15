@@ -4,23 +4,27 @@ tests/test_copilot_tools.py — Tests for services/ai/copilot_tools.py.
 No coverage existed for this before it was written — it's a brand new
 feature (2026-09-01, closing the "copilot has zero tools" gap [HEAD]
 confirmed live). Covers: tool-request parsing from a model's fenced JSON
-block, permission-scoped execution of each of the three tools, and the
+block, permission-scoped execution of each tool, and the
 common failure shapes (missing player, missing permission, unknown tool,
 malformed JSON) without ever calling a real provider.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+import re
 
 import pytest
 
 from registry.context import CallContext
+from models.audit_log import AuditLog
 from models.player import Player, Punishment
 from models.anticheat_violation import AnticheatViolation
 from services.ai.copilot_tools import (
+    AVAILABLE_TOOLS_DESCRIPTION,
     parse_requested_tools,
     execute_tool_calls,
     format_tool_results_block,
     ToolCallResult,
+    build_tool_selection_prompt,
 )
 
 
@@ -35,6 +39,14 @@ def _ctx(
         is_superuser=is_superuser,
         db=db,
     )
+
+
+def test_available_tools_description_matches_selection_manifest():
+    manifest = build_tool_selection_prompt("")
+    manifest_tools = re.findall(r'- \{"tool": "([^"]+)"', manifest)
+    available_tools = [name for name, _description in AVAILABLE_TOOLS_DESCRIPTION]
+
+    assert manifest_tools == available_tools
 
 
 # ---------------------------------------------------------------------------
@@ -325,3 +337,60 @@ def test_format_tool_results_block_delimits_output():
     assert block.endswith("</tool_results>")
     assert "lookup_player" in block
     assert "abc" in block
+
+
+@pytest.mark.asyncio
+async def test_daily_activity_returns_bounded_last_24_hour_audit_summary(db_session):
+    async with db_session() as db:
+        now = datetime.now(timezone.utc)
+        db.add_all(
+            [
+                AuditLog(
+                    actor="staff-1",
+                    actor_type="staff",
+                    action="player.lookup",
+                    target="Notch",
+                    details_json='{"private":"not returned"}',
+                    created_at=now - timedelta(hours=1),
+                ),
+                AuditLog(
+                    actor="bot",
+                    actor_type="bot",
+                    action="player.lookup",
+                    target="Alex",
+                    details_json="{}",
+                    created_at=now - timedelta(hours=2),
+                ),
+                AuditLog(
+                    actor="staff-2",
+                    actor_type="staff",
+                    action="player.ban",
+                    target="Griefer",
+                    details_json="{}",
+                    created_at=now - timedelta(days=2),
+                ),
+            ]
+        )
+        await db.commit()
+
+        results = await execute_tool_calls(
+            _ctx(db, {"audit.view"}), [{"tool": "get_daily_activity"}]
+        )
+
+        result = results[0].result
+        assert result["total_events"] == 2
+        assert result["window"] == "last 24 hours (UTC)"
+        assert result["by_action"] == [{"action": "player.lookup", "count": 2}]
+        assert len(result["recent_events"]) == 2
+        assert "details_json" not in result["recent_events"][0]
+
+
+@pytest.mark.asyncio
+async def test_daily_activity_requires_audit_view_permission(db_session):
+    async with db_session() as db:
+        results = await execute_tool_calls(
+            _ctx(db, {"players.view"}), [{"tool": "get_daily_activity"}]
+        )
+
+        assert "error" in results[0].result
+        assert "audit.view" in results[0].result

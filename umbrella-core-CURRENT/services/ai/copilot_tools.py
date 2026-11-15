@@ -24,7 +24,7 @@ policy for X" — don't need one).
 Pass 2 (only if tools were requested): execute each requested tool as a
 direct, permission-scoped DB query — NOT a capability invocation, since
 none of the read-only lookups this needs (player lookup, punishment
-history, anticheat violations) exist as capabilities yet (confirmed via
+history, anticheat violations, daily activity) exist as capabilities yet (confirmed via
 grep before writing this — the closest matches, player_risk.score and
 anticheat.violations.purge_old, do something else entirely) — then feed
 the results back to the model for a final natural-language answer.
@@ -41,11 +41,13 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from models.audit_log import AuditLog
 from models.player import Player, Punishment
 from models.anticheat_violation import AnticheatViolation
 from registry.context import CallContext
@@ -63,6 +65,7 @@ _TOOL_PERMISSIONS = {
     "lookup_player": "players.view",
     "get_punishment_history": "punishments.view",
     "get_anticheat_violations": "players.view",
+    "get_daily_activity": "audit.view",
 }
 
 _TOOLS_MANIFEST = """Available tools (respond with a JSON array in a ```json fenced block to call one or more; respond with plain text and no JSON block if no tool is needed):
@@ -70,10 +73,11 @@ _TOOLS_MANIFEST = """Available tools (respond with a JSON array in a ```json fen
 - {"tool": "lookup_player", "username": "<name>"} — find a player's UUID, risk score, suspicion score, first/last seen, playtime.
 - {"tool": "get_punishment_history", "player_uuid": "<uuid>"} — list a player's bans/mutes/kicks/warnings, most recent first.
 - {"tool": "get_anticheat_violations", "player_uuid": "<uuid>"} — list a player's recent GrimAC/anticheat flags, most recent first.
+- {"tool": "get_daily_activity"} — summarize audit events from the last 24 hours (UTC); requires audit.view.
 
 If you need a player's UUID for get_punishment_history or get_anticheat_violations and only have a username, call lookup_player first — you can request multiple tools in the same JSON array and their results will all be given back to you together."""
 
-# [CURSOR, 2026-09-02] Human-readable version of the same three tools for the
+# [CURSOR, 2026-09-02] Human-readable version of the tools for the
 # /commands intercept in ai_copilot.py — kept as a plain list literal (not
 # parsed out of _TOOLS_MANIFEST) so a change to one doesn't have to be
 # re-derived from awkward string parsing of the other; small enough that
@@ -91,6 +95,10 @@ AVAILABLE_TOOLS_DESCRIPTION = [
     (
         "get_anticheat_violations",
         "List a player's recent GrimAC/anticheat flags, most recent first.",
+    ),
+    (
+        "get_daily_activity",
+        "Summarize audit activity over the last 24 hours (UTC); requires audit.view.",
     ),
 ]
 
@@ -177,6 +185,8 @@ async def execute_tool_calls(
                 result = await _get_anticheat_violations(
                     db, call.get("player_uuid", "")
                 )
+            elif tool == "get_daily_activity":
+                result = await _get_daily_activity(db)
             else:
                 result = f"error: unknown tool {tool!r}"
         except Exception as exc:
@@ -279,3 +289,41 @@ async def _get_anticheat_violations(
         }
         for v in rows
     ]
+
+
+async def _get_daily_activity(db: AsyncSession) -> dict[str, Any]:
+    """Return a bounded audit summary without exposing free-form details."""
+    since = datetime.now(timezone.utc) - timedelta(hours=24)
+    total_events = await db.scalar(
+        select(func.count()).select_from(AuditLog).where(AuditLog.created_at >= since)
+    )
+    grouped = await db.execute(
+        select(AuditLog.action, func.count().label("count"))
+        .where(AuditLog.created_at >= since)
+        .group_by(AuditLog.action)
+        .order_by(func.count().desc(), AuditLog.action)
+        .limit(_MAX_ROWS)
+    )
+    by_action = [
+        {"action": action, "count": count} for action, count in grouped.all()
+    ]
+    recent = await db.scalars(
+        select(AuditLog)
+        .where(AuditLog.created_at >= since)
+        .order_by(AuditLog.created_at.desc())
+        .limit(10)
+    )
+    return {
+        "window": "last 24 hours (UTC)",
+        "total_events": total_events or 0,
+        "by_action": by_action,
+        "recent_events": [
+            {
+                "action": row.action,
+                "actor_type": row.actor_type,
+                "target": row.target,
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+            }
+            for row in recent.all()
+        ],
+    }
