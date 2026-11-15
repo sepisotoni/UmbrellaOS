@@ -47,11 +47,35 @@ from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.middleware.errors import (
+    AppException,
     ConflictException,
-    ResourceNotFoundException,
     ValidationException,
 )
 from models import AuditLog, DiscordAccount, VerificationCode
+from services.settings_service import SettingsService
+
+_DEFAULT_MESSAGES = {
+    "verification.success_message": (
+        "\u2705 Your Minecraft account **$PLAYER** has been successfully linked!"
+    ),
+    "verification.error_already_linked": (
+        "\u274c This Discord account is already linked to a Minecraft account."
+    ),
+    "verification.error_invalid_code": (
+        "\u274c Invalid or expired code. Please run /verify in-game again."
+    ),
+}
+
+
+async def _verification_message(
+    db: AsyncSession, key: str, **values: str
+) -> str:
+    template = await SettingsService.get_value(db, key)
+    if not template or not template.strip():
+        template = _DEFAULT_MESSAGES[key]
+    for name, value in values.items():
+        template = template.replace(f"${name.upper()}", value)
+    return template
 
 
 @dataclass(frozen=True)
@@ -61,6 +85,7 @@ class ConfirmResult:
     already_linked: (
         bool  # True for the idempotent re-confirm case — no DB write happened
     )
+    discord_message: str
 
 
 @dataclass(frozen=True)
@@ -89,13 +114,25 @@ async def confirm_verification(
     only for this function's own extra verification.completed audit row,
     kept for parity with the router's behavior.
     """
+    enabled = await SettingsService.get_value(db, "verification.enabled")
+    if enabled is not None and enabled.strip().lower() in ("false", "0", "no", "off"):
+        raise AppException(
+            "Verification is disabled.",
+            "VERIFICATION_DISABLED",
+            409,
+        )
+
     result = await db.execute(
         select(VerificationCode).where(VerificationCode.code == code)
     )
     verification_code = result.scalar_one_or_none()
 
     if not verification_code:
-        raise ResourceNotFoundException("Verification code", code)
+        raise AppException(
+            await _verification_message(db, "verification.error_invalid_code"),
+            "NOT_FOUND",
+            404,
+        )
 
     # FIX: expires_at is DateTime(timezone=True) in Postgres, always tz-aware
     # on read there. SQLite (tests, local dev) drops tzinfo on write, coming
@@ -108,10 +145,14 @@ async def confirm_verification(
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=timezone.utc)
     if datetime.now(timezone.utc) > expires_at:
-        raise ValidationException("Verification code has expired.")
+        raise ValidationException(
+            await _verification_message(db, "verification.error_invalid_code")
+        )
 
     if verification_code.used:
-        raise ValidationException("Verification code has already been used.")
+        raise ValidationException(
+            await _verification_message(db, "verification.error_invalid_code")
+        )
 
     verification_code.used = True
 
@@ -127,7 +168,7 @@ async def confirm_verification(
         and account.player_uuid != verification_code.player_uuid
     ):
         raise ConflictException(
-            "This Discord account is already linked to a different Minecraft account and cannot be relinked."
+            await _verification_message(db, "verification.error_already_linked")
         )
 
     existing_for_player = await db.execute(
@@ -141,7 +182,7 @@ async def confirm_verification(
     )
     if existing_for_player.scalar_one_or_none():
         raise ConflictException(
-            "This Minecraft account is already linked to a different Discord account."
+            await _verification_message(db, "verification.error_already_linked")
         )
 
     already_linked = False
@@ -174,10 +215,22 @@ async def confirm_verification(
     )
     await db.flush()
 
+    if already_linked:
+        discord_message = (
+            f"\u2705 You're already verified as **{verification_code.player_username}**."
+        )
+    else:
+        discord_message = await _verification_message(
+            db,
+            "verification.success_message",
+            player=verification_code.player_username,
+        )
+
     return ConfirmResult(
         player_uuid=verification_code.player_uuid,
         player_username=verification_code.player_username,
         already_linked=already_linked,
+        discord_message=discord_message,
     )
 
 

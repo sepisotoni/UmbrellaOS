@@ -73,6 +73,7 @@ class ConfirmVerificationResult(BaseModel):
     player_uuid: str
     player_username: str
     already_linked: bool
+    discord_message: str
 
 
 @capability(
@@ -97,6 +98,7 @@ async def confirm(
         player_uuid=result.player_uuid,
         player_username=result.player_username,
         already_linked=result.already_linked,
+        discord_message=result.discord_message,
     )
 
 

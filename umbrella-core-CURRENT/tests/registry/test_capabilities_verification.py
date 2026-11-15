@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from sqlalchemy import select
 
-from models import VerificationCode
+from models import Setting, VerificationCode
 from tests.conftest import ADMIN_HEADERS
 from tests.registry.conftest import session_headers_for_role
 
@@ -47,6 +47,14 @@ async def _create_code(
         return code.code
 
 
+async def _set_setting(db_session, key: str, value: str) -> None:
+    async with db_session() as db:
+        setting = await db.scalar(select(Setting).where(Setting.key == key))
+        assert setting is not None
+        setting.value = value
+        await db.commit()
+
+
 @pytest.mark.asyncio
 async def test_verification_capabilities_are_listed(client):
     response = await client.get("/api/v1/capabilities")
@@ -59,6 +67,9 @@ async def test_verification_capabilities_are_listed(client):
 @pytest.mark.asyncio
 async def test_confirm_with_valid_code_succeeds(client, db_session):
     code = await _create_code(db_session, player_uuid="uuid-1", player_username="Alice")
+    await _set_setting(
+        db_session, "verification.success_message", "Welcome, $PLAYER!"
+    )
     response = await client.post(
         "/api/v1/capabilities/verification.confirm/invoke",
         json={"discord_id": "111", "discord_username": "alice#0001", "code": code},
@@ -69,6 +80,7 @@ async def test_confirm_with_valid_code_succeeds(client, db_session):
     assert data["player_uuid"] == "uuid-1"
     assert data["player_username"] == "Alice"
     assert data["already_linked"] is False
+    assert data["discord_message"] == "Welcome, Alice!"
 
 
 @pytest.mark.asyncio
@@ -113,13 +125,42 @@ async def test_confirm_with_used_code_returns_422(client, db_session):
 
 
 @pytest.mark.asyncio
-async def test_confirm_with_unknown_code_returns_404(client):
+async def test_confirm_with_unknown_code_returns_404(client, db_session):
+    await _set_setting(
+        db_session,
+        "verification.error_invalid_code",
+        "That code is no longer valid.",
+    )
     response = await client.post(
         "/api/v1/capabilities/verification.confirm/invoke",
         json={"discord_id": "555", "discord_username": "e", "code": "000000"},
         headers=ADMIN_HEADERS,
     )
     assert response.status_code == 404
+    assert response.json()["error"] == "That code is no longer valid."
+
+
+@pytest.mark.asyncio
+async def test_confirm_is_rejected_when_verification_is_disabled(
+    client, db_session
+):
+    await _set_setting(db_session, "verification.enabled", "false")
+    code = await _create_code(db_session)
+
+    response = await client.post(
+        "/api/v1/capabilities/verification.confirm/invoke",
+        json={"discord_id": "555", "discord_username": "e", "code": code},
+        headers=ADMIN_HEADERS,
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "VERIFICATION_DISABLED"
+    async with db_session() as db:
+        verification_code = await db.scalar(
+            select(VerificationCode).where(VerificationCode.code == code)
+        )
+        assert verification_code is not None
+        assert verification_code.used is False
 
 
 @pytest.mark.asyncio

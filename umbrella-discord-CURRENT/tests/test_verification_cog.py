@@ -1,12 +1,4 @@
-"""
-tests/test_verification_cog.py — Tests for the pure-function pieces of
-VerificationCog (_looks_like_code, _format_error, _format_success). See
-test_investigation_cog.py's module docstring for why the actual on_message
-listener isn't tested here (needs a live discord.Message/gateway
-connection). _sync_nickname is also not tested here for the same reason -
-it's inherently a live-guild operation (guild.get_member, member.edit),
-not a pure function.
-"""
+"""Tests for code detection and Core-to-Discord verification relaying."""
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock
@@ -15,14 +7,25 @@ from bot.cogs.verification_cog import VerificationCog
 from bot.services.umbrella_core_client import UmbrellaCoreError
 
 
-def _make_cog():
-    """Return a VerificationCog instance with a mocked bot — enough for pure-function tests."""
+def _make_message(content="123456"):
+    message = MagicMock()
+    message.guild = None
+    message.author = MagicMock(id=42, bot=False)
+    message.content = content
+    message.channel.send = AsyncMock()
+    return message
+
+
+def _make_cog(result=None, error=None):
     mock_bot = MagicMock()
     mock_bot.guild_configs = {}
+    mock_bot.core.invoke = AsyncMock(return_value=result)
+    if error is not None:
+        mock_bot.core.invoke.side_effect = error
     cog = VerificationCog.__new__(VerificationCog)
     cog.bot = mock_bot
-    # _t falls back to returning the key so format_error uses its fallback strings
-    cog._t = lambda key: ""
+    cog._sync_nickname = AsyncMock()
+    cog._assign_verified_role = AsyncMock()
     return cog
 
 
@@ -51,68 +54,67 @@ def test_looks_like_code_rejects_code_with_surrounding_text():
     assert VerificationCog._looks_like_code("code: 123456") is False
 
 
-def test_format_error_permission_denied():
-    exc = UmbrellaCoreError(
-        "Missing permission: verification.link.manage",
-        status_code=403,
-        code="PERMISSION_DENIED",
+@pytest.mark.asyncio
+async def test_message_listener_relays_core_text_and_keeps_discord_actions():
+    message = _make_message()
+    cog = _make_cog(
+        result={
+            "player_username": "Steve",
+            "discord_message": "Verified by Core.",
+        }
     )
-    message = _make_cog()._format_error(exc)
-    assert "contact staff" in message
+
+    await cog.on_message(message)
+
+    cog.bot.core.invoke.assert_awaited_once()
+    message.channel.send.assert_awaited_once_with("Verified by Core.")
+    cog._sync_nickname.assert_awaited_once_with(message.author, "Steve")
+    cog._assign_verified_role.assert_awaited_once_with(message.author)
 
 
-def test_format_error_not_found():
-    exc = UmbrellaCoreError(
-        "Verification code not found: 000000", status_code=404, code="NOT_FOUND"
+@pytest.mark.asyncio
+async def test_message_listener_relays_core_validation_message():
+    message = _make_message()
+    cog = _make_cog(
+        error=UmbrellaCoreError(
+            "That code is no longer valid.",
+            status_code=404,
+            code="NOT_FOUND",
+        )
     )
-    message = _make_cog()._format_error(exc)
-    assert "Verification failed" in message
+
+    await cog.on_message(message)
+
+    message.channel.send.assert_awaited_once_with("That code is no longer valid.")
+    cog._sync_nickname.assert_not_awaited()
+    cog._assign_verified_role.assert_not_awaited()
 
 
-def test_format_error_validation():
-    exc = UmbrellaCoreError(
-        "Verification code has expired.", status_code=422, code="VALIDATION_ERROR"
+@pytest.mark.asyncio
+async def test_message_listener_silently_skips_when_core_disables_verification():
+    message = _make_message()
+    cog = _make_cog(
+        error=UmbrellaCoreError(
+            "Verification is disabled.",
+            status_code=409,
+            code="VERIFICATION_DISABLED",
+        )
     )
-    message = _make_cog()._format_error(exc)
-    assert "Verification failed" in message
+
+    await cog.on_message(message)
+
+    message.channel.send.assert_not_awaited()
 
 
-def test_format_error_conflict():
-    exc = UmbrellaCoreError(
-        "This Discord account is already linked to a different Minecraft account and cannot be relinked.",
-        status_code=409,
-        code="CONFLICT",
-    )
-    message = _make_cog()._format_error(exc)
-    assert "Verification failed" in message
+@pytest.mark.asyncio
+async def test_message_listener_does_not_send_non_code_messages_to_core():
+    message = _make_message("my code is 123456")
+    cog = _make_cog()
 
+    await cog.on_message(message)
 
-def test_format_error_generic():
-    exc = UmbrellaCoreError("Could not reach umbrella-core: connection refused")
-    message = _make_cog()._format_error(exc)
-    assert "Verification failed" in message
-    assert "connection refused" in message
-
-
-def test_format_success_new_link():
-    result = {
-        "player_uuid": "uuid-1",
-        "player_username": "Steve",
-        "already_linked": False,
-    }
-    message = _make_cog()._format_success(result, "Steve")
-    assert "Steve" in message
-
-
-def test_format_success_already_linked():
-    result = {
-        "player_uuid": "uuid-1",
-        "player_username": "Steve",
-        "already_linked": True,
-    }
-    message = _make_cog()._format_success(result, "Steve")
-    assert "already" in message
-    assert "Steve" in message
+    cog.bot.core.invoke.assert_not_awaited()
+    message.channel.send.assert_not_awaited()
 
 
 @pytest.mark.asyncio

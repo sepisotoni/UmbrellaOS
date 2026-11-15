@@ -21,7 +21,7 @@ import logging
 import re
 
 import discord
-from discord.ext import commands, tasks
+from discord.ext import commands
 
 from bot.services.umbrella_core_client import UmbrellaCoreError
 
@@ -29,130 +29,9 @@ logger = logging.getLogger(__name__)
 
 _CODE_PATTERN = re.compile(r"^\d{6}$")
 
-# Keys fetched from core settings on startup / every 5 minutes.
-# verification.enabled is included here so the on/off toggle is cached and
-# never fetched per-message (fetching it on every DM would add a full
-# PBKDF2 + network round-trip to every 6-digit code received, blocking the
-# event listener unnecessarily).
-_TEMPLATE_KEYS: list[str] = [
-    "verification.enabled",
-    "verification.dm_prompt",
-    "verification.success_message",
-    "verification.error_already_linked",
-    "verification.error_invalid_code",
-    "verification.ingame_prompt",
-    "verification.ingame_success",
-    "verification.nickname_format",
-]
-
-# Fallback strings used when a core fetch fails so the bot remains functional.
-_DEFAULTS: dict[str, str] = {
-    "verification.enabled": "true",
-    "verification.dm_prompt": (
-        "Hi $PLAYER! To verify your Minecraft account, send this code in-game: $CODE"
-        " (expires in $EXPIRES)"
-    ),
-    "verification.success_message": (
-        "\u2705 Your Minecraft account **$PLAYER** has been successfully linked!"
-    ),
-    "verification.error_already_linked": (
-        "\u274c This Discord account is already linked to a Minecraft account."
-    ),
-    "verification.error_invalid_code": (
-        "\u274c Invalid or expired code. Please run /verify in-game again."
-    ),
-    "verification.ingame_prompt": (
-        "Check your Discord DMs to complete verification! Code expires in $EXPIRES."
-    ),
-    "verification.ingame_success": (
-        "\u2705 Your Discord account has been linked successfully!"
-    ),
-    "verification.nickname_format": "$PLAYER",
-}
-
-
-def render(template: str, **kwargs: str) -> str:
-    """Replace $VARIABLE placeholders in *template* with *kwargs* values.
-
-    Variable names are matched case-insensitively: ``render(t, player="Steve")``
-    replaces ``$PLAYER``.  Unknown placeholders are left as-is.
-    """
-    for key, val in kwargs.items():
-        template = template.replace(f"${key.upper()}", str(val))
-    return template
-
-
 class VerificationCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
-        # Template cache — populated by _load_templates() on cog load.
-        self._templates: dict[str, str] = dict(_DEFAULTS)
-
-    # ------------------------------------------------------------------
-    # Lifecycle
-    # ------------------------------------------------------------------
-
-    async def cog_load(self) -> None:
-        """Fetch templates from core then start the 5-minute refresh loop."""
-        await self._load_templates()
-        self._refresh_templates.start()
-
-    async def cog_unload(self) -> None:
-        self._refresh_templates.cancel()
-
-    # ------------------------------------------------------------------
-    # Template management
-    # ------------------------------------------------------------------
-
-    async def _load_templates(self) -> None:
-        """Fetch every verification.* template from core and update the cache.
-
-        A failure for any individual key is logged and the cached default is
-        kept so the bot stays functional even if core is temporarily unreachable.
-        """
-        for key in _TEMPLATE_KEYS:
-            try:
-                # umbrella_core_client exposes a thin async HTTP wrapper;
-                # GET /api/v1/settings/{key} returns {"key":..., "value":..., ...}
-                data: dict = await self.bot.core.get(f"/api/v1/settings/{key}")
-                value = data.get("value", "").strip()
-                if value and value != "***":
-                    self._templates[key] = value
-                    logger.debug("Template loaded: %s", key)
-            except Exception as exc:  # network error, 404, etc.
-                logger.warning(
-                    "Could not load template %r from core (%s) — keeping cached value.",
-                    key,
-                    exc,
-                )
-
-    @tasks.loop(minutes=5)
-    async def _refresh_templates(self) -> None:
-        """Background task: refresh template cache every 5 minutes."""
-        await self._load_templates()
-
-    @_refresh_templates.before_loop
-    async def _before_refresh(self) -> None:
-        await self.bot.wait_until_ready()
-
-    def _t(self, key: str) -> str:
-        """Return the cached template for *key*, falling back to the built-in default."""
-        return self._templates.get(
-            key, _DEFAULTS.get(key, f"[missing template: {key}]")
-        )
-
-    def _verification_enabled(self) -> bool:
-        """Return True if verification is enabled (default: True).
-
-        Reads from the cached templates dict so no network call is made per
-        message — the cache is refreshed every 5 minutes by _refresh_templates.
-        """
-        return self._t("verification.enabled").lower() not in (
-            "false",
-            "0",
-            "no",
-            "off",
-        )
 
     # ------------------------------------------------------------------
     # Event listener
@@ -169,10 +48,6 @@ class VerificationCog(commands.Cog):
         if not self._looks_like_code(code):
             return
 
-        # Respect verification.enabled master toggle from cache — no network call.
-        if not self._verification_enabled():
-            return
-
         try:
             result = await self.bot.core.invoke(
                 "verification.confirm",
@@ -184,40 +59,33 @@ class VerificationCog(commands.Cog):
                 discord_user_id=str(message.author.id),
             )
         except UmbrellaCoreError as exc:
-            await message.channel.send(self._format_error(exc))
+            if exc.code == "VERIFICATION_DISABLED":
+                return
+            if exc.code in ("NOT_FOUND", "VALIDATION_ERROR", "CONFLICT"):
+                response = str(exc)
+            else:
+                response = (
+                    "I'm not able to confirm verification codes right now — "
+                    "please contact staff."
+                )
+            await message.channel.send(response)
             return
 
-        player = result.get("player_username", "")
-        await message.channel.send(self._format_success(result, player))
+        player = result.get("player_username")
+        response = result.get("discord_message")
+        if not isinstance(player, str) or not player or not isinstance(response, str):
+            logger.error(
+                "Core returned an incomplete verification response for Discord user %s",
+                message.author.id,
+            )
+            await message.channel.send(
+                "Verification could not be completed right now — please contact staff."
+            )
+            return
+
+        await message.channel.send(response)
         await self._sync_nickname(message.author, player)
         await self._assign_verified_role(message.author)
-
-    # ------------------------------------------------------------------
-    # Formatting helpers (use cached templates)
-    # ------------------------------------------------------------------
-
-    def _format_success(self, result: dict, player: str) -> str:
-        if result.get("already_linked"):
-            return f"\u2705 You're already verified as **{player}**."
-        return (
-            render(self._t("verification.success_message"), player=player)
-            or f"\u2705 Verified! You're linked as **{player}**."
-        )
-
-    def _format_error(self, exc: UmbrellaCoreError) -> str:
-        if exc.status_code == 403:
-            return "I'm not able to confirm verification codes right now — please contact staff."
-        if exc.status_code == 409:
-            return (
-                render(self._t("verification.error_already_linked"))
-                or "Verification failed: account already linked."
-            )
-        if exc.status_code in (404, 422):
-            return (
-                render(self._t("verification.error_invalid_code"))
-                or f"Verification failed: {exc}"
-            )
-        return f"Verification failed: {exc}"
 
     # ------------------------------------------------------------------
     # Nickname & role helpers
