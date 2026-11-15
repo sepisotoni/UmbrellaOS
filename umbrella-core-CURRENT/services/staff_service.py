@@ -47,7 +47,7 @@ async def manage_staff_role(
     try:
         idx = ROLE_LADDER.index(current_name)
     except ValueError:
-        idx = 0
+        idx = -1
 
     if action == "set":
         # Direct role assignment — the dashboard's role-select dropdown
@@ -59,12 +59,10 @@ async def manage_staff_role(
         # single-call change.
         if target_role is None:
             raise StaffManageError("target_role is required for action='set'")
-        try:
-            new_idx = ROLE_LADDER.index(target_role)
-        except ValueError:
+        target = await _role_by_name(db, target_role)
+        if target is None:
             raise StaffManageError(f"Unknown role '{target_role}'")
-
-        if new_idx == idx:
+        if target_role == current_name:
             # No-op: re-selecting the role a user already has. Not an
             # error — the dashboard's <select> always shows the current
             # value selected, so this is a normal, harmless outcome if
@@ -77,42 +75,37 @@ async def manage_staff_role(
                 "action": "set",
             }
 
-        if new_idx > idx:
-            # This jump promotes the user, possibly across several tiers
-            # at once. Only owners may grant owner, exactly as promote
-            # already enforces one step at a time.
-            if target_role == "owner" and actor_role_name != "owner":
-                raise StaffManageError("Only owners can promote to owner", 403)
-        else:
-            # This jump demotes the user, possibly across several tiers
-            # at once. Only owners may change an owner's role at all, and
-            # the last-remaining-owner lockout guard applies exactly as
-            # it does for a single-step demote.
-            if current_name == "owner" and actor_role_name != "owner":
-                raise StaffManageError("Only owners can demote an owner", 403)
-            if current_name == "owner":
-                owner_role = current_role
-                remaining_owners = await db.scalar(
-                    select(func.count(User.id)).where(
-                        User.role_id == owner_role.id,
-                        User.is_active == True,  # noqa: E712
-                        User.id != user.id,
-                    )
+        if target_role == "owner" and actor_role_name != "owner":
+            raise StaffManageError("Only owners can promote to owner", 403)
+        if current_name == "owner" and actor_role_name != "owner":
+            raise StaffManageError("Only owners can demote an owner", 403)
+        if current_name == "owner":
+            owner_role = current_role
+            remaining_owners = await db.scalar(
+                select(func.count(User.id)).where(
+                    User.role_id == owner_role.id,
+                    User.is_active == True,  # noqa: E712
+                    User.id != user.id,
                 )
-                if remaining_owners == 0:
-                    raise StaffManageError(
-                        "Cannot demote the last remaining owner — promote another "
-                        "user to owner first",
-                        409,
-                    )
+            )
+            if remaining_owners == 0:
+                raise StaffManageError(
+                    "Cannot demote the last remaining owner — promote another "
+                    "user to owner first",
+                    409,
+                )
         new_name = target_role
     elif action == "promote":
+        if idx < 0:
+            raise StaffManageError("Custom roles must be changed with action='set'")
         if idx >= len(ROLE_LADDER) - 1:
             raise StaffManageError("User already has the highest role")
         if ROLE_LADDER[idx + 1] == "owner" and actor_role_name != "owner":
             raise StaffManageError("Only owners can promote to owner", 403)
         new_name = ROLE_LADDER[idx + 1]
     else:
+        if idx < 0:
+            raise StaffManageError("Custom roles must be changed with action='set'")
         if idx <= 0:
             raise StaffManageError("User already has the lowest role")
         if current_name == "owner" and actor_role_name != "owner":
@@ -158,6 +151,32 @@ async def manage_staff_role(
     }
 
 
+async def manage_staff_roles(
+    db: AsyncSession,
+    user_ids: list[str],
+    target_role: str,
+    *,
+    actor_role_name: str | None = None,
+) -> list[dict]:
+    if not user_ids:
+        raise StaffManageError("At least one user must be selected")
+    if len(set(user_ids)) != len(user_ids):
+        raise StaffManageError("Duplicate user IDs are not allowed")
+
+    results = []
+    for user_id in user_ids:
+        results.append(
+            await manage_staff_role(
+                db,
+                user_id,
+                "set",
+                target_role=target_role,
+                actor_role_name=actor_role_name,
+            )
+        )
+    return results
+
+
 async def role_member_counts(db: AsyncSession) -> dict[str, int]:
     rows = await db.execute(
         select(Role.name, func.count(User.id))
@@ -175,9 +194,6 @@ async def find_or_add_staff(
     username: str | None = None,
 ) -> dict:
     """Find an existing user by discord_id, or create one, and set their role directly."""
-    if role_name not in ROLE_LADDER:
-        raise StaffManageError(f"Invalid role '{role_name}'")
-
     role = await _role_by_name(db, role_name)
     if role is None:
         raise StaffManageError(f"Role '{role_name}' not found", 500)

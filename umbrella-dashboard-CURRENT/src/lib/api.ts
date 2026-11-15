@@ -336,6 +336,13 @@ export interface RoleSchema {
   name: string;
   description: string;
   permissions: string[];
+  member_count?: number;
+}
+
+export interface PermissionSchema {
+  id: string;
+  key: string;
+  description: string;
 }
 
 // Verification
@@ -677,6 +684,23 @@ export class UmbrellaApiClient {
     return this.request<RoleSchema[]>('/api/v1/roles');
   }
 
+  public async getRolePermissions(): Promise<PermissionSchema[]> {
+    return this.request<PermissionSchema[]>('/api/v1/roles/permissions');
+  }
+
+  public async updateRolePermissions(
+    roleId: string,
+    permissions: string[],
+  ): Promise<RoleSchema> {
+    return this.request<RoleSchema>(
+      `/api/v1/roles/${encodeURIComponent(roleId)}/permissions`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ permissions }),
+      },
+    );
+  }
+
   // --------------------------------------------------------------------------
   // Servers & Fleet
   // --------------------------------------------------------------------------
@@ -853,6 +877,16 @@ export class UmbrellaApiClient {
     return this.request<any>('/api/v1/staff/manage', {
       method: 'POST',
       body: JSON.stringify({ user_id: param1, action: param2 || 'update' }),
+    });
+  }
+
+  public async bulkManageStaff(
+    userIds: string[],
+    targetRole: string,
+  ): Promise<{ updated: number; results: any[] }> {
+    return this.request<{ updated: number; results: any[] }>('/api/v1/staff/manage/bulk', {
+      method: 'POST',
+      body: JSON.stringify({ user_ids: userIds, target_role: targetRole }),
     });
   }
 

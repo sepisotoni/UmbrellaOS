@@ -4,7 +4,7 @@ from typing import Literal
 import uuid as uuid_lib
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -20,6 +20,7 @@ from services.staff_service import (
     StaffManageError,
     manage_staff_role,
     find_or_add_staff,
+    manage_staff_roles,
     ROLE_LADDER,
 )
 
@@ -46,6 +47,11 @@ class StaffManageResponse(BaseModel):
     action: str
 
 
+class StaffBulkManageRequest(BaseModel):
+    user_ids: list[str] = Field(min_length=1, max_length=100)
+    target_role: str
+
+
 @router.post("/manage", response_model=StaffManageResponse)
 async def staff_manage(
     body: StaffManageRequest,
@@ -66,6 +72,28 @@ async def staff_manage(
             actor_role_name=actor_role_name,
         )
         return StaffManageResponse(**result)
+    except StaffManageError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+
+
+@router.post("/manage/bulk")
+async def staff_manage_bulk(
+    body: StaffBulkManageRequest,
+    db: AsyncSession = Depends(get_db),
+    auth: User | str = Depends(require_permission("roles.manage")),
+) -> dict:
+    actor_role_name = None
+    if isinstance(auth, User) and auth.role_id:
+        role = await db.scalar(select(Role).where(Role.id == auth.role_id))
+        actor_role_name = role.name if role else None
+    try:
+        results = await manage_staff_roles(
+            db,
+            body.user_ids,
+            body.target_role,
+            actor_role_name=actor_role_name,
+        )
+        return {"updated": len(results), "results": results}
     except StaffManageError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 

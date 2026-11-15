@@ -604,3 +604,96 @@ async def test_promote_demote_actions_still_work_unchanged(client, db_session):
     body = response.json()
     assert body["previous_role"] == "member"
     assert body["new_role"] == "helper"  # one step only, not further
+
+
+@pytest.mark.asyncio
+async def test_bulk_staff_role_assignment_updates_selected_users(client, db_session):
+    owner_headers = await _owner_headers(db_session)
+
+    async with db_session() as db:
+        member_role = await db.scalar(select(Role).where(Role.name == "member"))
+        helper_role = await db.scalar(select(Role).where(Role.name == "helper"))
+        users = [
+            User(discord_id=f"bulk-user-{i}", username=f"BulkUser{i}", role_id=member_role.id)
+            for i in range(2)
+        ]
+        db.add_all(users)
+        await db.commit()
+        user_ids = [user.id for user in users]
+        helper_role_id = helper_role.id
+
+    response = await client.post(
+        "/api/v1/staff/manage/bulk",
+        json={"user_ids": user_ids, "target_role": "helper"},
+        headers=owner_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["updated"] == 2
+    assert {item["new_role"] for item in response.json()["results"]} == {"helper"}
+    async with db_session() as db:
+        users = list((await db.scalars(select(User).where(User.id.in_(user_ids)))).all())
+        assert all(user.role_id == helper_role_id for user in users)
+        assert all(user.authz_version == 1 for user in users)
+
+
+@pytest.mark.asyncio
+async def test_bulk_staff_role_assignment_rolls_back_on_invalid_user(
+    client, db_session
+):
+    owner_headers = await _owner_headers(db_session)
+
+    async with db_session() as db:
+        member_role = await db.scalar(select(Role).where(Role.name == "member"))
+        user = User(
+            discord_id="bulk-rollback",
+            username="BulkRollback",
+            role_id=member_role.id,
+        )
+        db.add(user)
+        await db.commit()
+        user_id = user.id
+
+    response = await client.post(
+        "/api/v1/staff/manage/bulk",
+        json={"user_ids": [user_id, "missing-user"], "target_role": "helper"},
+        headers=owner_headers,
+    )
+
+    assert response.status_code == 404
+    async with db_session() as db:
+        user = await db.get(User, user_id)
+        member_role = await db.scalar(select(Role).where(Role.name == "member"))
+        assert user.role_id == member_role.id
+        assert user.authz_version == 0
+
+
+@pytest.mark.asyncio
+async def test_staff_can_assign_a_custom_role(client, db_session):
+    owner_headers = await _owner_headers(db_session)
+
+    async with db_session() as db:
+        member_role = await db.scalar(select(Role).where(Role.name == "member"))
+        custom_role = Role(name="auditor", description="Read-only audit access")
+        user = User(
+            discord_id="custom-role-target",
+            username="CustomRoleTarget",
+            role_id=member_role.id,
+        )
+        db.add_all([custom_role, user])
+        await db.commit()
+        user_id = user.id
+
+    response = await client.post(
+        "/api/v1/staff/manage",
+        json={"user_id": user_id, "action": "set", "target_role": "auditor"},
+        headers=owner_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["new_role"] == "auditor"
+    async with db_session() as db:
+        user = await db.get(User, user_id)
+        custom_role = await db.scalar(select(Role).where(Role.name == "auditor"))
+        assert user.role_id == custom_role.id
+        assert user.authz_version == 1

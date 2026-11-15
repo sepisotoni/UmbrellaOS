@@ -4,6 +4,7 @@ import {
   StaffMember,
   DiscordGuildMember,
   RoleSchema,
+  PermissionSchema,
   BotGuildConfig,
 } from '../../lib/api';
 import { useDashboard } from '../../context/DashboardContext';
@@ -15,33 +16,44 @@ import {
   AlertCircle,
   X,
   ChevronDown,
+  Users,
+  Save,
 } from 'lucide-react';
 
 export const StaffView: React.FC = () => {
-  const { addToast } = useDashboard();
+  const { addToast, currentUser } = useDashboard();
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
   const [discordMembers, setDiscordMembers] = useState<DiscordGuildMember[]>([]);
   const [roles, setRoles] = useState<RoleSchema[]>([]);
+  const [allPermissions, setAllPermissions] = useState<PermissionSchema[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [discordMembersFailed, setDiscordMembersFailed] = useState<boolean>(false);
   const [botGuilds, setBotGuilds] = useState<BotGuildConfig[]>([]);
   const [selectedGuildId, setSelectedGuildId] = useState('');
+  const [selectedStaffIds, setSelectedStaffIds] = useState<Set<string>>(new Set());
+  const [bulkRole, setBulkRole] = useState('moderator');
+  const [isBulkSubmitting, setIsBulkSubmitting] = useState(false);
+  const [editingRoleId, setEditingRoleId] = useState<string | null>(null);
+  const [editedRolePermissions, setEditedRolePermissions] = useState<Set<string>>(new Set());
+  const [isSavingRolePermissions, setIsSavingRolePermissions] = useState(false);
 
   // Add staff modal state
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
   const [newDiscordId, setNewDiscordId] = useState<string>('');
   const [newRole, setNewRole] = useState<string>('moderator');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const isOwner = currentUser?.role?.toLowerCase() === 'owner';
 
   const fetchStaffData = async (guildId = selectedGuildId) => {
     setIsLoading(true);
     setError(null);
     try {
-      const [staffRes, discordRes, rolesRes] = await Promise.allSettled([
+      const [staffRes, discordRes, rolesRes, permissionsRes] = await Promise.allSettled([
         api.getStaffMembers(),
         api.getDiscordGuildMembers(guildId || undefined),
         api.getRoles(),
+        api.getRolePermissions(),
       ]);
 
       if (staffRes.status === 'fulfilled') {
@@ -61,9 +73,14 @@ export const StaffView: React.FC = () => {
       if (rolesRes.status === 'fulfilled') {
         const sorted = (rolesRes.value || []).sort((a, b) => {
           const order = ['owner', 'admin', 'moderator', 'helper', 'member'];
-          return order.indexOf(a.name) - order.indexOf(b.name);
+          const aOrder = order.indexOf(a.name);
+          const bOrder = order.indexOf(b.name);
+          return (aOrder < 0 ? order.length : aOrder) - (bOrder < 0 ? order.length : bOrder);
         });
         setRoles(sorted);
+      }
+      if (permissionsRes.status === 'fulfilled') {
+        setAllPermissions(permissionsRes.value || []);
       }
     } catch (err: any) {
       setError(err.message || 'Failed to fetch staff roster');
@@ -89,6 +106,11 @@ export const StaffView: React.FC = () => {
     fetchStaffData(selectedGuildId);
   }, [selectedGuildId]);
 
+  useEffect(() => {
+    const staffIds = new Set(staffList.map((member) => member.id));
+    setSelectedStaffIds((selected) => new Set([...selected].filter((id) => staffIds.has(id))));
+  }, [staffList]);
+
   const handleSetRole = async (memberId: string, targetRole: string) => {
     try {
       const result = await api.manageStaff({ user_id: memberId, action: 'set', target_role: targetRole });
@@ -104,6 +126,83 @@ export const StaffView: React.FC = () => {
         title: 'Role Update Failed',
         message: err.message,
       });
+    }
+  };
+
+  const handleBulkSetRole = async () => {
+    if (!selectedStaffIds.size || !bulkRole || isBulkSubmitting) return;
+    setIsBulkSubmitting(true);
+    try {
+      const result = await api.bulkManageStaff([...selectedStaffIds], bulkRole);
+      addToast({
+        type: 'success',
+        title: 'Staff Roles Updated',
+        message: `Applied ${bulkRole.toUpperCase()} to ${result.updated} staff member${result.updated === 1 ? '' : 's'}.`,
+      });
+      setSelectedStaffIds(new Set());
+      await fetchStaffData();
+    } catch (err: any) {
+      addToast({
+        type: 'error',
+        title: 'Bulk Role Update Failed',
+        message: err.message || 'Could not update the selected staff roles.',
+      });
+    } finally {
+      setIsBulkSubmitting(false);
+    }
+  };
+
+  const handleSelectStaff = (memberId: string, selected: boolean) => {
+    setSelectedStaffIds((current) => {
+      const next = new Set(current);
+      if (selected) next.add(memberId);
+      else next.delete(memberId);
+      return next;
+    });
+  };
+
+  const handleSelectAllStaff = (selected: boolean) => {
+    setSelectedStaffIds(selected ? new Set(staffList.map((member) => member.id)) : new Set());
+  };
+
+  const handleOpenRoleEditor = (role: RoleSchema) => {
+    setEditingRoleId(role.id);
+    setEditedRolePermissions(new Set(role.permissions || []));
+  };
+
+  const handleToggleRolePermission = (permission: string) => {
+    setEditedRolePermissions((current) => {
+      const next = new Set(current);
+      if (next.has(permission)) next.delete(permission);
+      else next.add(permission);
+      return next;
+    });
+  };
+
+  const handleSaveRolePermissions = async () => {
+    if (!editingRoleId || isSavingRolePermissions) return;
+    setIsSavingRolePermissions(true);
+    try {
+      const updated = await api.updateRolePermissions(
+        editingRoleId,
+        [...editedRolePermissions].sort(),
+      );
+      setRoles((current) => current.map((role) => role.id === updated.id ? updated : role));
+      addToast({
+        type: 'success',
+        title: 'Role Preset Updated',
+        message: `${updated.name.toUpperCase()} permissions saved. Members assigned this role will receive the updated permissions after their session refreshes.`,
+      });
+      setEditingRoleId(null);
+      await fetchStaffData();
+    } catch (err: any) {
+      addToast({
+        type: 'error',
+        title: 'Permission Update Failed',
+        message: err.message || 'Could not save this role preset.',
+      });
+    } finally {
+      setIsSavingRolePermissions(false);
     }
   };
 
@@ -179,6 +278,11 @@ export const StaffView: React.FC = () => {
   const selectedRoleObj = useMemo(() => {
     return roles.find((r) => r.name.toLowerCase() === newRole.toLowerCase());
   }, [roles, newRole]);
+
+  const editingRole = useMemo(
+    () => roles.find((role) => role.id === editingRoleId),
+    [roles, editingRoleId],
+  );
 
   const groupedPerms = useMemo(() => {
     return groupPermissions(selectedRoleObj?.permissions);
@@ -285,6 +389,44 @@ export const StaffView: React.FC = () => {
         </div>
       )}
 
+      {staffList.length > 0 && (
+        <div className="flex flex-col gap-3 rounded-xl border border-[#1e1b4b] bg-[#0d1127] p-4 sm:flex-row sm:items-center sm:justify-between">
+          <label className="flex items-center gap-2 text-xs text-slate-300">
+            <input
+              type="checkbox"
+              checked={staffList.length > 0 && selectedStaffIds.size === staffList.length}
+              onChange={(event) => handleSelectAllStaff(event.target.checked)}
+              className="accent-purple-500"
+            />
+            Select all {staffList.length} staff
+            <span className="text-slate-500">({selectedStaffIds.size} selected)</span>
+          </label>
+          <div className="flex gap-2">
+            <select
+              value={bulkRole}
+              onChange={(event) => setBulkRole(event.target.value)}
+              aria-label="Role to apply to selected staff"
+              className="rounded-lg border border-[#1e1b4b] bg-[#070914] px-3 py-2 text-xs text-white"
+            >
+              {roles
+                .filter((role) => isOwner || role.name.toLowerCase() !== 'owner')
+                .map((role) => (
+                  <option key={role.id} value={role.name}>{role.name.toUpperCase()}</option>
+                ))}
+            </select>
+            <button
+              type="button"
+              onClick={handleBulkSetRole}
+              disabled={!selectedStaffIds.size || isBulkSubmitting}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-purple-500/40 bg-purple-600 px-3 py-2 text-xs font-bold text-white hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Users className="h-3.5 w-3.5" />
+              {isBulkSubmitting ? 'Applying...' : 'Apply role'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Staff Roster — card grid per [HEAD]'s "cards instead of flat table" ask */}
       <div className="rounded-xl border border-[#1e1b4b] bg-[#0d1127] p-5 shadow-xl">
         {isLoading ? (
@@ -309,6 +451,13 @@ export const StaffView: React.FC = () => {
                 >
                   {/* Identity row — Discord avatar prominent per [HEAD] */}
                   <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedStaffIds.has(member.id)}
+                      onChange={(event) => handleSelectStaff(member.id, event.target.checked)}
+                      aria-label={`Select ${member.username} for a bulk role change`}
+                      className="accent-purple-500"
+                    />
                     <img
                       src={getStaffAvatar(member)}
                       alt={member.username || 'Staff'}
@@ -343,12 +492,20 @@ export const StaffView: React.FC = () => {
                   <select
                     value={member.role || 'moderator'}
                     onChange={(e) => handleSetRole(member.id, e.target.value)}
+                    disabled={!isOwner && member.role?.toLowerCase() === 'owner'}
                     className={`w-full rounded-lg border px-2.5 py-1.5 text-xs font-bold cursor-pointer focus:outline-none ${roleBadgeStyle(member.role)}`}
                   >
                     {roles.length > 0 ? (
-                      roles.map((r) => (
-                        <option key={r.id} value={r.name}>{r.name.toUpperCase()}</option>
-                      ))
+                      roles
+                        .filter(
+                          (role) =>
+                            isOwner ||
+                            role.name.toLowerCase() !== 'owner' ||
+                            member.role?.toLowerCase() === 'owner',
+                        )
+                        .map((r) => (
+                          <option key={r.id} value={r.name}>{r.name.toUpperCase()}</option>
+                        ))
                     ) : (
                       <option value="moderator">MODERATOR</option>
                     )}
@@ -397,6 +554,112 @@ export const StaffView: React.FC = () => {
           </div>
         )}
       </div>
+
+      <section className="rounded-xl border border-[#1e1b4b] bg-[#0d1127] p-5 shadow-xl">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-bold text-white">Role Permission Presets</h2>
+            <p className="mt-1 text-xs text-slate-400">
+              Presets define the permissions all assigned staff receive. Permission changes invalidate existing authorization claims.
+            </p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {roles.map((role) => (
+            <div key={role.id} className="rounded-lg border border-[#1e1b4b] bg-[#070914] p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="truncate text-xs font-bold uppercase text-white">{role.name}</div>
+                  <div className="mt-1 text-[10px] text-slate-400">
+                    {role.permissions?.length || 0} permissions · {role.member_count || 0} members
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleOpenRoleEditor(role)}
+                  disabled={!isOwner || role.name.toLowerCase() === 'owner'}
+                  className="shrink-0 rounded-lg border border-[#29234e] px-2.5 py-1.5 text-[10px] font-semibold text-slate-300 hover:border-purple-500/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                  title={
+                    role.name.toLowerCase() === 'owner'
+                      ? 'Owner permissions are protected'
+                      : isOwner
+                        ? 'Edit role permissions'
+                        : 'Only owners can edit role permissions'
+                  }
+                >
+                  Edit permissions
+                </button>
+              </div>
+              {role.description && <p className="mt-2 text-[10px] text-slate-500">{role.description}</p>}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {editingRole && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+          <div className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-[#1e1b4b] bg-[#0d1127] shadow-2xl">
+            <div className="flex shrink-0 items-center justify-between border-b border-[#1e1b4b] p-5">
+              <div>
+                <h3 className="text-sm font-bold uppercase text-white">{editingRole.name} permissions</h3>
+                <p className="mt-1 text-xs text-slate-400">Changes apply to every member assigned this role.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingRoleId(null)}
+                aria-label="Close permission editor"
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-5">
+              {(Object.entries(groupPermissions(allPermissions.map((permission) => permission.key))) as [string, string[]][]).map(([namespace, keys]) => (
+                <fieldset key={namespace} className="mb-4 rounded-lg border border-[#1e1b4b] p-3">
+                  <legend className="px-2 text-[10px] font-bold uppercase text-purple-300">{namespace}</legend>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {keys.map((key) => {
+                      const permission = allPermissions.find((item) => item.key === key);
+                      return (
+                        <label key={key} className="flex min-w-0 items-start gap-2 rounded-md p-1.5 text-xs text-slate-300 hover:bg-[#141832]">
+                          <input
+                            type="checkbox"
+                            checked={editedRolePermissions.has(key)}
+                            onChange={() => handleToggleRolePermission(key)}
+                            className="mt-0.5 accent-purple-500"
+                          />
+                          <span className="min-w-0">
+                            <span className="block break-all font-mono text-[10px] text-white">{key}</span>
+                            <span className="block text-[10px] text-slate-500">{permission?.description}</span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </fieldset>
+              ))}
+            </div>
+            <div className="flex shrink-0 justify-end gap-2 border-t border-[#1e1b4b] p-4">
+              <button
+                type="button"
+                onClick={() => setEditingRoleId(null)}
+                className="rounded-lg border border-[#29234e] px-3 py-2 text-xs text-slate-300 hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveRolePermissions}
+                disabled={isSavingRolePermissions}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-purple-600 px-3 py-2 text-xs font-bold text-white hover:bg-purple-500 disabled:opacity-50"
+              >
+                <Save className="h-3.5 w-3.5" />
+                {isSavingRolePermissions ? 'Saving...' : 'Save permissions'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal: Appoint Staff */}
       {isAddModalOpen && (
@@ -461,11 +724,13 @@ export const StaffView: React.FC = () => {
                   className="w-full rounded-lg border border-[#1e1b4b] bg-[#070914] p-2.5 text-white focus:border-purple-500 focus:outline-none"
                 >
                   {roles.length > 0 ? (
-                    roles.map((r) => (
-                      <option key={r.id} value={r.name}>
-                        {r.name.toUpperCase()}
-                      </option>
-                    ))
+                    roles
+                      .filter((role) => isOwner || role.name.toLowerCase() !== 'owner')
+                      .map((r) => (
+                        <option key={r.id} value={r.name}>
+                          {r.name.toUpperCase()}
+                        </option>
+                      ))
                   ) : (
                     <option value="moderator">MODERATOR</option>
                   )}

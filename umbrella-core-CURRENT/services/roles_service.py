@@ -4,11 +4,14 @@ services/roles_service.py — Role and permission management.
 Seeds default roles and permissions on first boot.
 """
 
+import json
+
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update
 from sqlalchemy.orm import selectinload
 from models.permissions import Role, Permission
 from models import User
+from models.audit_log import AuditLog
 
 # Seed data: (permission_key, description)
 DEFAULT_PERMISSIONS = [
@@ -175,6 +178,14 @@ DEFAULT_PERMISSIONS = [
 
 ALL_PERMISSION_KEYS = [p[0] for p in DEFAULT_PERMISSIONS]
 
+
+class RoleManagementError(Exception):
+    def __init__(self, message: str, status_code: int = 400):
+        self.message = message
+        self.status_code = status_code
+        super().__init__(message)
+
+
 # Seed data: (role_name, description, [permission_keys])
 DEFAULT_ROLES = [
     ("owner", "Full access to everything", ALL_PERMISSION_KEYS),
@@ -297,6 +308,77 @@ class RolesService:
             {"id": p.id, "key": p.permission_key, "description": p.description}
             for p in result.scalars().all()
         ]
+
+    @staticmethod
+    async def update_permissions(
+        db: AsyncSession,
+        role_id: str,
+        permission_keys: list[str],
+        *,
+        actor: str,
+    ) -> dict:
+        role = await db.scalar(
+            select(Role)
+            .where(Role.id == role_id)
+            .options(selectinload(Role.permissions))
+            .with_for_update()
+        )
+        if role is None:
+            raise RoleManagementError(f"Role '{role_id}' not found", 404)
+        if role.name.lower() == "owner":
+            raise RoleManagementError(
+                "The owner role permissions cannot be changed", 409
+            )
+
+        requested = set(permission_keys)
+        permissions = list(
+            (
+                await db.scalars(
+                    select(Permission).where(Permission.permission_key.in_(requested))
+                )
+            ).all()
+        ) if requested else []
+        found = {permission.permission_key for permission in permissions}
+        unknown = requested - found
+        if unknown:
+            raise RoleManagementError(
+                f"Unknown permission key(s): {', '.join(sorted(unknown))}"
+            )
+
+        previous = sorted(permission.permission_key for permission in role.permissions)
+        role.permissions = sorted(
+            permissions, key=lambda permission: permission.permission_key
+        )
+        if previous != sorted(requested):
+            await db.execute(
+                update(User)
+                .where(User.role_id == role.id)
+                .values(authz_version=User.authz_version + 1)
+            )
+            db.add(
+                AuditLog(
+                    actor=actor,
+                    actor_type="staff",
+                    action="role.permissions.updated",
+                    target=role.name,
+                    details_json=json.dumps(
+                        {
+                            "role_id": role.id,
+                            "previous_permissions": previous,
+                            "permissions": sorted(requested),
+                        }
+                    ),
+                )
+            )
+            await db.flush()
+
+        member_count = await db.scalar(
+            select(func.count(User.id)).where(User.role_id == role.id)
+        )
+        return {
+            **RolesService._to_dict(role),
+            "member_count": member_count or 0,
+        }
 
     @staticmethod
     def _to_dict(role: Role) -> dict:
