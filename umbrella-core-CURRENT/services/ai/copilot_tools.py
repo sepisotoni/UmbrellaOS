@@ -51,6 +51,10 @@ from models.audit_log import AuditLog
 from models.player import Player, Punishment
 from models.anticheat_violation import AnticheatViolation
 from registry.context import CallContext
+from services.ai.copilot_actions import (
+    ACTION_PERMISSION,
+    propose_moderation_action,
+)
 
 _MAX_ROWS = 20  # cap on rows returned per tool call, keeps the pass-2 prompt bounded
 
@@ -66,6 +70,7 @@ _TOOL_PERMISSIONS = {
     "get_punishment_history": "punishments.view",
     "get_anticheat_violations": "players.view",
     "get_daily_activity": "audit.view",
+    "propose_moderation_action": ACTION_PERMISSION,
 }
 
 _TOOLS_MANIFEST = """Available tools (respond with a JSON array in a ```json fenced block to call one or more; respond with plain text and no JSON block if no tool is needed):
@@ -74,8 +79,9 @@ _TOOLS_MANIFEST = """Available tools (respond with a JSON array in a ```json fen
 - {"tool": "get_punishment_history", "player_uuid": "<uuid>"} — list a player's bans/mutes/kicks/warnings, most recent first.
 - {"tool": "get_anticheat_violations", "player_uuid": "<uuid>"} — list a player's recent GrimAC/anticheat flags, most recent first.
 - {"tool": "get_daily_activity"} — summarize audit events from the last 24 hours (UTC); requires audit.view.
+- {"tool": "propose_moderation_action", "action": "ban" | "tempban" | "unban", "player_uuid": "<uuid>", "reason": "<reason>", "duration_hours": <1-8760 for tempban>} — create a pending proposal only; it never changes punishments. Requires moderation.ban, and a human must explicitly confirm before execution. Kicks are not supported.
 
-If you need a player's UUID for get_punishment_history or get_anticheat_violations and only have a username, call lookup_player first — you can request multiple tools in the same JSON array and their results will all be given back to you together."""
+If you need a player's UUID for get_punishment_history, get_anticheat_violations, or propose_moderation_action and only have a username, call lookup_player first — you can request multiple tools in the same JSON array and their results will all be given back to you together. Never propose a ban without an explicit user request, a target, a reason, and (for tempban) a duration. Never describe a proposal as executed."""
 
 # [CURSOR, 2026-09-02] Human-readable version of the tools for the
 # /commands intercept in ai_copilot.py — kept as a plain list literal (not
@@ -99,6 +105,10 @@ AVAILABLE_TOOLS_DESCRIPTION = [
     (
         "get_daily_activity",
         "Summarize audit activity over the last 24 hours (UTC); requires audit.view.",
+    ),
+    (
+        "propose_moderation_action",
+        "Prepare a ban, temporary ban, or unban for explicit human confirmation; requires moderation.ban. Does not execute actions.",
     ),
 ]
 
@@ -187,6 +197,13 @@ async def execute_tool_calls(
                 )
             elif tool == "get_daily_activity":
                 result = await _get_daily_activity(db)
+            elif tool == "propose_moderation_action":
+                result = await propose_moderation_action(
+                    db,
+                    call,
+                    actor=ctx.actor_id,
+                    actor_type=ctx.actor_type,
+                )
             else:
                 result = f"error: unknown tool {tool!r}"
         except Exception as exc:

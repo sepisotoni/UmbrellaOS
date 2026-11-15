@@ -13,8 +13,10 @@ from datetime import datetime, timedelta, timezone
 import re
 
 import pytest
+from sqlalchemy import func, select
 
 from registry.context import CallContext
+from models.ai_tasks import AITask
 from models.audit_log import AuditLog
 from models.player import Player, Punishment
 from models.anticheat_violation import AnticheatViolation
@@ -166,6 +168,106 @@ async def test_lookup_player_allowed_for_superuser_without_explicit_permission(
             [{"tool": "lookup_player", "username": "Grumm"}],
         )
         assert results[0].result["username"] == "Grumm"
+
+
+@pytest.mark.asyncio
+async def test_moderation_tool_creates_pending_proposal_without_punishment(db_session):
+    async with db_session() as db:
+        player = Player(
+            uuid="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            username="ProposalTarget",
+        )
+        db.add(player)
+        await db.commit()
+
+        results = await execute_tool_calls(
+            _ctx(db, {"moderation.ban"}),
+            [
+                {
+                    "tool": "propose_moderation_action",
+                    "action": "tempban",
+                    "player_uuid": player.uuid,
+                    "reason": "Repeated cheating",
+                    "duration_hours": 48,
+                }
+            ],
+        )
+
+        proposal = results[0].result
+        assert proposal["status"] == "pending"
+        assert proposal["action"] == "tempban"
+        assert proposal["confirmation_required"] is True
+        assert proposal["duration_hours"] == 48
+        task = await db.get(AITask, proposal["task_id"])
+        assert task.status == "pending"
+        assert await db.scalar(select(Punishment).where(Punishment.player_uuid == player.uuid)) is None
+
+
+@pytest.mark.asyncio
+async def test_moderation_tool_requires_permission_and_rejects_kicks(db_session):
+    async with db_session() as db:
+        player = Player(
+            uuid="bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+            username="NoPermissionTarget",
+        )
+        db.add(player)
+        await db.commit()
+
+        denied = await execute_tool_calls(
+            _ctx(db, set()),
+            [
+                {
+                    "tool": "propose_moderation_action",
+                    "action": "ban",
+                    "player_uuid": player.uuid,
+                    "reason": "Test",
+                }
+            ],
+        )
+        assert "moderation.ban" in denied[0].result
+
+        unsupported = await execute_tool_calls(
+            _ctx(db, {"moderation.ban"}),
+            [
+                {
+                    "tool": "propose_moderation_action",
+                    "action": "kick",
+                    "player_uuid": player.uuid,
+                    "reason": "Test",
+                }
+            ],
+        )
+        assert "Only ban, temporary ban, and unban" in unsupported[0].result
+        assert await db.scalar(select(AITask).where(AITask.player_uuid == player.uuid)) is None
+
+
+@pytest.mark.asyncio
+async def test_repeated_moderation_proposal_reuses_existing_pending_task(db_session):
+    async with db_session() as db:
+        player = Player(
+            uuid="cccccccc-cccc-cccc-cccc-cccccccccccc",
+            username="DuplicateProposal",
+        )
+        db.add(player)
+        await db.commit()
+        call = {
+            "tool": "propose_moderation_action",
+            "action": "ban",
+            "player_uuid": player.uuid,
+            "reason": "Repeated cheating",
+        }
+
+        first = await execute_tool_calls(_ctx(db, {"moderation.ban"}), [call])
+        second = await execute_tool_calls(_ctx(db, {"moderation.ban"}), [call])
+
+        assert first[0].result["task_id"] == second[0].result["task_id"]
+        count = await db.scalar(
+            select(func.count(AITask.id)).where(
+                AITask.player_uuid == player.uuid,
+                AITask.task_type == "copilot_moderation_action",
+            )
+        )
+        assert count == 1
 
 
 # ---------------------------------------------------------------------------

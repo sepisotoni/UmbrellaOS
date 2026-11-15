@@ -423,10 +423,24 @@ export interface AITaskSchema {
 
 export type AITask = AITaskSchema;
 
+export interface CopilotActionProposal {
+  task_id: number;
+  action: 'ban' | 'tempban' | 'unban';
+  player_uuid: string;
+  player_name: string;
+  reason: string;
+  duration_hours: number | null;
+  expires_at: string | null;
+  confirmation_required: true;
+  proposal_expires_at: string;
+  status: 'pending';
+}
+
 export interface CopilotResponse {
   response: string;
   model_used: string;
   latency_ms: number;
+  pending_actions: CopilotActionProposal[];
 }
 
 export interface CrashRiskResponse {
@@ -1026,6 +1040,20 @@ export class UmbrellaApiClient {
     });
   }
 
+  public async executeCopilotAction(taskId: number): Promise<any> {
+    return this.request<any>(`/api/v1/ai/tasks/${taskId}/execute`, {
+      method: 'POST',
+      body: JSON.stringify({ confirm: true }),
+    });
+  }
+
+  public async declineCopilotAction(taskId: number): Promise<any> {
+    return this.request<any>(`/api/v1/ai/tasks/${taskId}/decline`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  }
+
   public async sendCopilotPrompt(message: string, context?: string): Promise<CopilotResponse> {
     return this.request<CopilotResponse>('/api/v1/ai/copilot', {
       method: 'POST',
@@ -1033,7 +1061,7 @@ export class UmbrellaApiClient {
     });
   }
 
-  public async askCopilot(prompt: string, context?: any): Promise<any> {
+  public async askCopilot(prompt: string, context?: any): Promise<CopilotResponse> {
     return this.sendCopilotPrompt(prompt, typeof context === 'string' ? context : JSON.stringify(context || {}));
   }
 

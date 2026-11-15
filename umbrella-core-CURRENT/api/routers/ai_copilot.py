@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
@@ -66,6 +66,7 @@ class CopilotResponse(BaseModel):
     response: str
     model_used: str
     latency_ms: int
+    pending_actions: list[dict] = Field(default_factory=list)
 
 
 @router.post("/copilot", response_model=CopilotResponse)
@@ -212,17 +213,27 @@ async def copilot_chat(
         ) from exc
 
     requested_tools = parse_requested_tools(pass1_result.text)
+    pending_actions: list[dict] = []
 
     if not requested_tools:
         # No tool needed — pass 1's own answer is the final answer.
         final_result = pass1_result
     else:
         tool_results = await execute_tool_calls(ctx, requested_tools)
+        pending_actions = [
+            result.result
+            for result in tool_results
+            if result.tool == "propose_moderation_action"
+            and isinstance(result.result, dict)
+            and result.result.get("status") == "pending"
+        ]
         pass2_prompt = (
             f"{question_block}\n\n"
             f"{format_tool_results_block(tool_results)}\n\n"
             "Using the tool results above, answer the user's question. "
-            "Do not mention that you used tools — just answer naturally with the data."
+            "Do not mention that you used tools — just answer naturally with the data. "
+            "If a moderation action proposal was created, state that it is pending and "
+            "requires a human to confirm it; never say or imply it has been executed."
         )
         try:
             final_result = await Orchestrator.run(
@@ -247,6 +258,7 @@ async def copilot_chat(
         response=final_result.text,
         model_used=model_label,
         latency_ms=latency_ms,
+        pending_actions=pending_actions,
     )
 
 

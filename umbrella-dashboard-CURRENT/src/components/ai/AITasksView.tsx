@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { api, AITask, ServerRecord } from '../../lib/api';
+import { api, AITask, CopilotActionProposal, ServerRecord } from '../../lib/api';
 import { useDashboard } from '../../context/DashboardContext';
 import { DisconnectedBanner } from '../common/DisconnectedBanner';
 import {
@@ -16,8 +16,48 @@ import {
   Activity,
 } from 'lucide-react';
 
+type CopilotChatAction = Omit<CopilotActionProposal, 'status'> & {
+  status: 'pending' | 'approved' | 'denied' | 'expired';
+};
+
+type CopilotChatMessage = {
+  sender: 'user' | 'copilot';
+  text: string;
+  actions?: CopilotChatAction[];
+};
+
+function copilotActionFromTask(task: AITask): CopilotChatAction | null {
+  const proposal = task.evidence?.copilot_action;
+  if (
+    !proposal ||
+    !['ban', 'tempban', 'unban'].includes(proposal.action) ||
+    typeof proposal.player_uuid !== 'string' ||
+    typeof proposal.player_name !== 'string' ||
+    typeof proposal.reason !== 'string'
+  ) {
+    return null;
+  }
+  const status: CopilotChatAction['status'] =
+    task.status === 'approved' || task.status === 'denied' || task.status === 'expired'
+      ? task.status
+      : 'pending';
+  return {
+    task_id: task.id,
+    action: proposal.action,
+    player_uuid: proposal.player_uuid,
+    player_name: proposal.player_name,
+    reason: proposal.reason,
+    duration_hours: proposal.duration_hours ?? null,
+    expires_at: proposal.expires_at ?? null,
+    confirmation_required: true,
+    proposal_expires_at: task.expires_at,
+    status,
+  };
+}
+
 export const AITasksView: React.FC = () => {
-  const { addToast } = useDashboard();
+  const { addToast, currentUser } = useDashboard();
+  const canConfirmModeration = currentUser?.permissions?.includes('moderation.ban') ?? false;
   const [activeTab, setActiveTab] = useState<'tasks' | 'copilot' | 'crash-risk'>('tasks');
 
   // Tasks State
@@ -26,14 +66,15 @@ export const AITasksView: React.FC = () => {
   const [tasksError, setTasksError] = useState<string | null>(null);
 
   // Copilot Chat State
-  const [copilotMessages, setCopilotMessages] = useState<{ sender: 'user' | 'copilot'; text: string }[]>([
+  const [copilotMessages, setCopilotMessages] = useState<CopilotChatMessage[]>([
     {
       sender: 'copilot',
-      text: 'Hello! I am your UmbrellaOS AI Copilot. Ask me about server health, GrimAC false positives, or audit anomalies.',
+      text: 'Hello! I am your UmbrellaOS AI Copilot. Ask about player history, daily activity, server health, or request a ban/unban proposal. Moderation actions always require staff confirmation.',
     },
   ]);
   const [copilotInput, setCopilotInput] = useState<string>('');
   const [copilotLoading, setCopilotLoading] = useState<boolean>(false);
+  const [copilotActionSubmitting, setCopilotActionSubmitting] = useState<number | null>(null);
   const copilotScrollRef = useRef<HTMLDivElement>(null);
 
   // Crash Risk State
@@ -119,6 +160,68 @@ export const AITasksView: React.FC = () => {
     }
   };
 
+  const markCopilotAction = (
+    taskId: number,
+    status: CopilotChatAction['status'],
+  ) => {
+    setCopilotMessages((messages) =>
+      messages.map((message) => ({
+        ...message,
+        actions: message.actions?.map((action) =>
+          action.task_id === taskId ? { ...action, status } : action,
+        ),
+      })),
+    );
+  };
+
+  const handleConfirmCopilotAction = async (action: CopilotChatAction) => {
+    if (copilotActionSubmitting !== null || action.status !== 'pending') return;
+    setCopilotActionSubmitting(action.task_id);
+    try {
+      await api.executeCopilotAction(action.task_id);
+      markCopilotAction(action.task_id, 'approved');
+      addToast({
+        type: 'success',
+        title: 'Moderation Action Executed',
+        message: `${action.action.toUpperCase()} applied to ${action.player_name}.`,
+      });
+      await fetchTasks();
+    } catch (err: any) {
+      if (err.status === 410) markCopilotAction(action.task_id, 'expired');
+      addToast({
+        type: 'error',
+        title: 'Action Not Executed',
+        message: err.message || 'The moderation proposal could not be executed.',
+      });
+    } finally {
+      setCopilotActionSubmitting(null);
+    }
+  };
+
+  const handleDeclineCopilotAction = async (action: CopilotChatAction) => {
+    if (copilotActionSubmitting !== null || action.status !== 'pending') return;
+    setCopilotActionSubmitting(action.task_id);
+    try {
+      await api.declineCopilotAction(action.task_id);
+      markCopilotAction(action.task_id, 'denied');
+      addToast({
+        type: 'success',
+        title: 'Proposal Dismissed',
+        message: `The ${action.action} proposal for ${action.player_name} was dismissed.`,
+      });
+      await fetchTasks();
+    } catch (err: any) {
+      if (err.status === 410) markCopilotAction(action.task_id, 'expired');
+      addToast({
+        type: 'error',
+        title: 'Could Not Dismiss Proposal',
+        message: err.message || 'The moderation proposal could not be dismissed.',
+      });
+    } finally {
+      setCopilotActionSubmitting(null);
+    }
+  };
+
   const handleSendCopilot = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!copilotInput.trim() || copilotLoading) return;
@@ -135,7 +238,14 @@ export const AITasksView: React.FC = () => {
       );
       setCopilotMessages((prev) => [
         ...prev,
-        { sender: 'copilot', text: res.response || res.answer || JSON.stringify(res) },
+        {
+          sender: 'copilot',
+          text: res.response || JSON.stringify(res),
+          actions: (res.pending_actions || []).map((action) => ({
+            ...action,
+            status: action.status,
+          })),
+        },
       ]);
     } catch (err: any) {
       setCopilotMessages((prev) => [
@@ -258,11 +368,13 @@ export const AITasksView: React.FC = () => {
               </div>
             ) : (
               <div className="space-y-4">
-                {tasks.map((task) => (
-                  <div
-                    key={task.id}
-                    className="rounded-xl border border-[#1a1f42] bg-[#070914] p-4 font-mono text-xs space-y-3"
-                  >
+                {tasks.map((task) => {
+                  const actionProposal = copilotActionFromTask(task);
+                  return (
+                    <div
+                      key={task.id}
+                      className="rounded-xl border border-[#1a1f42] bg-[#070914] p-4 font-mono text-xs space-y-3"
+                    >
                     <div className="flex items-center justify-between border-b border-[#1e1b4b] pb-2">
                       <div className="flex items-center gap-2">
                         <span className="font-bold text-white uppercase">{task.task_type || 'PROPOSED ACTION'}</span>
@@ -291,22 +403,61 @@ export const AITasksView: React.FC = () => {
                       {task.ai_summary || 'No summary available.'}
                     </div>
 
-                    <div className="flex justify-end gap-2 pt-1">
-                      <button
-                        onClick={() => handleDenyTask(task.id)}
-                        className="px-3 py-1.5 rounded-lg border border-rose-500/40 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 text-xs font-bold transition cursor-pointer"
-                      >
-                        Deny
-                      </button>
-                      <button
-                        onClick={() => handleApproveTask(task.id)}
-                        className="px-3 py-1.5 rounded-lg border border-emerald-500/40 bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-300 text-xs font-bold transition cursor-pointer"
-                      >
-                        Approve & Enforce
-                      </button>
+                      {actionProposal ? (
+                        <div className="space-y-2 border-t border-[#1e1b42] pt-3">
+                          <div className="text-slate-300">
+                            {actionProposal.action.toUpperCase()} {actionProposal.player_name}
+                            {actionProposal.duration_hours
+                              ? ` for ${actionProposal.duration_hours} hours`
+                              : ''}
+                            {actionProposal.reason ? ` — ${actionProposal.reason}` : ''}
+                          </div>
+                          {actionProposal.status === 'pending' && canConfirmModeration ? (
+                            <div className="flex justify-end gap-2">
+                              <button
+                                onClick={() => handleDeclineCopilotAction(actionProposal)}
+                                disabled={copilotActionSubmitting !== null}
+                                className="px-3 py-1.5 rounded-lg border border-slate-500/40 text-slate-300 text-xs font-bold disabled:opacity-50"
+                              >
+                                Dismiss
+                              </button>
+                              <button
+                                onClick={() => handleConfirmCopilotAction(actionProposal)}
+                                disabled={copilotActionSubmitting !== null}
+                                className="px-3 py-1.5 rounded-lg border border-rose-500/40 bg-rose-950/40 text-rose-200 text-xs font-bold disabled:opacity-50"
+                              >
+                                Confirm and execute
+                              </button>
+                            </div>
+                          ) : actionProposal.status === 'pending' ? (
+                            <div className="text-right text-slate-400">
+                              Your role cannot confirm this moderation action.
+                            </div>
+                          ) : (
+                            <div className="text-right font-bold uppercase text-slate-400">
+                              {actionProposal.status}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex justify-end gap-2 pt-1">
+                          <button
+                            onClick={() => handleDenyTask(task.id)}
+                            className="px-3 py-1.5 rounded-lg border border-rose-500/40 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 text-xs font-bold transition cursor-pointer"
+                          >
+                            Deny
+                          </button>
+                          <button
+                            onClick={() => handleApproveTask(task.id)}
+                            className="px-3 py-1.5 rounded-lg border border-emerald-500/40 bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-300 text-xs font-bold transition cursor-pointer"
+                          >
+                            Approve Recommendation
+                          </button>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -333,14 +484,92 @@ export const AITasksView: React.FC = () => {
                     <Sparkles className="h-4 w-4" />
                   </div>
                 )}
-                <div
-                  className={`min-w-0 max-w-[85%] break-words [overflow-wrap:anywhere] rounded-xl p-3.5 leading-relaxed ${
-                    msg.sender === 'user'
-                      ? 'bg-purple-600 text-white font-medium shadow-md'
-                      : 'bg-[#070914] text-slate-200 border border-[#1e1b4b]'
-                  }`}
-                >
-                  {msg.text}
+                <div className="min-w-0 max-w-[85%] space-y-2">
+                  <div
+                    className={`min-w-0 break-words [overflow-wrap:anywhere] rounded-xl p-3.5 leading-relaxed ${
+                      msg.sender === 'user'
+                        ? 'bg-purple-600 text-white font-medium shadow-md'
+                        : 'bg-[#070914] text-slate-200 border border-[#1e1b4b]'
+                    }`}
+                  >
+                    {msg.text}
+                  </div>
+                  {msg.actions?.map((action) => (
+                    <div
+                      key={action.task_id}
+                      className="rounded-xl border border-amber-500/40 bg-amber-950/30 p-3 text-xs"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-bold uppercase text-amber-200">
+                          Pending {action.action === 'tempban' ? 'temporary ban' : action.action}
+                        </span>
+                        <span className="text-[10px] text-amber-100/70">
+                          Expires {new Date(action.proposal_expires_at).toLocaleString()}
+                        </span>
+                      </div>
+                      <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-[11px]">
+                        <dt className="text-slate-400">Player</dt>
+                        <dd className="break-all text-white">
+                          {action.player_name} ({action.player_uuid})
+                        </dd>
+                        {action.action === 'tempban' && (
+                          <>
+                            <dt className="text-slate-400">Duration</dt>
+                            <dd className="text-white">{action.duration_hours} hours</dd>
+                          </>
+                        )}
+                        {action.expires_at && (
+                          <>
+                            <dt className="text-slate-400">Ban expires</dt>
+                            <dd className="text-white">{new Date(action.expires_at).toLocaleString()}</dd>
+                          </>
+                        )}
+                        {action.reason && (
+                          <>
+                            <dt className="text-slate-400">Reason</dt>
+                            <dd className="break-words text-white">{action.reason}</dd>
+                          </>
+                        )}
+                      </dl>
+                      <p className="mt-2 text-[10px] text-amber-100/70">
+                        No action has been taken. Bans apply across the network; review the target and reason before confirming.
+                      </p>
+                      {action.status === 'pending' && canConfirmModeration ? (
+                        <div className="mt-3 flex justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleDeclineCopilotAction(action)}
+                            disabled={copilotActionSubmitting !== null}
+                            className="rounded-lg border border-slate-500/40 px-3 py-1.5 text-[11px] text-slate-300 hover:bg-slate-800 disabled:opacity-50"
+                          >
+                            Dismiss
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleConfirmCopilotAction(action)}
+                            disabled={copilotActionSubmitting !== null}
+                            className="rounded-lg border border-rose-500/40 bg-rose-900/50 px-3 py-1.5 text-[11px] font-bold text-rose-100 hover:bg-rose-800/70 disabled:opacity-50"
+                          >
+                            {copilotActionSubmitting === action.task_id
+                              ? 'Submitting...'
+                              : 'Confirm and execute'}
+                          </button>
+                        </div>
+                      ) : action.status === 'pending' ? (
+                        <p className="mt-3 text-right text-[11px] text-slate-400">
+                          Your role cannot confirm this moderation action.
+                        </p>
+                      ) : (
+                        <div className="mt-3 text-right text-[11px] font-semibold uppercase text-slate-300">
+                          {action.status === 'approved'
+                            ? 'Executed'
+                            : action.status === 'denied'
+                              ? 'Dismissed'
+                              : 'Expired'}
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               </div>
             ))}
@@ -352,7 +581,7 @@ export const AITasksView: React.FC = () => {
               type="text"
               value={copilotInput}
               onChange={(e) => setCopilotInput(e.target.value)}
-              placeholder="Ask Copilot about GrimAC logs, player trends, or server triage..."
+              placeholder="Ask about players, activity, or request a ban/unban proposal..."
               className="min-w-0 flex-1 rounded-xl border border-[#1e1b4b] bg-[#070914] px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none font-sans"
             />
             <button

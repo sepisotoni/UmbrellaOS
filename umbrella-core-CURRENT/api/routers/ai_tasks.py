@@ -18,6 +18,7 @@ P15 Tasks 4 & 5:
 
 import json
 from datetime import datetime, timezone
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,11 +27,21 @@ from pydantic import BaseModel
 
 from database import get_db
 from api.middleware.auth import require_admin_key
+from api.middleware.api_key_auth import require_capability_auth
 from api.dependencies.permissions import require_permission
 from services import ai_service
 from models import AITask, Appeal, AuditLog
 from models import User
 from models.api_key import ApiKey
+from services.ai.copilot_actions import (
+    ACTION_PERMISSION,
+    ACTION_TASK_TYPE,
+    CopilotActionError,
+    decline_proposal,
+    execute_proposal,
+    expire_pending_proposals,
+)
+from services.permission_resolution import resolve_user_permissions
 
 router = APIRouter(prefix="/api/v1/ai", tags=["ai"])
 
@@ -48,12 +59,45 @@ class DenyTaskRequest(BaseModel):
     reason: str | None = None
 
 
+class ExecuteActionRequest(BaseModel):
+    confirm: Literal[True]
+
+
 def _reviewer_identity(auth: User | ApiKey | str) -> str:
     if isinstance(auth, User):
         return auth.username
     if isinstance(auth, ApiKey):
         return f"api-key:{auth.name}"[:128]
     return "admin-key"
+
+
+async def _require_human_action_permission(
+    auth: User | ApiKey | str, db: AsyncSession
+) -> tuple[str, str]:
+    if isinstance(auth, ApiKey):
+        raise HTTPException(
+            status_code=403, detail="A staff session is required to confirm Copilot actions"
+        )
+    if isinstance(auth, str):
+        raise HTTPException(
+            status_code=403,
+            detail="A staff session is required to confirm Copilot actions",
+        )
+    if auth.mfa_enabled and getattr(auth, "_supabase_aal", None) != "aal2":
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "mfa_required": True,
+                "mfa_migration_required": True,
+                "message": "Complete Supabase Auth MFA enrollment to continue",
+            },
+        )
+    permissions = await resolve_user_permissions(auth, db)
+    if ACTION_PERMISSION not in permissions:
+        raise HTTPException(
+            status_code=403, detail=f"Missing permission: {ACTION_PERMISSION}"
+        )
+    return auth.username, "staff"
 
 
 # ---------------------------------------------------------------------------
@@ -166,6 +210,7 @@ async def list_ai_tasks(
     _auth=Depends(require_permission("punishments.view")),
 ):
     """List all AI tasks with filters: status, task_type. Pagination: skip, limit."""
+    await expire_pending_proposals(db)
     query = select(AITask)
 
     if status:
@@ -178,7 +223,10 @@ async def list_ai_tasks(
     result = await db.execute(query)
     tasks = result.scalars().all()
 
-    return [_task_to_dict(t) for t in tasks]
+    return [
+        _task_to_dict(t, include_evidence=t.task_type == ACTION_TASK_TYPE)
+        for t in tasks
+    ]
 
 
 @router.get("/tasks/{task_id}")
@@ -188,6 +236,7 @@ async def get_ai_task(
     _auth=Depends(require_permission("punishments.view")),
 ):
     """Get single AI task with full evidence."""
+    await expire_pending_proposals(db)
     task = await db.scalar(select(AITask).where(AITask.id == task_id))
     if not task:
         raise HTTPException(status_code=404, detail="AI task not found")
@@ -211,6 +260,11 @@ async def approve_ai_task(
     if not task:
         raise HTTPException(status_code=404, detail="AI task not found")
 
+    if task.task_type == ACTION_TASK_TYPE:
+        raise HTTPException(
+            status_code=409,
+            detail="Copilot action proposals require explicit execution confirmation",
+        )
     if task.status != "pending":
         raise HTTPException(status_code=400, detail="Task is not pending")
 
@@ -256,6 +310,11 @@ async def deny_ai_task(
     if not task:
         raise HTTPException(status_code=404, detail="AI task not found")
 
+    if task.task_type == ACTION_TASK_TYPE:
+        raise HTTPException(
+            status_code=409,
+            detail="Use the Copilot action decline endpoint for this proposal",
+        )
     if task.status != "pending":
         raise HTTPException(status_code=400, detail="Task is not pending")
 
@@ -281,4 +340,57 @@ async def deny_ai_task(
     await db.commit()
     await db.refresh(task)
 
+    return _task_to_dict(task, include_evidence=True)
+
+
+@router.post("/tasks/{task_id}/execute")
+async def execute_copilot_action(
+    task_id: int,
+    body: ExecuteActionRequest,
+    db: AsyncSession = Depends(get_db),
+    auth=Depends(require_capability_auth),
+):
+    """Execute a stored Copilot action only after explicit human confirmation."""
+    actor, actor_type = await _require_human_action_permission(auth, db)
+    task = await db.scalar(
+        select(AITask).where(AITask.id == task_id).with_for_update()
+    )
+    if task is None:
+        raise HTTPException(status_code=404, detail="AI task not found")
+
+    try:
+        result = await execute_proposal(
+            db, task, actor=actor, actor_type=actor_type
+        )
+    except CopilotActionError as exc:
+        if exc.status_code == 410:
+            await db.commit()
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+
+    await db.commit()
+    await db.refresh(task)
+    return {**result, "task": _task_to_dict(task, include_evidence=True)}
+
+
+@router.post("/tasks/{task_id}/decline")
+async def decline_copilot_action(
+    task_id: int,
+    db: AsyncSession = Depends(get_db),
+    auth=Depends(require_capability_auth),
+):
+    """Dismiss a Copilot action proposal without executing it."""
+    actor, actor_type = await _require_human_action_permission(auth, db)
+    task = await db.scalar(
+        select(AITask).where(AITask.id == task_id).with_for_update()
+    )
+    if task is None:
+        raise HTTPException(status_code=404, detail="AI task not found")
+    try:
+        await decline_proposal(db, task, actor=actor, actor_type=actor_type)
+    except CopilotActionError as exc:
+        if exc.status_code == 410:
+            await db.commit()
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+    await db.commit()
+    await db.refresh(task)
     return _task_to_dict(task, include_evidence=True)

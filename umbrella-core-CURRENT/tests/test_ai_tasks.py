@@ -2,10 +2,13 @@
 tests/test_ai_tasks.py — AI moderation task API tests.
 """
 
+import json
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
-from models import AITask, AuditLog, Player, Setting
+from models import AITask, AuditLog, Player, Punishment, Session, Setting, User
+from models.permissions import Role
 from datetime import datetime, timezone, timedelta
 
 
@@ -114,7 +117,7 @@ async def test_get_ai_tasks_returns_list(client: AsyncClient, db_session):
         "/api/v1/ai/tasks",
         headers={"X-Admin-Key": "test-secret-key"},
     )
-    assert response.status_code == 200
+    assert response.status_code == 200, response.text
     data = response.json()
     assert len(data) >= 2
 
@@ -483,3 +486,317 @@ async def test_get_ai_task_id_returns_404_for_nonexistent(client: AsyncClient):
         headers={"X-Admin-Key": "test-secret-key"},
     )
     assert response.status_code == 404
+
+
+async def _create_pending_copilot_action(
+    db_session, *, expires_at=None, action="tempban", duration_hours=48
+):
+    async with db_session() as db:
+        player = await db.get(Player, "99999999-9999-9999-9999-999999999999")
+        if player is None:
+            player = Player(
+                uuid="99999999-9999-9999-9999-999999999999",
+                username="ActionTarget",
+            )
+            db.add(player)
+        action_expiry = (
+            datetime.now(timezone.utc) + timedelta(hours=duration_hours)
+            if action == "tempban"
+            else None
+        )
+        proposal = {
+            "action": action,
+            "player_uuid": player.uuid,
+            "player_name": player.username,
+            "reason": "Repeated cheating",
+            "duration_hours": duration_hours if action == "tempban" else None,
+            "expires_at": action_expiry.isoformat() if action_expiry else None,
+        }
+        task = AITask(
+            task_type="copilot_moderation_action",
+            status="pending",
+            player_uuid=player.uuid,
+            created_at=datetime.now(timezone.utc),
+            expires_at=expires_at or datetime.now(timezone.utc) + timedelta(minutes=5),
+            ai_summary=f"Copilot proposes {action} for ActionTarget",
+            ai_recommendation=action,
+            ai_confidence=0.0,
+            evidence=json.dumps({"copilot_action": proposal}),
+        )
+        db.add(task)
+        if action == "unban":
+            db.add(
+                Punishment(
+                    player_uuid=player.uuid,
+                    type="ban",
+                    reason="Previous ban",
+                    active=True,
+                )
+            )
+        await db.commit()
+        return task.id, player.uuid
+
+
+async def _copilot_action_headers(db_session, *, role_name="owner"):
+    async with db_session() as db:
+        role = await db.scalar(select(Role).where(Role.name == role_name))
+        user = User(
+            discord_id=f"copilot-action-{role_name}",
+            username=f"CopilotAction{role_name}",
+            role_id=role.id,
+        )
+        db.add(user)
+        await db.flush()
+        db.add(
+            Session(
+                user_id=user.id,
+                token=f"copilot-action-token-{role_name}",
+                expires_at=datetime.now(timezone.utc) + timedelta(days=1),
+            )
+        )
+        await db.commit()
+    return {"Authorization": f"Bearer copilot-action-token-{role_name}"}
+
+
+@pytest.mark.asyncio
+async def test_copilot_action_requires_explicit_confirmation(client, db_session):
+    task_id, player_uuid = await _create_pending_copilot_action(db_session)
+
+    response = await client.post(
+        f"/api/v1/ai/tasks/{task_id}/execute",
+        json={"confirm": False},
+        headers={"X-Admin-Key": "test-secret-key"},
+    )
+
+    assert response.status_code == 422
+    async with db_session() as db:
+        task = await db.get(AITask, task_id)
+        punishment = await db.scalar(
+            select(Punishment).where(Punishment.player_uuid == player_uuid)
+        )
+        assert task.status == "pending"
+        assert punishment is None
+
+
+@pytest.mark.asyncio
+async def test_machine_admin_key_cannot_confirm_copilot_action(client, db_session):
+    task_id, player_uuid = await _create_pending_copilot_action(db_session)
+
+    response = await client.post(
+        f"/api/v1/ai/tasks/{task_id}/execute",
+        json={"confirm": True},
+        headers={"X-Admin-Key": "test-secret-key"},
+    )
+
+    assert response.status_code == 403
+    async with db_session() as db:
+        task = await db.get(AITask, task_id)
+        punishment = await db.scalar(
+            select(Punishment).where(Punishment.player_uuid == player_uuid)
+        )
+        assert task.status == "pending"
+        assert punishment is None
+
+
+@pytest.mark.asyncio
+async def test_copilot_action_cannot_use_legacy_approve_endpoint(client, db_session):
+    task_id, player_uuid = await _create_pending_copilot_action(db_session)
+
+    response = await client.post(
+        f"/api/v1/ai/tasks/{task_id}/approve",
+        json={"action_taken": "approved"},
+        headers={"X-Admin-Key": "test-secret-key"},
+    )
+
+    assert response.status_code == 409
+    async with db_session() as db:
+        task = await db.get(AITask, task_id)
+        punishment = await db.scalar(
+            select(Punishment).where(Punishment.player_uuid == player_uuid)
+        )
+        assert task.status == "pending"
+        assert punishment is None
+
+
+@pytest.mark.asyncio
+async def test_copilot_action_executes_only_after_explicit_confirmation(
+    client, db_session
+):
+    task_id, player_uuid = await _create_pending_copilot_action(db_session)
+    owner_headers = await _copilot_action_headers(db_session)
+
+    response = await client.post(
+        f"/api/v1/ai/tasks/{task_id}/execute",
+        json={"confirm": True},
+        headers=owner_headers,
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "approved"
+    assert response.json()["action"] == "tempban"
+    async with db_session() as db:
+        task = await db.get(AITask, task_id)
+        punishment = await db.scalar(
+            select(Punishment).where(Punishment.player_uuid == player_uuid)
+        )
+        audit = await db.scalar(
+            select(AuditLog).where(
+                AuditLog.action == "ai_action.executed",
+                AuditLog.target == str(task_id),
+            )
+        )
+        assert task.status == "approved"
+        assert punishment.type == "tempban"
+        assert punishment.active is True
+        assert punishment.expires_at is not None
+        assert audit is not None
+
+
+@pytest.mark.asyncio
+async def test_copilot_permanent_ban_and_unban_execute_after_confirmation(
+    client, db_session
+):
+    owner_headers = await _copilot_action_headers(db_session)
+    task_id, player_uuid = await _create_pending_copilot_action(
+        db_session, action="ban"
+    )
+
+    ban_response = await client.post(
+        f"/api/v1/ai/tasks/{task_id}/execute",
+        json={"confirm": True},
+        headers=owner_headers,
+    )
+
+    assert ban_response.status_code == 200
+    async with db_session() as db:
+        ban = await db.scalar(select(Punishment).where(Punishment.player_uuid == player_uuid))
+        assert ban.type == "ban"
+        assert ban.expires_at is None
+        assert ban.active is True
+
+    unban_task_id, _ = await _create_pending_copilot_action(
+        db_session, action="unban"
+    )
+    unban_response = await client.post(
+        f"/api/v1/ai/tasks/{unban_task_id}/execute",
+        json={"confirm": True},
+        headers=owner_headers,
+    )
+
+    assert unban_response.status_code == 200
+    async with db_session() as db:
+        bans = list(
+            (
+                await db.scalars(
+                    select(Punishment).where(Punishment.player_uuid == player_uuid)
+                )
+            ).all()
+        )
+        assert bans
+        assert all(not ban.active and ban.status == "REVOKED" for ban in bans)
+
+
+@pytest.mark.asyncio
+async def test_expired_copilot_action_cannot_execute(client, db_session):
+    task_id, player_uuid = await _create_pending_copilot_action(
+        db_session, expires_at=datetime.now(timezone.utc) - timedelta(seconds=1)
+    )
+    owner_headers = await _copilot_action_headers(db_session)
+
+    response = await client.post(
+        f"/api/v1/ai/tasks/{task_id}/execute",
+        json={"confirm": True},
+        headers=owner_headers,
+    )
+
+    assert response.status_code == 410
+    async with db_session() as db:
+        task = await db.get(AITask, task_id)
+        punishment = await db.scalar(
+            select(Punishment).where(Punishment.player_uuid == player_uuid)
+        )
+        assert task.status == "expired"
+        assert punishment is None
+
+
+@pytest.mark.asyncio
+async def test_copilot_action_requires_live_action_permission(client, db_session):
+    task_id, player_uuid = await _create_pending_copilot_action(db_session)
+    async with db_session() as db:
+        role = await db.scalar(select(Role).where(Role.name == "member"))
+        user = User(
+            discord_id="action-no-permission",
+            username="ActionNoPermission",
+            role_id=role.id,
+        )
+        db.add(user)
+        await db.flush()
+        db.add(
+            Session(
+                user_id=user.id,
+                token="action-no-permission-token",
+                expires_at=datetime.now(timezone.utc) + timedelta(days=1),
+            )
+        )
+        await db.commit()
+
+    response = await client.post(
+        f"/api/v1/ai/tasks/{task_id}/execute",
+        json={"confirm": True},
+        headers={"Authorization": "Bearer action-no-permission-token"},
+    )
+
+    assert response.status_code == 403
+    async with db_session() as db:
+        task = await db.get(AITask, task_id)
+        punishment = await db.scalar(
+            select(Punishment).where(Punishment.player_uuid == player_uuid)
+        )
+        assert task.status == "pending"
+        assert punishment is None
+
+
+@pytest.mark.asyncio
+async def test_copilot_action_can_be_declined_without_execution(client, db_session):
+    task_id, player_uuid = await _create_pending_copilot_action(db_session)
+    owner_headers = await _copilot_action_headers(db_session)
+
+    response = await client.post(
+        f"/api/v1/ai/tasks/{task_id}/decline",
+        headers=owner_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "denied"
+    async with db_session() as db:
+        task = await db.get(AITask, task_id)
+        punishment = await db.scalar(
+            select(Punishment).where(Punishment.player_uuid == player_uuid)
+        )
+        audit = await db.scalar(
+            select(AuditLog).where(
+                AuditLog.action == "ai_action.declined",
+                AuditLog.target == str(task_id),
+            )
+        )
+        assert task.status == "denied"
+        assert punishment is None
+        assert audit is not None
+
+
+@pytest.mark.asyncio
+async def test_expired_proposals_are_removed_from_pending_task_list(client, db_session):
+    task_id, _ = await _create_pending_copilot_action(
+        db_session, expires_at=datetime.now(timezone.utc) - timedelta(seconds=1)
+    )
+
+    response = await client.get(
+        "/api/v1/ai/tasks?status=pending",
+        headers={"X-Admin-Key": "test-secret-key"},
+    )
+
+    assert response.status_code == 200
+    assert all(task["id"] != task_id for task in response.json())
+    async with db_session() as db:
+        task = await db.get(AITask, task_id)
+        assert task.status == "expired"
