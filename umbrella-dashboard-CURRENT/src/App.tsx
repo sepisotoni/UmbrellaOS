@@ -36,6 +36,7 @@ const DashboardContent: React.FC = () => {
     toasts,
     removeToast,
     currentUser,
+    authConfigLoaded,
     sessionToken,
     canAccessTab,
     showDoodles,
@@ -58,10 +59,10 @@ const DashboardContent: React.FC = () => {
 
   // If unauthenticated and not on the login page, redirect immediately to login
   useEffect(() => {
-    if (!isAuthenticated && activeTab !== 'login') {
+    if (authConfigLoaded && !isAuthenticated && activeTab !== 'login') {
       setActiveTab('login');
     }
-  }, [isAuthenticated, activeTab, setActiveTab]);
+  }, [authConfigLoaded, isAuthenticated, activeTab, setActiveTab]);
 
   const handleOpenBanModalWithTarget = (player: string) => {
     setPunishTargetPlayer(player);
