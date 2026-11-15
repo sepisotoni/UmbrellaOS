@@ -43,6 +43,10 @@ async def resolve_user_permissions(user: User, db: AsyncSession) -> set[str]:
     callers should treat "no permissions" as "deny", not as "unauthenticated";
     authentication is a separate concern handled before this is ever called.
     """
+    token_permissions = getattr(user, "_supabase_permissions", None)
+    if token_permissions is not None:
+        return set(token_permissions)
+
     permissions: set[str] = set()
 
     if user.role_id:

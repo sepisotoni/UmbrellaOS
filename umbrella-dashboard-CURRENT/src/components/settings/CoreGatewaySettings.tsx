@@ -4,19 +4,13 @@
  */
 
 import React from 'react';
-import { Server, Lock } from 'lucide-react';
+import { Server, ShieldCheck } from 'lucide-react';
 
 interface CoreGatewaySettingsProps {
   coreUrl: string;
-  adminKey: string;
-  setAdminKey: (key: string) => void;
 }
 
-export const CoreGatewaySettings: React.FC<CoreGatewaySettingsProps> = ({
-  coreUrl,
-  adminKey,
-  setAdminKey,
-}) => {
+export const CoreGatewaySettings: React.FC<CoreGatewaySettingsProps> = ({ coreUrl }) => {
   return (
     <div className="rounded-xl border border-[#141d3d] bg-[#060b1c] p-5 shadow-xl space-y-4 font-mono text-xs">
       <div className="flex items-center gap-2 border-b border-[#141d3d] pb-3">
@@ -24,7 +18,7 @@ export const CoreGatewaySettings: React.FC<CoreGatewaySettingsProps> = ({
         <h2 className="font-bold text-white uppercase text-sm font-sans">Core Connection & Gateway</h2>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4">
         <div>
           <label className="block text-slate-300 mb-1 font-sans font-medium">FastAPI Backend Endpoint</label>
           <input
@@ -36,22 +30,10 @@ export const CoreGatewaySettings: React.FC<CoreGatewaySettingsProps> = ({
           <p className="text-[10px] text-slate-500 mt-1">Configured via environment variable VITE_UMBRELLA_CORE_URL</p>
         </div>
 
-        <div>
-          <label className="block text-slate-300 mb-1 font-sans font-medium flex items-center gap-1.5">
-            <Lock className="h-3 w-3 text-indigo-400" />
-            <span>Admin API Key (X-Admin-Key)</span>
-          </label>
-          <input
-            type="password"
-            value={adminKey}
-            onChange={(e) => setAdminKey(e.target.value)}
-            placeholder="Enter secret admin key to override session..."
-            className="w-full rounded-lg border border-[#141d3d] bg-[#02040a] p-2.5 text-white focus:border-indigo-500 focus:outline-none"
-          />
-          <p className="text-[10px] text-slate-500 mt-1">
-            Enables full administrative bypass and server console access.
-          </p>
-        </div>
+        <p className="flex items-center gap-2 text-[10px] text-emerald-300/80">
+          <ShieldCheck className="h-3.5 w-3.5" />
+          Dashboard requests use Supabase Auth and server-managed permissions. Core service keys are never stored in the browser.
+        </p>
       </div>
     </div>
   );

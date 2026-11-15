@@ -7,7 +7,6 @@
 export interface ApiConfig {
   baseUrl: string;
   sessionToken: string | null;
-  adminKey: string | null;
 }
 
 /**
@@ -70,33 +69,9 @@ export interface UserSchema {
   updated_at: string;
 }
 
-export interface DiscordOAuthStartResponse {
-  authorize_url: string;
-  state: string;
-}
-
-export interface DiscordOAuthCallbackResponse {
-  token: string;
-  user: UserSchema;
-  expires_in: number;
-}
-
-export interface MFAVerifyResponse {
-  token: string;
-  user: UserSchema;
-  expires_in: number;
-}
-
-export interface MFABeginResponse {
-  provisioning_uri: string;
-  secret: string;
-}
-
-/** Shape of the 403 detail body when MFA is required after Discord OAuth */
-export interface MFAChallengeDetail {
-  mfa_required: true;
-  mfa_token: string;
-  message: string;
+export interface PublicAuthConfig {
+  supabase_url: string;
+  supabase_publishable_key: string;
 }
 
 // Bot Guild Types
@@ -498,12 +473,13 @@ export interface SettingRecord {
 }
 
 // Default Base URL
-const DEFAULT_CORE_URL = (import.meta as any).env?.VITE_UMBRELLA_CORE_URL || 'https://umbrellaos-core.onrender.com';
+const DEFAULT_CORE_URL =
+  (import.meta as any).env?.VITE_UMBRELLA_CORE_URL ||
+  'https://umbrellaos-core-7vd0.onrender.com';
 
 export class UmbrellaApiClient {
   private baseUrl: string = DEFAULT_CORE_URL;
   private sessionToken: string | null = null;
-  private adminKey: string | null = null;
 
   constructor() {
     if (typeof window !== 'undefined' && window.localStorage) {
@@ -511,10 +487,10 @@ export class UmbrellaApiClient {
       if (storedUrl) {
         this.baseUrl = storedUrl.replace(/\/+$/, '');
       }
-      const storedKey = localStorage.getItem('umbrella_admin_key_override') || localStorage.getItem('umbrella_admin_key');
-      if (storedKey) {
-        this.adminKey = storedKey;
-      }
+      localStorage.removeItem('umbrella_admin_key_override');
+      localStorage.removeItem('umbrella_admin_key');
+      localStorage.removeItem('umbrella_admin_user');
+      localStorage.removeItem('umbrella_session_token');
     }
   }
 
@@ -535,14 +511,6 @@ export class UmbrellaApiClient {
 
   public getSessionToken(): string | null {
     return this.sessionToken;
-  }
-
-  public setAdminKey(key: string | null) {
-    this.adminKey = key;
-  }
-
-  public getAdminKey(): string | null {
-    return this.adminKey;
   }
 
   public getServerConsoleWebSocketUrl(serverId: string): string {
@@ -645,10 +613,6 @@ export class UmbrellaApiClient {
       headers.set('Authorization', `Bearer ${this.sessionToken}`);
     }
 
-    if (this.adminKey) {
-      headers.set('X-Admin-Key', this.adminKey);
-    }
-
     const url = `${this.baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
 
     try {
@@ -701,81 +665,12 @@ export class UmbrellaApiClient {
   // --------------------------------------------------------------------------
   // Auth
   // --------------------------------------------------------------------------
-  public async getDiscordAuthUrl(redirectUri?: string): Promise<DiscordOAuthStartResponse> {
-    return this.request<DiscordOAuthStartResponse>('/api/v1/auth/discord/authorize', {
-      method: 'POST',
-      body: JSON.stringify({ redirect_uri: redirectUri ?? `${window.location.origin}/` }),
-    });
-  }
-
-  public async discordAuthorize(redirectUri?: string): Promise<DiscordOAuthStartResponse> {
-    return this.getDiscordAuthUrl(redirectUri);
-  }
-
-  public async exchangeDiscordCode(code: string, state: string, redirectUri?: string): Promise<DiscordOAuthCallbackResponse> {
-    return this.request<DiscordOAuthCallbackResponse>('/api/v1/auth/discord/callback', {
-      method: 'POST',
-      body: JSON.stringify({ code, state, redirect_uri: redirectUri }),
-    });
-  }
-
-  public async discordCallback(code: string, state: string, redirectUri?: string): Promise<DiscordOAuthCallbackResponse> {
-    return this.exchangeDiscordCode(code, state, redirectUri);
-  }
-
-  /** Exchange a short-lived MFA pre-session token + TOTP code for a full session. */
-  public async mfaVerify(mfaToken: string, code: string): Promise<MFAVerifyResponse> {
-    return this.request<MFAVerifyResponse>('/api/v1/auth/mfa/verify', {
-      method: 'POST',
-      body: JSON.stringify({ mfa_token: mfaToken, code }),
-    });
-  }
-
-  /** Begin MFA enrollment — returns provisioning URI (QR) and raw secret. */
-  public async mfaEnable(): Promise<MFABeginResponse> {
-    return this.request<MFABeginResponse>('/api/v1/auth/mfa/enable', { method: 'POST' });
-  }
-
-  /** Confirm MFA enrollment with a valid TOTP code. */
-  public async mfaConfirm(code: string): Promise<{ success: boolean }> {
-    return this.request<{ success: boolean }>('/api/v1/auth/mfa/confirm', {
-      method: 'POST',
-      body: JSON.stringify({ code }),
-    });
-  }
-
-  /** Disable MFA — requires a current valid TOTP code. */
-  public async mfaDisable(code: string): Promise<{ success: boolean }> {
-    return this.request<{ success: boolean }>('/api/v1/auth/mfa/disable', {
-      method: 'POST',
-      body: JSON.stringify({ code }),
-    });
-  }
-
-  public async logout(): Promise<void> {
-    // Hit core to revoke the session server-side before clearing local state
-    if (this.sessionToken) {
-      try {
-        await this.request<unknown>('/api/v1/auth/logout', {
-          method: 'POST',
-          // Session token is sent as Authorization: Bearer <token> by request()
-        });
-      } catch {
-        // Best-effort — clear local state regardless
-      }
-    }
-    this.sessionToken = null;
-    this.adminKey = null;
-    if (typeof window !== 'undefined' && window.localStorage) {
-      localStorage.removeItem('umbrella_session_token');
-      localStorage.removeItem('umbrella_admin_key');
-      localStorage.removeItem('umbrella_admin_user');
-      localStorage.removeItem('umb_auth_user');
-    }
-  }
-
   public async getMe(): Promise<UserSchema> {
     return this.request<UserSchema>('/api/v1/auth/me');
+  }
+
+  public async getPublicAuthConfig(): Promise<PublicAuthConfig> {
+    return this.request<PublicAuthConfig>('/api/v1/auth/public-config');
   }
 
   public async getRoles(): Promise<RoleSchema[]> {

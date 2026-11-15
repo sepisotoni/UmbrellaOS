@@ -177,6 +177,35 @@ async def client(db_session, monkeypatch):
     monkeypatch.setattr(auth_middleware, "settings", settings)
     monkeypatch.setattr(session_middleware, "settings", settings)
 
+    # Route tests exercise authorization with persisted test sessions; token
+    # signature validation is covered separately in tests/test_supabase_auth.py.
+    async def test_current_user(token, db):
+        from fastapi import HTTPException
+        from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
+        from models import Session, User
+        from services.permission_resolution import resolve_user_permissions
+
+        if token.startswith("mfa:"):
+            raise HTTPException(status_code=401, detail="Invalid or expired session")
+        result = await db.execute(
+            select(Session)
+            .options(selectinload(Session.user))
+            .where(Session.token == token)
+        )
+        session = result.scalar_one_or_none()
+        if session is None or not session.is_valid():
+            raise HTTPException(status_code=401, detail="Invalid or expired session")
+        if not session.user.is_active:
+            raise HTTPException(status_code=403, detail="Account is deactivated")
+        session.user._supabase_permissions = await resolve_user_permissions(
+            session.user, db
+        )
+        session.user._supabase_aal = "aal2"
+        return session.user
+
+    monkeypatch.setattr(session_middleware, "get_current_user", test_current_user)
+
     # Replace the real Redis-backed rate limiter with a no-op stub.
     # The RateLimitMiddleware captures `rate_limiter` as `self._limiter` at
     # add_middleware() time. We patch the module-level `_rate_limiter` for

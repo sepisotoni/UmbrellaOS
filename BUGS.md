@@ -161,8 +161,8 @@ No application code changed.
 | ID | Priority | Evidence level | Source → consequence |
 |---|---|---|---|
 | UOS-CORE-029 | High | Concrete unsupported-session-use pattern; runtime test needed | `api/routers/players.py:327+`: full-profile endpoint uses `asyncio.gather()` to concurrently execute **five database query coroutines on the same injected `AsyncSession`**. Same failure class as UOS-CORE-001 in `services/ai_service.py`; serialize queries or provide independent sessions per coroutine. Test under Postgres concurrent load. |
-| UOS-CORE-030 | High in debug deployments | Auth boundary requires explicit test | `capabilities/dev_auth.py`: `auth.dev.mint_test_session` is registered with `required_permission=None` and can mint real sessions when `settings.debug` is true. Production debug=false blocks it, but **debug=true installations must be isolated**; inspect caller requirements in the REST registry and test low-privilege callers. Do not leave debug enabled on any exposed deployment. |
-| UOS-CORE-031 | Medium | Sensitive-result audit distinction | `registry/registry.py` logs **request params** via `params.model_dump(mode='json')`, not result bodies. `dev_auth` session token, node signing secret and webhook secret are returned in result models, and are *not automatically dumped by this audit line*. However any future capability **input** containing secrets may leak; inventory and redact sensitive input fields. Refines UOS-CORE-026. |
+| UOS-CORE-030 | Resolved in Supabase Auth cutover | Retired legacy session issuer | Removed `capabilities/dev_auth.py` and its registry entry; dashboard sessions are no longer minted by Core. |
+| UOS-CORE-031 | Medium | Sensitive-result audit distinction | `registry/registry.py` logs **request params** via `params.model_dump(mode='json')`, not result bodies. Node signing secrets and webhook secrets are returned in result models and are *not automatically dumped by this audit line*. However any future capability **input** containing secrets may leak; inventory and redact sensitive input fields. Refines UOS-CORE-026. |
 
 ### Verification / cleanup guidance
 

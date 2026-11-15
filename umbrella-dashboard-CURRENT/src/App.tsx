@@ -37,7 +37,6 @@ const DashboardContent: React.FC = () => {
     removeToast,
     currentUser,
     sessionToken,
-    adminKey,
     canAccessTab,
     showDoodles,
     setShowDoodles,
@@ -55,7 +54,7 @@ const DashboardContent: React.FC = () => {
   const [isBrandModalOpen, setIsBrandModalOpen] = useState(false);
   const [punishTargetPlayer, setPunishTargetPlayer] = useState<string>('');
 
-  const isAuthenticated = Boolean(currentUser || sessionToken || (adminKey && adminKey.trim().length > 0));
+  const isAuthenticated = Boolean(currentUser || sessionToken);
 
   // If unauthenticated and not on the login page, redirect immediately to login
   useEffect(() => {
@@ -124,7 +123,7 @@ const DashboardContent: React.FC = () => {
 
   // Users with no role at all (null/member) — block the entire dashboard, no layout
   const userRole = (currentUser?.role || '').toLowerCase();
-  const hasNoRole = currentUser && !adminKey && (!userRole || userRole === 'member');
+  const hasNoRole = currentUser && (!userRole || userRole === 'member');
   if (hasNoRole) {
     return (
       <div className="h-screen w-screen overflow-y-auto font-sans bg-[#02040a] text-slate-100 relative">

@@ -19,6 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import get_settings, validate_secrets
 from database import get_db, create_tables, AsyncSessionLocal
 from services import SettingsService, RolesService
+from services.auth_bootstrap import ensure_initial_admin
 from services.ai.constitution_service import ConstitutionService
 from api.middleware.errors import register_error_handlers
 from api.middleware.rate_limit import RateLimitMiddleware
@@ -137,6 +138,7 @@ async def lifespan(app: FastAPI):
         await SettingsService.seed_defaults(db)
         await RolesService.seed_defaults(db)
         await ConstitutionService.seed_defaults(db)
+        await ensure_initial_admin(db, settings.initial_admin_discord_id)
         await db.commit()
     print("[Umbrella Core] Defaults seeded")
 

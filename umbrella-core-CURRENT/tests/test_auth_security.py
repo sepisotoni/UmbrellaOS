@@ -1,18 +1,13 @@
 """
 tests/test_auth_security.py — Security regression tests for the auth subsystem.
 
-These tests target the specific bugs found in the Phase 16B auth audit and
-must never regress:
+These tests cover auth boundaries that must never regress:
 
 1. Timing-safe secret comparison (hmac.compare_digest) — hard to test
    exhaustively in unit tests, but we verify the *logic paths* that were
    previously using `==` all reject on wrong keys.
-2. Session token must NOT appear in query parameters on /logout or /me.
-3. MFA gate at discord_callback — users with mfa_enabled=True must not
-   receive a full session token from /discord/callback.
-4. mfa: pre-session token cannot be used on regular authenticated endpoints.
-5. MFA disable requires a valid TOTP code — cannot be bypassed with just
-   a session token.
+2. Legacy Core OAuth and MFA endpoints cannot issue credentials.
+3. Legacy Core session tokens cannot authenticate API requests.
 6. Duplicate rate-limit settings don't crash startup.
 7. Generic 500 handler does not leak exception detail to clients.
 8. /verification/count requires verification.link.view permission, not
@@ -25,11 +20,11 @@ import time
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
-import pyotp
 import pytest
 import pytest_asyncio
 from sqlalchemy import select
 
+from config import get_settings
 from models import Session, User
 from models.permissions import Role
 from tests.conftest import ADMIN_HEADERS, PLUGIN_HEADERS, WRONG_HEADERS
@@ -104,25 +99,14 @@ async def test_logout_rejects_query_param_token(client, db_session):
 
     # Old (broken) call with token in query — must NOT succeed
     resp = await client.post(f"/api/v1/auth/logout?session_token={token}")
-    # Should be 401 (no Bearer header) or 422 (unexpected query param)
-    # Either way it must not be 200
-    assert resp.status_code != 200, "logout must not accept token as query param"
+    assert resp.status_code == 410, "legacy logout must not accept Core session tokens"
 
 
 @pytest.mark.asyncio
-async def test_logout_accepts_bearer_header(client, db_session):
-    """POST /logout with Authorization: Bearer must succeed."""
-    async with db_session() as db:
-        user = await _make_owner(db)
-        token = await _make_session(db, user)
-        await db.commit()
-
-    resp = await client.post(
-        "/api/v1/auth/logout",
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert resp.status_code == 200
-    assert resp.json().get("success") is True
+async def test_legacy_logout_is_disabled(client):
+    """Supabase Auth, not Core, owns logout and refresh-token revocation."""
+    resp = await client.post("/api/v1/auth/logout")
+    assert resp.status_code == 410
 
 
 @pytest.mark.asyncio
@@ -156,69 +140,17 @@ async def test_me_accepts_bearer_header(client, db_session):
 
 
 # ---------------------------------------------------------------------------
-# 3. MFA gate — mfa_enabled users must not get a full session from /callback
+# 3. Legacy OAuth and MFA endpoints cannot mint Core-managed sessions
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_mfa_enabled_user_gets_403_at_callback(client, db_session):
-    """
-    If a user has mfa_enabled=True, /discord/callback must return 403 with
-    mfa_required=True instead of issuing a full session token.
-    """
-    from models import DiscordOAuthPending
-
-    async with db_session() as db:
-        role = await db.scalar(select(Role).where(Role.name == "owner"))
-        user = User(
-            discord_id="mfa-gated-discord-id",
-            username="mfagateduser",
-            role_id=role.id,
-            mfa_enabled=True,
-            mfa_secret=pyotp.random_base32(),
-        )
-        db.add(user)
-        # Create a pending OAuth state record — matches what discord_callback
-        # looks up by `state` before exchanging the code with Discord.
-        pending = DiscordOAuthPending(
-            state="mfa-test-state-xyz",
-            expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
-        )
-        db.add(pending)
-        await db.commit()
-
-    # discord_callback calls discord_service.exchange_code() then
-    # discord_service.fetch_user() to resolve the Discord identity — mock
-    # both so no real network call happens.
-    with (
-        patch("api.routers.auth.discord_service.exchange_code") as mock_exchange,
-        patch("api.routers.auth.discord_service.fetch_user") as mock_fetch_user,
-    ):
-        mock_exchange.return_value = {"access_token": "fake-access-token"}
-        mock_fetch_user.return_value = {
-            "id": "mfa-gated-discord-id",
-            "username": "mfagateduser",
-            "global_name": "mfagateduser",
-            "avatar": None,
-            "email": None,
-        }
-        resp = await client.post(
-            "/api/v1/auth/discord/callback",
-            json={
-                "code": "fake-oauth-code",
-                "state": "mfa-test-state-xyz",
-                "redirect_uri": "http://localhost/",
-            },
-        )
-
-    # Must get 403, not 200 with a token
-    assert resp.status_code == 403
-    body = resp.json()
-    detail = body.get("detail", {})
-    assert detail.get("mfa_required") is True, "403 body must have mfa_required: true"
-    assert "mfa_token" in detail, "403 body must include the short-lived mfa_token"
-    # Crucially: no full session token in the response
-    assert "token" not in body or body.get("token") is None
+async def test_legacy_discord_callback_is_disabled(client):
+    resp = await client.post(
+        "/api/v1/auth/discord/callback",
+        json={"code": "legacy", "state": "legacy", "redirect_uri": "http://localhost/"},
+    )
+    assert resp.status_code == 410
 
 
 # ---------------------------------------------------------------------------
@@ -255,78 +187,45 @@ async def test_mfa_presession_token_rejected_on_regular_endpoint(client, db_sess
 
 
 # ---------------------------------------------------------------------------
-# 5. MFA disable requires valid TOTP code
+# 5. Legacy Core TOTP endpoints are disabled
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_mfa_disable_requires_valid_code(client, db_session):
-    """MFA cannot be disabled with a wrong TOTP code, even with a valid session."""
-    async with db_session() as db:
-        role = await db.scalar(select(Role).where(Role.name == "owner"))
-        secret = pyotp.random_base32()
-        user = User(
-            discord_id="mfa-disable-test",
-            username="mfadisableuser",
-            role_id=role.id,
-            mfa_enabled=True,
-            mfa_secret=secret,
-        )
-        db.add(user)
-        await db.flush()
-        token = await _make_session(db, user)
-        await db.commit()
-
-    resp = await client.post(
-        "/api/v1/auth/mfa/disable",
-        json={"code": "000000"},
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert resp.status_code == 401, "MFA disable with wrong code must return 401"
+async def test_legacy_mfa_endpoints_are_disabled(client):
+    for path in ("/api/v1/auth/mfa/verify", "/api/v1/auth/mfa/enable",
+                 "/api/v1/auth/mfa/confirm", "/api/v1/auth/mfa/disable"):
+        response = await client.post(path, json={"code": "000000"})
+        assert response.status_code == 410
 
 
 @pytest.mark.asyncio
-async def test_mfa_disable_succeeds_with_correct_code(client, db_session):
-    """MFA disable with a valid TOTP code must succeed and clear mfa_enabled."""
-    async with db_session() as db:
-        role = await db.scalar(select(Role).where(Role.name == "owner"))
-        secret = pyotp.random_base32()
-        user = User(
-            discord_id="mfa-disable-ok-test",
-            username="mfadisableokuser",
-            role_id=role.id,
-            mfa_enabled=True,
-            mfa_secret=secret,
-        )
-        db.add(user)
-        await db.flush()
-        token = await _make_session(db, user)
-        await db.commit()
-
-    code = pyotp.TOTP(secret).now()
-    resp = await client.post(
-        "/api/v1/auth/mfa/disable",
-        json={"code": code},
-        headers={"Authorization": f"Bearer {token}"},
+async def test_public_auth_config_returns_only_publishable_settings(client, monkeypatch):
+    settings = get_settings()
+    monkeypatch.setattr(settings, "supabase_url", "https://project.supabase.co")
+    monkeypatch.setattr(
+        settings, "supabase_publishable_key", "sb_publishable_example"
     )
-    assert resp.status_code == 200
-    assert resp.json().get("success") is True
+
+    response = await client.get("/api/v1/auth/public-config")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "supabase_url": "https://project.supabase.co",
+        "supabase_publishable_key": "sb_publishable_example",
+    }
+    assert response.headers["cache-control"] == "public, max-age=300"
 
 
 @pytest.mark.asyncio
-async def test_mfa_disable_when_not_enabled_returns_400(client, db_session):
-    """Calling /mfa/disable when MFA is not enabled must return 400, not 500."""
-    async with db_session() as db:
-        user = await _make_owner(db)
-        token = await _make_session(db, user)
-        await db.commit()
+async def test_public_auth_config_fails_when_settings_are_missing(client, monkeypatch):
+    settings = get_settings()
+    monkeypatch.setattr(settings, "supabase_url", "")
+    monkeypatch.setattr(settings, "supabase_publishable_key", "")
 
-    resp = await client.post(
-        "/api/v1/auth/mfa/disable",
-        json={"code": "123456"},
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert resp.status_code == 400
+    response = await client.get("/api/v1/auth/public-config")
+
+    assert response.status_code == 503
 
 
 # ---------------------------------------------------------------------------

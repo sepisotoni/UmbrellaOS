@@ -28,7 +28,6 @@ from . import webhooks  # noqa: F401
 from . import marketplace  # noqa: F401
 from . import observability  # noqa: F401
 from . import dashboard_layout  # noqa: F401
-from . import dev_auth  # noqa: F401
 from . import plugin_sandbox  # noqa: F401
 from . import feature_flags  # noqa: F401
 
@@ -51,7 +50,6 @@ __all__ = [
     "marketplace",
     "observability",
     "dashboard_layout",
-    "dev_auth",
     "plugin_sandbox",
     "feature_flags",
 ]

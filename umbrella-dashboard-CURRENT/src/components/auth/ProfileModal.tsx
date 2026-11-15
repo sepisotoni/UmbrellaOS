@@ -1,6 +1,6 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useDashboard } from '../../context/DashboardContext';
-import { api } from '../../lib/api';
+import { supabase } from '../../lib/supabase';
 import {
   X, Copy, Check, LogOut, Shield, ShieldOff, ShieldCheck,
   Loader2, AlertCircle, KeyRound, QrCode,
@@ -19,16 +19,29 @@ type MFAStep =
   | 'disabling';    // waiting for /mfa/disable response
 
 export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) => {
-  const { currentUser, setCurrentUser, setSessionToken, setActiveTab, addToast } = useDashboard();
+  const { currentUser, logout, addToast } = useDashboard();
   const [copiedId, setCopiedId] = useState(false);
+  const [isMfaEnabled, setIsMfaEnabled] = useState(false);
 
   // MFA enrollment state
   const [mfaStep, setMfaStep] = useState<MFAStep>('idle');
-  const [provisioningUri, setProvisioningUri] = useState<string | null>(null);
+  const [factorId, setFactorId] = useState<string | null>(null);
+  const [qrCode, setQrCode] = useState<string | null>(null);
   const [mfaSecret, setMfaSecret] = useState<string | null>(null);
   const [mfaCode, setMfaCode] = useState('');
   const [mfaError, setMfaError] = useState<string | null>(null);
   const [showSecret, setShowSecret] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen || !supabase) return;
+    let active = true;
+    void supabase.auth.mfa.listFactors().then(({ data, error }) => {
+      if (active && !error) {
+        setIsMfaEnabled(data.totp.some((factor) => factor.status === 'verified'));
+      }
+    });
+    return () => { active = false; };
+  }, [isOpen]);
 
   const groupedPermissions = useMemo(() => {
     if (!currentUser?.permissions) return {};
@@ -52,12 +65,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
     }
   };
 
-  const handleSignOut = () => {
-    api.logout();
-    setCurrentUser(null);
-    setSessionToken(null);
-    setActiveTab('login');
-    addToast({ type: 'info', title: 'Signed Out', message: 'You have been logged out of UmbrellaOS.' });
+  const handleSignOut = async () => {
+    await logout();
     onClose();
   };
 
@@ -69,9 +78,15 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
     setMfaStep('loading');
     setMfaError(null);
     try {
-      const res = await api.mfaEnable();
-      setProvisioningUri(res.provisioning_uri);
-      setMfaSecret(res.secret);
+      if (!supabase) throw new Error('Supabase Auth is not configured.');
+      const { data, error } = await supabase.auth.mfa.enroll({
+        factorType: 'totp',
+        friendlyName: 'UmbrellaOS Dashboard',
+      });
+      if (error) throw error;
+      setFactorId(data.id);
+      setQrCode(data.totp.qr_code);
+      setMfaSecret(data.totp.secret);
       setMfaCode('');
       setMfaStep('qr');
     } catch (err: any) {
@@ -89,11 +104,22 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
     setMfaStep('confirming');
     setMfaError(null);
     try {
-      await api.mfaConfirm(trimmed);
-      setCurrentUser({ ...currentUser, mfa_enabled: true });
+      if (!supabase || !factorId) throw new Error('MFA enrollment is not active.');
+      const { data: challenge, error: challengeError } =
+        await supabase.auth.mfa.challenge({ factorId });
+      if (challengeError) throw challengeError;
+      const { error } = await supabase.auth.mfa.verify({
+        factorId,
+        challengeId: challenge.id,
+        code: trimmed,
+      });
+      if (error) throw error;
+      await supabase.auth.refreshSession();
+      setIsMfaEnabled(true);
       addToast({ type: 'success', title: 'MFA Enabled', message: 'Two-factor authentication is now active on your account.' });
       setMfaStep('idle');
-      setProvisioningUri(null);
+      setFactorId(null);
+      setQrCode(null);
       setMfaSecret(null);
       setMfaCode('');
     } catch (err: any) {
@@ -103,28 +129,32 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
   };
 
   const handleDisableMFA = async () => {
-    const trimmed = mfaCode.replace(/\s/g, '');
-    if (!/^\d{6}$/.test(trimmed)) {
-      setMfaError('Enter your current TOTP code to confirm.');
-      return;
-    }
     setMfaStep('disabling');
     setMfaError(null);
     try {
-      await api.mfaDisable(trimmed);
-      setCurrentUser({ ...currentUser, mfa_enabled: false });
+      if (currentUser.mfa_enabled) {
+        throw new Error('MFA is required by this account during the migration and cannot be disabled here.');
+      }
+      if (!supabase) throw new Error('Supabase Auth is not configured.');
+      const { data, error } = await supabase.auth.mfa.listFactors();
+      if (error) throw error;
+      const factor = data.totp.find((candidate) => candidate.status === 'verified');
+      if (!factor) throw new Error('No verified Supabase MFA factor found.');
+      const { error: unenrollError } = await supabase.auth.mfa.unenroll({ factorId: factor.id });
+      if (unenrollError) throw unenrollError;
+      setIsMfaEnabled(false);
       addToast({ type: 'info', title: 'MFA Disabled', message: 'Two-factor authentication has been removed from your account.' });
       setMfaStep('idle');
-      setMfaCode('');
     } catch (err: any) {
-      setMfaError(err?.message || 'Invalid code — MFA not disabled.');
+      setMfaError(err?.message || 'MFA could not be disabled.');
       setMfaStep('idle');
     }
   };
 
   const cancelMFA = () => {
     setMfaStep('idle');
-    setProvisioningUri(null);
+    setFactorId(null);
+    setQrCode(null);
     setMfaSecret(null);
     setMfaCode('');
     setMfaError(null);
@@ -132,7 +162,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
   };
 
   const fallbackAvatar = `https://cdn.discordapp.com/embed/avatars/${Math.abs(parseInt(currentUser.discord_id, 10) || 0) % 5}.png`;
-  const isMfaEnabled = (currentUser as any).mfa_enabled === true;
+  const requiresMfaMigration = currentUser.mfa_enabled && !isMfaEnabled;
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-end pt-16 pr-4 bg-black/40 backdrop-blur-sm">
@@ -205,7 +235,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
               <span className="text-xs font-medium text-white/80">Two-Factor Authentication</span>
             </div>
             <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${isMfaEnabled ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20' : 'bg-white/5 text-white/30 border border-white/10'}`}>
-              {isMfaEnabled ? 'ENABLED' : 'DISABLED'}
+              {isMfaEnabled ? 'ENABLED' : requiresMfaMigration ? 'MIGRATION REQUIRED' : 'DISABLED'}
             </span>
           </div>
 
@@ -215,7 +245,9 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
               {!isMfaEnabled ? (
                 <div className="space-y-2">
                   <p className="text-[11px] text-white/40 leading-relaxed">
-                    Add a second layer of security. You'll need an authenticator app (Google Authenticator, Authy, etc.).
+                    {requiresMfaMigration
+                      ? 'Replace your existing Core authenticator with a new Supabase Auth factor. Your old code will stop working after migration.'
+                      : 'Add a second layer of security with an authenticator app.'}
                   </p>
                   <button
                     onClick={handleBeginMFA}
@@ -226,27 +258,16 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <p className="text-[11px] text-white/40 leading-relaxed">
-                    To disable MFA, enter your current authenticator code.
-                  </p>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      maxLength={6}
-                      placeholder="000000"
-                      value={mfaCode}
-                      onChange={(e) => { setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6)); setMfaError(null); }}
-                      className="flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-center font-mono text-sm text-white placeholder:text-white/20 focus:outline-none focus:ring-1 focus:ring-red-500/40"
-                    />
+                  {currentUser.mfa_enabled ? (
+                    <p className="text-[11px] text-white/40">This factor is required by your account policy.</p>
+                  ) : (
                     <button
                       onClick={handleDisableMFA}
-                      disabled={mfaCode.length !== 6}
-                      className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-400 hover:bg-red-500/20 transition disabled:opacity-40"
+                      className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-400 hover:bg-red-500/20 transition"
                     >
-                      Disable
+                      Disable MFA
                     </button>
-                  </div>
+                  )}
                   {mfaError && (
                     <div className="flex items-center gap-1.5 text-[11px] text-red-400">
                       <AlertCircle className="h-3 w-3" />{mfaError}
@@ -265,16 +286,15 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
           )}
 
           {/* qr: show provisioning URI as QR + confirm input */}
-          {(mfaStep === 'qr' || mfaStep === 'confirming') && provisioningUri && (
+          {(mfaStep === 'qr' || mfaStep === 'confirming') && qrCode && (
             <div className="space-y-3">
               <p className="text-[11px] text-white/50 leading-relaxed">
                 Scan the QR code in your authenticator app, then enter the 6-digit code to confirm.
               </p>
 
-              {/* QR code — rendered via Google Charts API (no external JS dependency) */}
               <div className="flex justify-center">
                 <img
-                  src={`https://chart.googleapis.com/chart?chs=180x180&chld=M|0&cht=qr&chl=${encodeURIComponent(provisioningUri)}`}
+                  src={qrCode}
                   alt="MFA QR Code"
                   className="rounded-lg border border-white/10"
                   width={180}

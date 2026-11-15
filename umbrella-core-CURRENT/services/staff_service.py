@@ -146,6 +146,7 @@ async def manage_staff_role(
         raise StaffManageError(f"Role '{new_name}' not found", 500)
 
     user.role_id = new_role.id
+    user.authz_version += 1
     await db.flush()
 
     return {
@@ -203,6 +204,7 @@ async def find_or_add_staff(
         )
         previous_name = current_role.name if current_role else "member"
         user.role_id = role.id
+        user.authz_version += 1
         await db.flush()
 
     return {

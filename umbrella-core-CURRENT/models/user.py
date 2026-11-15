@@ -25,6 +25,12 @@ class User(Base):
     discord_id: Mapped[str] = mapped_column(
         String(32), nullable=False, unique=True, index=True
     )
+    supabase_auth_id: Mapped[str | None] = mapped_column(
+        String(36), nullable=True, unique=True, index=True
+    )
+    authz_version: Mapped[int] = mapped_column(
+        default=0, nullable=False, server_default="0"
+    )
     username: Mapped[str] = mapped_column(String(64), nullable=False)
     email: Mapped[str | None] = mapped_column(String(128), nullable=True)
     role_id: Mapped[str] = mapped_column(

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { api, UserSchema, MFAChallengeDetail } from '../lib/api';
+import { api, UserSchema } from '../lib/api';
+import { initializeSupabase, supabase } from '../lib/supabase';
 
 export type NavigationTab = 
   | 'overview'
@@ -22,42 +23,30 @@ export type NavigationTab =
   | '404'
   | 'login';
 
-export const TAB_ROLE_CLEARANCE: Record<NavigationTab, string[]> = {
-  overview: ['superadmin', 'owner', 'admin', 'developer', 'moderator', 'support', 'helper', 'staff', 'viewer'],
-  discord: ['superadmin', 'owner', 'admin', 'developer', 'moderator', 'support', 'helper', 'staff'],
-  players: ['superadmin', 'owner', 'admin', 'developer', 'moderator', 'support', 'helper', 'staff'],
-  moderation: ['superadmin', 'owner', 'admin', 'developer', 'moderator', 'staff'],
-  appeals: ['superadmin', 'owner', 'admin', 'developer', 'moderator', 'support', 'helper', 'staff'],
-  staff: ['superadmin', 'owner', 'admin'],
-  verification: ['superadmin', 'owner', 'admin', 'developer', 'moderator', 'support', 'helper', 'staff'],
-  alts: ['superadmin', 'owner', 'admin', 'developer', 'moderator', 'staff'],
-  servers: ['superadmin', 'owner', 'admin', 'developer', 'moderator', 'support', 'helper', 'staff'],
-  console: ['superadmin', 'owner', 'admin', 'developer'],
-  plugins: ['superadmin', 'owner', 'admin', 'developer'],
-  'ai-tasks': ['superadmin', 'owner', 'admin', 'developer', 'moderator', 'staff'],
-  audit: ['superadmin', 'owner', 'admin', 'developer'],
-  'feature-flags': ['superadmin', 'owner', 'admin', 'developer'],
-  knowledge: ['superadmin', 'owner', 'admin', 'developer', 'moderator', 'support', 'helper', 'staff'],
-  settings: ['superadmin', 'owner', 'admin'],
-  'access-denied': ['superadmin', 'owner', 'admin', 'developer', 'moderator', 'support', 'helper', 'staff', 'viewer'],
-  '404': ['superadmin', 'owner', 'admin', 'developer', 'moderator', 'support', 'helper', 'staff', 'viewer'],
-  login: ['superadmin', 'owner', 'admin', 'developer', 'moderator', 'support', 'helper', 'staff', 'viewer'],
-};
-
-export function canUserAccessTab(tab: NavigationTab, user: UserSchema | null, adminKey?: string | null): boolean {
+export function canUserAccessTab(tab: NavigationTab, user: UserSchema | null): boolean {
   if (tab === 'login' || tab === 'access-denied' || tab === '404') return true;
-  if (adminKey && adminKey.trim().length > 0) return true;
   if (!user) return false;
 
-  const userRole = (user.role || '').toLowerCase();
-
-  // Users with no role or 'member' role cannot access the dashboard at all
-  if (!userRole || userRole === 'member') return false;
-
-  if (userRole === 'superadmin' || userRole === 'owner') return true;
-
-  const allowedRoles = TAB_ROLE_CLEARANCE[tab] || [];
-  return allowedRoles.includes(userRole);
+  const requiredPermissions: Partial<Record<NavigationTab, string[]>> = {
+    overview: ['players.view'],
+    discord: ['discord.view', 'discord.manage', 'settings.view'],
+    players: ['players.view'],
+    moderation: ['moderation.kick', 'moderation.warn', 'moderation.ban', 'punishments.view'],
+    appeals: ['appeals.view'],
+    staff: ['roles.manage'],
+    verification: ['verification.link.view', 'verification.link.manage'],
+    alts: ['players.view'],
+    servers: ['hosting.server.view', 'server.control'],
+    console: ['hosting.server.control', 'server.control'],
+    plugins: ['marketplace.install.view', 'plugin.sandbox.view'],
+    'ai-tasks': ['operational_intelligence.view', 'investigation.run'],
+    audit: ['audit.view'],
+    'feature-flags': ['feature_flags.view'],
+    knowledge: ['knowledge.entry.search'],
+    settings: ['settings.view', 'settings.manage'],
+  };
+  const permissions = new Set(user.permissions || []);
+  return (requiredPermissions[tab] || []).some((permission) => permissions.has(permission));
 }
 
 export interface ToastNotification {
@@ -73,10 +62,10 @@ interface DashboardContextType {
   setActiveTab: (tab: NavigationTab) => void;
   currentUser: UserSchema | null;
   setCurrentUser: (user: UserSchema | null) => void;
+  authConfigLoaded: boolean;
+  authConfigError: string | null;
   sessionToken: string | null;
   setSessionToken: (token: string | null) => void;
-  adminKey: string | null;
-  setAdminKey: (key: string | null) => void;
   isDisconnected: boolean;
   healthInfo: { status: string; version: string; database: string; redis?: string } | null;
   checkHealth: () => Promise<boolean>;
@@ -106,10 +95,12 @@ interface DashboardContextType {
   setSelectedBrand: (brand: 'os' | 'core' | 'bot' | 'dashboard') => void;
   discordInvite: string;
   setDiscordInvite: (url: string) => void;
-  // MFA challenge state — set when discord_callback returns mfa_required: true
-  mfaPending: { mfaToken: string } | null;
+  // Supabase MFA challenge and re-enrollment state.
+  mfaPending: { factorId: string; challengeId: string } | null;
+  mfaEnrollmentRequired: boolean;
   completeMfa: (totpCode: string) => Promise<void>;
   dismissMfa: () => void;
+  setMfaEnrollmentRequired: (required: boolean) => void;
 }
 
 const DashboardContext = createContext<DashboardContextType | null>(null);
@@ -162,24 +153,13 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     localStorage.setItem('umbrella_selected_brand', brand);
   }, []);
 
-  // Auth State — token persisted to localStorage so session survives browser close
-  const [sessionToken, setSessionTokenState] = useState<string | null>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('umbrella_session_token') || null;
-    }
-    return null;
-  });
-  const [adminKey, setAdminKeyState] = useState<string | null>(() => api.getAdminKey());
+  // Supabase Auth owns browser sessions and refreshes access tokens.
+  const [sessionToken, setSessionTokenState] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<UserSchema | null>(null);
-  const [mfaPending, setMfaPending] = useState<{ mfaToken: string } | null>(null);
-
-  // Restore persisted session token into the api client on first mount
-  useEffect(() => {
-    if (sessionToken) {
-      api.setSessionToken(sessionToken);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const [authConfigLoaded, setAuthConfigLoaded] = useState(false);
+  const [authConfigError, setAuthConfigError] = useState<string | null>(null);
+  const [mfaPending, setMfaPending] = useState<{ factorId: string; challengeId: string } | null>(null);
+  const [mfaEnrollmentRequired, setMfaEnrollmentRequired] = useState(false);
 
   // Health / Connection State
   const [isDisconnected, setIsDisconnected] = useState<boolean>(false);
@@ -215,23 +195,6 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const setSessionToken = useCallback((token: string | null) => {
     setSessionTokenState(token);
     api.setSessionToken(token);
-    if (typeof window !== 'undefined') {
-      if (token) {
-        localStorage.setItem('umbrella_session_token', token);
-      } else {
-        localStorage.removeItem('umbrella_session_token');
-      }
-    }
-  }, []);
-
-  const setAdminKey = useCallback((key: string | null) => {
-    setAdminKeyState(key);
-    api.setAdminKey(key);
-    if (key) {
-      localStorage.setItem('umbrella_admin_key', key);
-    } else {
-      localStorage.removeItem('umbrella_admin_key');
-    }
   }, []);
 
   const checkHealth = useCallback(async (): Promise<boolean> => {
@@ -255,118 +218,132 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return () => clearInterval(interval);
   }, [checkHealth]);
 
-  // Check URL query parameters for Discord OAuth callback on startup
+  // Supabase Auth handles OAuth callbacks and owns the refreshable browser session.
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const code = params.get('code');
-    const state = params.get('state');
-
-    if (code && state) {
-      // Clear URL params cleanly without reloading
-      window.history.replaceState({}, document.title, window.location.pathname);
-      const redirectUri = `${window.location.origin}/`;
-      api.discordCallback(code, state, redirectUri)
-        .then((res) => {
-          // Clear any lingering admin key — real session token takes precedence
-          setAdminKey(null);
-          setSessionToken(res.token);
-          setCurrentUser(res.user);
-          addToast({
-            type: 'success',
-            title: 'Authentication Successful',
-            message: `Welcome back, ${res.user.username}!`,
-          });
-          setActiveTab('overview');
-        })
-        .catch((err) => {
-          // Check for MFA challenge (backend returns 403 with mfa_required: true)
-          // ApiError carries .status (HTTP code) and .data (parsed JSON body)
-          if (err.status === 403) {
-            try {
-              // .data is the full parsed error body from core; .data.detail is the
-              // FastAPI detail object which may be an object (not just a string)
-              const detail: MFAChallengeDetail =
-                err.data?.detail ?? (typeof err.data === 'object' ? err.data : null);
-              if (detail?.mfa_required && detail?.mfa_token) {
-                setMfaPending({ mfaToken: detail.mfa_token });
-                setActiveTab('login');
-                return;
-              }
-            } catch { /* fall through to generic error */ }
-          }
-          addToast({
-            type: 'error',
-            title: 'Discord Login Failed',
-            message: err.message || 'Unable to authenticate with Discord.',
-          });
-          setActiveTab('login');
+    let active = true;
+    let unsubscribe: (() => void) | null = null;
+    const loadUser = async (
+      authClient: NonNullable<typeof supabase>,
+      accessToken: string,
+    ) => {
+      api.setSessionToken(accessToken);
+      try {
+        const user = await api.getMe();
+        if (!active) return;
+        setCurrentUser(user);
+        const { data: assurance, error: assuranceError } =
+          await authClient.auth.mfa.getAuthenticatorAssuranceLevel();
+        if (assuranceError) throw assuranceError;
+        const { data: factors, error: factorsError } = await authClient.auth.mfa.listFactors();
+        if (factorsError) throw factorsError;
+        const factor = factors.totp.find((candidate) => candidate.status === 'verified');
+        if (user.mfa_enabled && !factor && active) {
+          setMfaEnrollmentRequired(true);
+        } else if (
+          factor &&
+          assurance.nextLevel === 'aal2' &&
+          assurance.currentLevel !== 'aal2'
+        ) {
+          const { data: challenge, error: challengeError } =
+            await authClient.auth.mfa.challenge({ factorId: factor.id });
+          if (challengeError) throw challengeError;
+          if (active) setMfaPending({ factorId: factor.id, challengeId: challenge.id });
+        }
+      } catch (error: any) {
+        if (!active) return;
+        setCurrentUser(null);
+        setSessionToken(null);
+        addToast({
+          type: 'error',
+          title: 'Sign-in failed',
+          message: error?.message || 'Supabase Auth could not verify this staff account.',
         });
-    }
-  }, [setSessionToken, addToast]);
-
-  // Load current user profile if session token exists
-  useEffect(() => {
-    if (sessionToken) {
-      api.getMe()
-        .then((user) => setCurrentUser(user))
-        .catch(() => {
-          // Token invalid or expired
-          setSessionToken(null);
-          setCurrentUser(null);
-        });
-    } else if (adminKey) {
-      // Admin key login — restore synthetic user from localStorage if present,
-      // otherwise synthesise a default one so isAuthenticated stays true on refresh.
-      // Never call getMe() here — admin key alone returns 401 on that endpoint.
-      const saved = localStorage.getItem('umbrella_admin_user');
-      if (saved) {
-        try { setCurrentUser(JSON.parse(saved)); } catch { /* ignore */ }
-      } else {
-        setCurrentUser({
-          id: 'admin-key-holder', discord_id: '0',
-          username: 'Administrator (Key)', email: null,
-          avatar_url: null, mfa_enabled: false,
-          role_id: 'owner', role: 'owner', permissions: ['*'],
-          is_active: true,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        });
+        await authClient.auth.signOut({ scope: 'local' });
       }
-    }
-  }, [sessionToken, adminKey, setSessionToken]);
+    };
+
+    const initializeAuth = async () => {
+      try {
+        const config = await api.getPublicAuthConfig();
+        if (!active) return;
+
+        const authClient = initializeSupabase(
+          config.supabase_url,
+          config.supabase_publishable_key,
+        );
+        const { data: listener } = authClient.auth.onAuthStateChange((_event, session) => {
+          const token = session?.access_token ?? null;
+          setSessionToken(token);
+          setMfaPending(null);
+          if (token) {
+            window.setTimeout(() => void loadUser(authClient, token), 0);
+          } else {
+            setCurrentUser(null);
+            setMfaEnrollmentRequired(false);
+          }
+        });
+        unsubscribe = () => listener.subscription.unsubscribe();
+
+        const { data, error } = await authClient.auth.getSession();
+        if (!active) return;
+        if (error) throw error;
+
+        setAuthConfigError(null);
+        setAuthConfigLoaded(true);
+        const token = data.session?.access_token ?? null;
+        setSessionToken(token);
+        if (token) void loadUser(authClient, token);
+      } catch (error: any) {
+        if (!active) return;
+        setAuthConfigError(error?.message || 'Core could not provide Supabase Auth settings.');
+        setAuthConfigLoaded(true);
+      }
+    };
+
+    void initializeAuth();
+    return () => {
+      active = false;
+      unsubscribe?.();
+    };
+  }, [addToast, setSessionToken]);
 
   const completeMfa = useCallback(async (totpCode: string) => {
-    if (!mfaPending) return;
-    const res = await api.mfaVerify(mfaPending.mfaToken, totpCode);
+    if (!supabase || !mfaPending) return;
+    const { error } = await supabase.auth.mfa.verify({
+      factorId: mfaPending.factorId,
+      challengeId: mfaPending.challengeId,
+      code: totpCode,
+    });
+    if (error) throw error;
     setMfaPending(null);
-    setAdminKey(null);
-    setSessionToken(res.token);
-    setCurrentUser(res.user);
+    await supabase.auth.refreshSession();
     addToast({
       type: 'success',
       title: 'Authentication Successful',
-      message: `Welcome back, ${res.user.username}!`,
+      message: 'Supabase Auth MFA verified.',
     });
     setActiveTab('overview');
-  }, [mfaPending, setSessionToken, setAdminKey, addToast]);
+  }, [mfaPending, addToast]);
 
   const dismissMfa = useCallback(() => {
     setMfaPending(null);
+    if (supabase) void supabase.auth.signOut({ scope: 'local' });
   }, []);
 
   const logout = useCallback(async () => {
     try {
-      await api.logout();
-    } catch {
-      // Ignore network errors on logout
+      await supabase?.auth.signOut({ scope: 'global' });
+    } finally {
+      setSessionToken(null);
+      setCurrentUser(null);
+      setMfaPending(null);
+      setMfaEnrollmentRequired(false);
+      setActiveTab('login');
     }
-    setSessionToken(null);
-    setCurrentUser(null);
-    setActiveTab('login');
     addToast({
       type: 'info',
-      title: 'Logged Out',
-      message: 'You have been securely signed out.',
+      title: 'Signed out',
+      message: 'Your Supabase Auth session has been cleared.',
     });
   }, [setSessionToken, addToast]);
 
@@ -390,8 +367,8 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, []);
 
   const canAccessTab = useCallback((tab: NavigationTab) => {
-    return canUserAccessTab(tab, currentUser, adminKey);
-  }, [currentUser, adminKey]);
+    return canUserAccessTab(tab, currentUser);
+  }, [currentUser]);
 
   return (
     <DashboardContext.Provider
@@ -400,10 +377,10 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setActiveTab,
         currentUser,
         setCurrentUser,
+        authConfigLoaded,
+        authConfigError,
         sessionToken,
         setSessionToken,
-        adminKey,
-        setAdminKey,
         isDisconnected,
         healthInfo,
         checkHealth,
@@ -433,8 +410,10 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         discordInvite,
         setDiscordInvite,
         mfaPending,
+        mfaEnrollmentRequired,
         completeMfa,
         dismissMfa,
+        setMfaEnrollmentRequired,
       }}
     >
       {children}

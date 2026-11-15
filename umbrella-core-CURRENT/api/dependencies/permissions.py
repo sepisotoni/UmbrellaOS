@@ -30,18 +30,18 @@ async def _load_role_permissions(
     request: Request,
 ) -> set[str]:
     """Load and cache a user's effective permission keys for the current request."""
-    cache: dict[str | None, set[str]] = getattr(
+    cache: dict[str, set[str]] = getattr(
         request.state, "role_permissions_cache", None
     )
     if cache is None:
         cache = {}
         request.state.role_permissions_cache = cache
 
-    if user.role_id in cache:
-        return cache[user.role_id]
+    if user.id in cache:
+        return cache[user.id]
 
     permissions = await resolve_user_permissions(user, db)
-    cache[user.role_id] = permissions
+    cache[user.id] = permissions
     return permissions
 
 
@@ -62,6 +62,16 @@ def require_permission(permission: str):
                         detail=f"API key missing permission: {permission}",
                     )
             return auth
+
+        if auth.mfa_enabled and getattr(auth, "_supabase_aal", None) != "aal2":
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "mfa_required": True,
+                    "mfa_migration_required": True,
+                    "message": "Complete Supabase Auth MFA enrollment to continue",
+                },
+            )
 
         permissions = await _load_role_permissions(auth, db, request)
         if permission not in permissions:
@@ -104,6 +114,16 @@ class RoleChecker:
                         detail=f"API key missing one of: {', '.join(self.permissions)}",
                     )
             return auth
+
+        if auth.mfa_enabled and getattr(auth, "_supabase_aal", None) != "aal2":
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "mfa_required": True,
+                    "mfa_migration_required": True,
+                    "message": "Complete Supabase Auth MFA enrollment to continue",
+                },
+            )
 
         user_permissions = await _load_role_permissions(auth, db, request)
 
@@ -153,6 +173,15 @@ async def require_owner(
         )
     if isinstance(auth, str):
         return auth
+    if auth.mfa_enabled and getattr(auth, "_supabase_aal", None) != "aal2":
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "mfa_required": True,
+                "mfa_migration_required": True,
+                "message": "Complete Supabase Auth MFA enrollment to continue",
+            },
+        )
     if not auth.role_id:
         raise HTTPException(status_code=403, detail="Owner access required")
     role = await db.scalar(select(Role).where(Role.id == auth.role_id))

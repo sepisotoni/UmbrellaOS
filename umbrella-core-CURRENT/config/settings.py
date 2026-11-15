@@ -11,6 +11,11 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+    # Supabase Auth — Core verifies JWTs against the project's JWKS and serves
+    # only these public client settings to the dashboard.
+    supabase_url: str = ""
+    supabase_publishable_key: str = ""
+
     # Database
     database_url: str = (
         "postgresql+asyncpg://umbrella:changeme@localhost:5432/umbrella_core"

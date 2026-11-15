@@ -1,157 +1,155 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Shield, KeyRound, X, Loader2, AlertCircle } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { AlertCircle, Loader2, Shield } from 'lucide-react';
 import { useDashboard } from '../../context/DashboardContext';
+import { supabase } from '../../lib/supabase';
 
-/**
- * MFAChallengeModal
- *
- * Shown automatically when Discord OAuth returns a 403 mfa_required response.
- * The user enters their 6-digit TOTP code; on success a full session token is
- * issued and the dashboard proceeds normally.
- */
 export const MFAChallengeModal: React.FC = () => {
-  const { mfaPending, completeMfa, dismissMfa, addToast } = useDashboard();
-
+  const {
+    mfaPending,
+    mfaEnrollmentRequired,
+    completeMfa,
+    dismissMfa,
+    setMfaEnrollmentRequired,
+  } = useDashboard();
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [enrollment, setEnrollment] = useState<{
+    factorId: string;
+    challengeId: string;
+    qrCode: string;
+    secret: string;
+  } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const isEnrolling = mfaEnrollmentRequired && !mfaPending;
 
-  // Focus the input when the modal opens
   useEffect(() => {
-    if (mfaPending) {
+    if (!isEnrolling || !supabase || enrollment) return;
+    let active = true;
+    void (async () => {
+      try {
+        const { data, error: enrollError } = await supabase.auth.mfa.enroll({
+          factorType: 'totp',
+          friendlyName: 'UmbrellaOS Dashboard',
+        });
+        if (enrollError) throw enrollError;
+        const { data: challenge, error: challengeError } =
+          await supabase.auth.mfa.challenge({ factorId: data.id });
+        if (challengeError) throw challengeError;
+        if (active) {
+          setEnrollment({
+            factorId: data.id,
+            challengeId: challenge.id,
+            qrCode: data.totp.qr_code,
+            secret: data.totp.secret,
+          });
+        }
+      } catch (enrollError: any) {
+        if (active) setError(enrollError?.message || 'Unable to enroll a Supabase MFA factor.');
+      }
+    })();
+    return () => { active = false; };
+  }, [isEnrolling, enrollment]);
+
+  useEffect(() => {
+    if (mfaPending || isEnrolling) {
       setCode('');
       setError(null);
       setTimeout(() => inputRef.current?.focus(), 80);
     }
-  }, [mfaPending]);
+  }, [mfaPending, isEnrolling]);
 
-  const handleSubmit = useCallback(async () => {
+  const handleSubmit = async () => {
     const trimmed = code.replace(/\s/g, '');
-    if (trimmed.length !== 6 || !/^\d{6}$/.test(trimmed)) {
-      setError('Enter your 6-digit authenticator code.');
+    if (!/^\d{6}$/.test(trimmed)) {
+      setError('Enter the 6-digit code from your authenticator app.');
       return;
     }
     setLoading(true);
     setError(null);
     try {
-      await completeMfa(trimmed);
-    } catch (err: any) {
-      const msg =
-        err?.detail?.message ||
-        err?.message ||
-        'Invalid code — check your authenticator app and try again.';
-      setError(msg);
+      if (mfaPending) {
+        await completeMfa(trimmed);
+      } else if (supabase && enrollment) {
+        const { error: verifyError } = await supabase.auth.mfa.verify({
+          factorId: enrollment.factorId,
+          challengeId: enrollment.challengeId,
+          code: trimmed,
+        });
+        if (verifyError) throw verifyError;
+        await supabase.auth.refreshSession();
+        setMfaEnrollmentRequired(false);
+        setEnrollment(null);
+      }
+    } catch (verifyError: any) {
+      setError(verifyError?.message || 'The authenticator code was rejected.');
       setCode('');
-      setTimeout(() => inputRef.current?.focus(), 50);
     } finally {
       setLoading(false);
     }
-  }, [code, completeMfa]);
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') handleSubmit();
-    if (e.key === 'Escape') dismissMfa();
   };
 
-  if (!mfaPending) return null;
+  if (!mfaPending && !mfaEnrollmentRequired) return null;
 
   return (
-    /* Backdrop */
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-      onClick={(e) => { if (e.target === e.currentTarget) dismissMfa(); }}
-    >
-      <div
-        className="relative w-full max-w-sm mx-4 rounded-2xl border border-white/10 bg-[oklch(0.14_0.02_264)] shadow-2xl"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="mfa-title"
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 pt-6 pb-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[oklch(0.55_0.2_264)/0.15]">
-              <Shield className="h-4 w-4 text-[oklch(0.7_0.18_264)]" />
-            </div>
-            <div>
-              <h2 id="mfa-title" className="text-sm font-semibold text-white">
-                Two-Factor Authentication
-              </h2>
-              <p className="text-xs text-white/40">Required to complete sign-in</p>
-            </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+      <div className="w-full max-w-sm mx-4 rounded-2xl border border-white/10 bg-[oklch(0.14_0.02_264)] p-6 shadow-2xl space-y-4">
+        <div className="flex items-center gap-3">
+          <Shield className="h-5 w-5 text-indigo-300" />
+          <div>
+            <h2 className="text-sm font-semibold text-white">
+              {isEnrolling ? 'Set up Supabase MFA' : 'Verify your identity'}
+            </h2>
+            <p className="text-xs text-white/40">
+              {isEnrolling ? 'Required to migrate your existing MFA protection' : 'Enter your authenticator code'}
+            </p>
           </div>
-          <button
-            onClick={dismissMfa}
-            className="rounded-lg p-1.5 text-white/30 transition hover:bg-white/5 hover:text-white/70"
-            aria-label="Cancel MFA"
-          >
-            <X className="h-4 w-4" />
-          </button>
         </div>
 
-        {/* Body */}
-        <div className="px-6 pb-6 space-y-4">
-          <p className="text-xs text-white/50 leading-relaxed">
-            Your account has two-factor authentication enabled. Open your authenticator app and
-            enter the 6-digit code below.
-          </p>
-
-          {/* Code input */}
-          <div className="relative">
-            <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30 pointer-events-none" />
-            <input
-              ref={inputRef}
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={6}
-              placeholder="000000"
-              value={code}
-              onChange={(e) => {
-                const v = e.target.value.replace(/\D/g, '').slice(0, 6);
-                setCode(v);
-                if (error) setError(null);
-              }}
-              onKeyDown={handleKeyDown}
-              className="w-full rounded-xl border border-white/10 bg-white/5 pl-9 pr-4 py-3
-                         text-center text-xl font-mono tracking-[0.5em] text-white
-                         placeholder:text-white/15 placeholder:tracking-widest
-                         focus:outline-none focus:ring-2 focus:ring-[oklch(0.55_0.2_264)/0.4]
-                         transition disabled:opacity-50"
-              disabled={loading}
-              aria-label="TOTP code"
-            />
+        {isEnrolling && enrollment && (
+          <div className="space-y-2 text-center">
+            <img src={enrollment.qrCode} alt="Supabase MFA enrollment QR code" className="mx-auto h-40 w-40 rounded bg-white p-2" />
+            <p className="text-[11px] text-white/50">Scan the QR code with your authenticator app.</p>
+            <code className="block break-all rounded bg-white/5 p-2 text-[10px] text-white/70">{enrollment.secret}</code>
           </div>
+        )}
 
-          {/* Error message */}
-          {error && (
-            <div className="flex items-start gap-2 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2">
-              <AlertCircle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0 text-red-400" />
-              <p className="text-xs text-red-300">{error}</p>
-            </div>
-          )}
+        {isEnrolling && !enrollment && !error && (
+          <div className="flex justify-center py-4"><Loader2 className="h-5 w-5 animate-spin text-indigo-300" /></div>
+        )}
 
-          {/* Actions */}
-          <button
-            onClick={handleSubmit}
-            disabled={loading || code.length !== 6}
-            className="w-full flex items-center justify-center gap-2 rounded-xl
-                       bg-[oklch(0.55_0.2_264)] px-4 py-3 text-sm font-medium text-white
-                       transition hover:bg-[oklch(0.6_0.2_264)] disabled:opacity-40
-                       disabled:cursor-not-allowed focus:outline-none
-                       focus:ring-2 focus:ring-[oklch(0.55_0.2_264)/0.5]"
-          >
-            {loading ? (
-              <><Loader2 className="h-4 w-4 animate-spin" /> Verifying…</>
-            ) : (
-              <><Shield className="h-4 w-4" /> Verify & Sign In</>
-            )}
+        <input
+          ref={inputRef}
+          type="text"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          maxLength={6}
+          placeholder="000000"
+          value={code}
+          onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+          className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-center text-xl font-mono tracking-[0.5em] text-white placeholder:text-white/20 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+          disabled={loading}
+          aria-label="Authenticator code"
+        />
+
+        {error && (
+          <div className="flex gap-2 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            {error}
+          </div>
+        )}
+
+        <div className="flex gap-2">
+          <button onClick={dismissMfa} className="flex-1 rounded-xl border border-white/10 px-3 py-2 text-xs text-white/60">
+            Sign out
           </button>
-
-          <p className="text-center text-xs text-white/25">
-            The code refreshes every 30 seconds.
-          </p>
+          <button
+            onClick={() => void handleSubmit()}
+            disabled={loading || code.length !== 6 || (isEnrolling && !enrollment)}
+            className="flex-1 rounded-xl bg-indigo-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40"
+          >
+            {loading ? 'Verifying…' : isEnrolling ? 'Verify & migrate MFA' : 'Verify & continue'}
+          </button>
         </div>
       </div>
     </div>

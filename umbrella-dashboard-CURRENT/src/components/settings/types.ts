@@ -7,7 +7,6 @@ import { BrandLogoVariant, LogoRenderMode } from '../common/BrandLogos';
 
 export interface SettingsFormData {
   coreUrl: string;
-  adminKey: string;
   discordInvite: string;
   discordInviteTarget: '_blank' | '_self';
   discordGuildId: string;
