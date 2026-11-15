@@ -77,6 +77,31 @@ async def test_fetch_bot_runtime_state_returns_none_when_core_has_no_changes():
 
 
 @pytest.mark.asyncio
+async def test_fetch_bot_runtime_state_returns_pending_events_without_config_changes():
+    core = AsyncMock()
+    core.get_bot_runtime_state.return_value = {
+        "config_revision": "config-v1",
+        "token_revision": "token-v1",
+        "pending_events": [
+            {
+                "id": "delivery-1",
+                "event": "bridge.dashboard_message",
+                "payload": {"message_id": 1},
+            }
+        ],
+    }
+
+    state = await fetch_bot_runtime_state(
+        core,
+        config_revision="config-v1",
+        token_revision="token-v1",
+    )
+
+    assert state is not None
+    assert state.pending_events[0]["id"] == "delivery-1"
+
+
+@pytest.mark.asyncio
 async def test_token_watcher_closes_bot_when_core_token_changes(monkeypatch):
     core = AsyncMock()
     core.get_bot_runtime_state.return_value = {
@@ -104,6 +129,13 @@ async def test_runtime_state_watcher_applies_config_without_restarting(monkeypat
     core.get_bot_runtime_state.return_value = {
         "config_revision": "config-v2",
         "token_revision": "token-v1",
+        "pending_events": [
+            {
+                "id": "delivery-1",
+                "event": "bridge.dashboard_message",
+                "payload": {"message_id": 1},
+            }
+        ],
         "config": {
             "remote": {
                 "callback_url": None,
@@ -119,6 +151,8 @@ async def test_runtime_state_watcher_applies_config_without_restarting(monkeypat
         core=core,
     )
     monkeypatch.setattr(bot, "is_closed", Mock(side_effect=[False, True]))
+    process_events = AsyncMock()
+    monkeypatch.setattr(bot, "_process_pending_events", process_events)
     monkeypatch.setattr("bot.bot.asyncio.sleep", AsyncMock())
 
     await bot._watch_core_runtime_state()
@@ -127,6 +161,15 @@ async def test_runtime_state_watcher_applies_config_without_restarting(monkeypat
     assert bot.remote.command_prefix == "?"
     assert bot.command_prefix == "?"
     assert bot._config_revision == "config-v2"
+    process_events.assert_awaited_once_with(
+        [
+            {
+                "id": "delivery-1",
+                "event": "bridge.dashboard_message",
+                "payload": {"message_id": 1},
+            }
+        ]
+    )
     await bot.close()
 
 

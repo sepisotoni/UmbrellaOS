@@ -1167,6 +1167,7 @@ export interface BridgeMessageResponse {
   targets: string[];
   message_id: number;
   translated_message: string | null;
+  delivery_status: 'sent' | 'queued' | null;
 }
 
 export interface DiscordBroadcastOptions {

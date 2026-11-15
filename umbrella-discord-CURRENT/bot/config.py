@@ -12,7 +12,7 @@ and other runtime settings are fetched from Core.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -28,6 +28,7 @@ class Settings(BaseSettings):
 
     umbrella_core_url: str
     umbrella_core_api_key: str
+    bot_callback_url: str | None = None
 
 
 class BotTokenUnavailable(RuntimeError):
@@ -86,6 +87,7 @@ class BotRuntimeState:
     token_changed: bool
     remote: RemoteConfig | None
     guild_configs: dict[int, GuildConfig] | None
+    pending_events: list[dict[str, Any]] = field(default_factory=list)
 
 
 async def fetch_bot_runtime_state(
@@ -148,6 +150,16 @@ async def fetch_bot_runtime_state(
     elif is_initial_state:
         raise UmbrellaCoreError("Core omitted the initial bot config")
 
+    pending_events = data.get("pending_events", [])
+    if not isinstance(pending_events, list) or any(
+        not isinstance(event, dict)
+        or not isinstance(event.get("id"), str)
+        or not isinstance(event.get("event"), str)
+        or not isinstance(event.get("payload"), dict)
+        for event in pending_events
+    ):
+        raise UmbrellaCoreError("umbrella-core returned invalid pending bot events")
+
     return BotRuntimeState(
         config_revision=next_config_revision,
         token_revision=next_token_revision,
@@ -155,4 +167,5 @@ async def fetch_bot_runtime_state(
         token_changed=token_changed,
         remote=remote,
         guild_configs=guild_configs,
+        pending_events=pending_events,
     )

@@ -7,7 +7,11 @@ GET  /api/v1/bridge/settings
 PATCH /api/v1/bridge/settings
 """
 
+from datetime import timedelta, timezone
+
 import pytest
+from sqlalchemy import select
+from models.bot_pending_event import BotPendingEvent
 from tests.conftest import ADMIN_HEADERS, WRONG_HEADERS
 
 
@@ -229,7 +233,9 @@ async def test_post_bridge_message_requires_identifier_for_source(client):
 
 
 @pytest.mark.asyncio
-async def test_dashboard_broadcast_pushes_to_bot_webhook(client, monkeypatch):
+async def test_dashboard_broadcast_queues_and_pushes_to_bot_webhook(
+    client, db_session, monkeypatch
+):
     """
     AUDIT-2026-08-30 regression test: confirmed live-broken — a DASHBOARD
     broadcast was persisted and reported forwarded=True/targets=[discord,...]
@@ -247,6 +253,7 @@ async def test_dashboard_broadcast_pushes_to_bot_webhook(client, monkeypatch):
 
     async def fake_push_event(event, payload):
         push_calls.append((event, payload))
+        return True
 
     import services.bot_push_service as bot_push_service
 
@@ -262,13 +269,23 @@ async def test_dashboard_broadcast_pushes_to_bot_webhook(client, monkeypatch):
         "icon_url": "https://example.com/icon.png",
         "image_url": "https://example.com/banner.png",
     }
+    async with db_session() as db:
+        from models.setting import Setting
+
+        mode = await db.scalar(
+            select(Setting).where(Setting.key == "bridge.mode")
+        )
+        mode.value = "on"
+        await db.commit()
+
     response = await client.post(
         "/api/v1/bridge/message", json=payload, headers=ADMIN_HEADERS
     )
     assert response.status_code == 200
     data = response.json()
     assert data["forwarded"] is True
-    assert "discord" in data["targets"]
+    assert data["targets"] == ["discord"]
+    assert data["delivery_status"] == "sent"
 
     assert len(push_calls) == 1
     event, pushed_payload = push_calls[0]
@@ -280,6 +297,56 @@ async def test_dashboard_broadcast_pushes_to_bot_webhook(client, monkeypatch):
     assert pushed_payload["embed_color"] == 0x123456
     assert pushed_payload["icon_url"] == "https://example.com/icon.png"
     assert pushed_payload["image_url"] == "https://example.com/banner.png"
+    assert pushed_payload["delivery_id"]
+    async with db_session() as db:
+        pending = await db.get(BotPendingEvent, pushed_payload["delivery_id"])
+        assert pending is not None
+        created_at = pending.created_at
+        expires_at = pending.expires_at
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        assert timedelta(hours=23, minutes=59) <= expires_at - created_at <= timedelta(
+            hours=24, seconds=1
+        )
+
+
+@pytest.mark.asyncio
+async def test_dashboard_broadcast_reports_queued_when_push_is_unavailable(
+    client, monkeypatch
+):
+    async def fake_push_event(event, payload):
+        return False
+
+    import services.bot_push_service as bot_push_service
+
+    monkeypatch.setattr(bot_push_service, "push_event", fake_push_event)
+
+    response = await client.post(
+        "/api/v1/bridge/message",
+        json={
+            "source": "DASHBOARD",
+            "message": "Maintenance",
+            "channel_id": "555444333",
+        },
+        headers=ADMIN_HEADERS,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["forwarded"] is True
+    assert response.json()["delivery_status"] == "queued"
+
+
+@pytest.mark.asyncio
+async def test_dashboard_broadcast_requires_destination_channel(client):
+    response = await client.post(
+        "/api/v1/bridge/message",
+        json={"source": "DASHBOARD", "message": "Maintenance"},
+        headers=ADMIN_HEADERS,
+    )
+
+    assert response.status_code == 422
 
 
 @pytest.mark.asyncio

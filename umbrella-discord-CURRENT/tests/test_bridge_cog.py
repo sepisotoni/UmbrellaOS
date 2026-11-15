@@ -30,10 +30,11 @@ async def test_dashboard_broadcast_retries_transient_discord_send_failure(caplog
     cog = BridgeCog.__new__(BridgeCog)
     cog.bot = SimpleNamespace(get_channel=lambda channel_id: channel)
 
-    await cog.handle_dashboard_message_push(
+    delivered = await cog.handle_dashboard_message_push(
         {"message_id": "msg-1", "channel_id": "123", "message": "Hello"}
     )
 
+    assert delivered is True
     assert channel.calls == 3
     assert "retrying" in caplog.text
 
@@ -54,10 +55,11 @@ async def test_exhausted_dashboard_send_retries_are_logged(monkeypatch, caplog):
     cog = BridgeCog.__new__(BridgeCog)
     cog.bot = SimpleNamespace(get_channel=lambda channel_id: channel)
 
-    await cog.handle_dashboard_message_push(
+    delivered = await cog.handle_dashboard_message_push(
         {"message_id": "msg-failed", "channel_id": "123", "message": "Hello"}
     )
 
+    assert delivered is False
     assert channel.calls == 3
     assert "after 3 attempts" in caplog.text
 

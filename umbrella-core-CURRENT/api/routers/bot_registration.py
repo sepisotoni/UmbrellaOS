@@ -11,7 +11,8 @@ POST /api/v1/bot/roles      — Bot pushes guild mentionable role list on startu
 GET  /api/v1/bot/roles      — Dashboard reads role list for role-mention dropdown.
 POST /api/v1/bot/guilds/sync — Bot syncs all joined guilds and their resources.
 GET  /api/v1/bot/guilds      — Dashboard and bot read per-guild config.
-GET  /api/v1/bot/runtime-state — Bot fetches only changed runtime settings.
+GET  /api/v1/bot/runtime-state — Bot fetches changed settings and pending events.
+POST /api/v1/bot/events/{id}/ack — Bot acknowledges successfully handled events.
 PATCH /api/v1/bot/guilds/{id} — Owner updates a guild's role/channel mappings.
 
 Auth: require_admin_hmac_or_session (only the bot or a dashboard session).
@@ -22,6 +23,7 @@ from __future__ import annotations
 import json
 import hashlib
 import hmac
+import asyncio
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -40,6 +42,7 @@ from models.bot_guild_channels import BotGuildChannels
 from models.bot_guild_roles import BotGuildRoles
 from models.setting import Setting
 import services.bot_push_service as bot_push_service
+from services.webhooks.service import WebhookError, _validate_webhook_url
 
 router = APIRouter(prefix="/api/v1/bot", tags=["bot"])
 
@@ -55,6 +58,7 @@ class BotRegisterResponse(BaseModel):
     registered: bool
     callback_url: str
     registered_at: str | None = None
+    callback_verified: bool
 
 
 @router.post("/register", response_model=BotRegisterResponse)
@@ -68,10 +72,10 @@ async def register_bot(
     is at most one registration. Subsequent bot restarts overwrite the URL
     with the (potentially new) HeavenCloud address.
     """
-    if not body.callback_url.startswith(("http://", "https://")):
-        raise HTTPException(
-            status_code=422, detail="callback_url must be an http(s) URL"
-        )
+    try:
+        await asyncio.to_thread(_validate_webhook_url, body.callback_url)
+    except WebhookError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     now = datetime.now(timezone.utc)
     existing = await db.get(BotRegistration, 1)
@@ -83,11 +87,13 @@ async def register_bot(
 
     await db.commit()
     bot_push_service.invalidate_cache()
+    callback_verified = await bot_push_service.push_event("bot.callback.test", {})
 
     return BotRegisterResponse(
         registered=True,
         callback_url=body.callback_url,
         registered_at=now.isoformat(),
+        callback_verified=callback_verified,
     )
 
 
@@ -108,6 +114,22 @@ async def get_bot_registration(
         "callback_url": row.callback_url,
         "registered_at": row.registered_at.isoformat() if row.registered_at else None,
     }
+
+
+@router.post("/events/{event_id}/ack")
+async def acknowledge_bot_event(
+    event_id: str,
+    auth: str = Depends(require_admin_hmac_or_session),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Acknowledge a bot event only after the bot has handled it."""
+    if auth != "hmac":
+        raise HTTPException(
+            status_code=403, detail="Bot event acknowledgement requires HMAC authentication"
+        )
+    if not await bot_push_service.acknowledge_pending_event(db, event_id):
+        raise HTTPException(status_code=404, detail="Pending bot event not found")
+    return {"ok": True, "acknowledged": True}
 
 
 # ─── Bot Command Manifest ──────────────────────────────────────────────────────
@@ -318,7 +340,7 @@ async def get_bot_runtime_state(
     auth: str = Depends(require_admin_hmac_or_session),
     db: AsyncSession = Depends(get_db),
 ) -> dict | Response:
-    """Return bot config only when its revision changes; disclose tokens only on token changes."""
+    """Return changed config, private tokens, and newly leased outbox events."""
     if auth != "hmac":
         raise HTTPException(
             status_code=403, detail="Bot runtime state requires HMAC authentication"
@@ -378,7 +400,19 @@ async def get_bot_runtime_state(
     if token_revision != current_token_revision:
         changes["discord_token"] = token or None
 
-    changes["changed"] = "config" in changes or "discord_token" in changes
+    pending_events = await bot_push_service.claim_pending_events(db)
+    if pending_events:
+        changes["pending_events"] = [
+            {
+                "id": item.id,
+                "event": item.event,
+                "payload": item.payload,
+            }
+            for item in pending_events
+        ]
+    changes["changed"] = (
+        "config" in changes or "discord_token" in changes or bool(pending_events)
+    )
     return changes
 
 

@@ -1,6 +1,5 @@
 """
-services/bot_push_service.py — Fire-and-forget push from umbrella-core to
-the Discord bot's webhook endpoint (Phase 16B Task B).
+services/bot_push_service.py — Core-to-bot webhook delivery and short-lived outbox.
 
 The bot registers its callback URL on startup via POST /api/v1/bot/register.
 Core reads that URL from the bot_registration table and POSTs events to it.
@@ -9,10 +8,10 @@ Authentication: same PBKDF2-HMAC-SHA256 scheme as Task A but reversed —
 core authenticates TO the bot using the shared admin_key as the secret.
 The bot verifies the MAC before processing any event.
 
-Failure handling: any exception (network error, timeout, bot down) is logged
-and swallowed. This is intentionally fire-and-forget — push is a best-effort
-real-time optimisation; the bot's fallback poll loop (slowed to 5 min in
-Task B) ensures eventual consistency even when push fails.
+Dashboard broadcasts are persisted before the callback is attempted. The bot
+acknowledges handled events and also polls the outbox through runtime-state;
+unacknowledged items expire after 24 hours and acknowledged receipts after
+one hour.
 
 Callback URL caching: the DB row is cached in memory for 60 seconds to avoid
 a DB hit on every event. A bot restart overwrites the row; the cache expires
@@ -24,14 +23,15 @@ from __future__ import annotations
 import hashlib
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_settings
 from database import AsyncSessionLocal
+from models.bot_pending_event import BotPendingEvent
 from models.bot_registration import BotRegistration
 
 logger = logging.getLogger(__name__)
@@ -41,6 +41,9 @@ settings = get_settings()
 _cached_url: str | None = None
 _cache_expires_at: float = 0.0
 _CACHE_TTL = 60.0  # seconds
+PENDING_EVENT_TTL = timedelta(hours=24)
+ACKNOWLEDGED_EVENT_RETENTION = timedelta(hours=1)
+PENDING_EVENT_LEASE = timedelta(minutes=2)
 
 
 async def _get_callback_url() -> str | None:
@@ -57,6 +60,71 @@ async def _get_callback_url() -> str | None:
     return _cached_url
 
 
+async def enqueue_pending_event(
+    db: AsyncSession, event: str, payload: dict
+) -> BotPendingEvent:
+    """Persist an event with bounded retention before attempting callback delivery."""
+    now = datetime.now(timezone.utc)
+    await db.execute(
+        delete(BotPendingEvent).where(BotPendingEvent.expires_at <= now)
+    )
+    row = BotPendingEvent(
+        event=event,
+        payload=payload,
+        created_at=now,
+        expires_at=now + PENDING_EVENT_TTL,
+    )
+    db.add(row)
+    await db.flush()
+    return row
+
+
+async def claim_pending_events(
+    db: AsyncSession, *, limit: int = 25
+) -> list[BotPendingEvent]:
+    """Lease unacknowledged events for the bot's conditional runtime poll."""
+    now = datetime.now(timezone.utc)
+    await db.execute(
+        delete(BotPendingEvent).where(BotPendingEvent.expires_at <= now)
+    )
+    result = await db.scalars(
+        select(BotPendingEvent)
+        .where(
+            BotPendingEvent.acknowledged_at.is_(None),
+            BotPendingEvent.expires_at > now,
+            or_(
+                BotPendingEvent.locked_until.is_(None),
+                BotPendingEvent.locked_until <= now,
+            ),
+        )
+        .order_by(BotPendingEvent.created_at)
+        .limit(limit)
+        .with_for_update(skip_locked=True)
+    )
+    rows = list(result.all())
+    for row in rows:
+        row.locked_until = now + PENDING_EVENT_LEASE
+    await db.flush()
+    return rows
+
+
+async def acknowledge_pending_event(db: AsyncSession, event_id: str) -> bool:
+    """Acknowledge delivery; retain the receipt briefly, then purge it."""
+    row = await db.get(BotPendingEvent, event_id)
+    if row is None:
+        return False
+    now = datetime.now(timezone.utc)
+    if _as_utc(row.expires_at) <= now:
+        await db.delete(row)
+        return False
+    if row.acknowledged_at is None:
+        row.acknowledged_at = now
+        row.expires_at = now + ACKNOWLEDGED_EVENT_RETENTION
+    row.locked_until = None
+    await db.flush()
+    return True
+
+
 def _make_push_headers() -> dict[str, str]:
     """Derive a PBKDF2-HMAC-SHA256 MAC for authenticating to the bot."""
     ts = int(time.time())
@@ -70,18 +138,21 @@ def _make_push_headers() -> dict[str, str]:
     return {"X-Auth-MAC": mac, "X-Auth-Timestamp": str(ts)}
 
 
-async def push_event(event: str, payload: dict) -> None:
-    """
-    Fire-and-forget push of an event to the bot's webhook.
+def _as_utc(value: datetime) -> datetime:
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
-    Call this after any state change the bot should know about immediately.
-    Never raises — failures are logged at WARNING level and the fallback
-    poll loop provides eventual delivery.
+
+async def push_event(event: str, payload: dict) -> bool:
+    """
+    Push an event to the bot's webhook and report whether it was accepted.
+
+    Durable events must already be in the outbox before this is called; the
+    bot acknowledges successful handling and also polls the outbox.
     """
     url = await _get_callback_url()
     if not url:
         logger.debug("No bot registration found; skipping push for event %s", event)
-        return
+        return False
 
     headers = _make_push_headers()
     try:
@@ -91,12 +162,15 @@ async def push_event(event: str, payload: dict) -> None:
                 json={"event": event, "payload": payload},
                 headers=headers,
             )
-        if response.status_code >= 400:
+        if not 200 <= response.status_code < 300:
             logger.warning(
                 "Bot push for event %s returned HTTP %s", event, response.status_code
             )
-    except Exception:
+            return False
+        return True
+    except httpx.HTTPError:
         logger.warning("Bot push failed for event %s", event, exc_info=True)
+        return False
 
 
 def invalidate_cache() -> None:

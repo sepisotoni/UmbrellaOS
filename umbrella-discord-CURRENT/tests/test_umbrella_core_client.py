@@ -7,6 +7,7 @@ providers.
 """
 
 import json
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -199,6 +200,79 @@ async def test_bot_runtime_state_returns_none_when_unchanged():
     )
 
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_bot_runtime_state_returns_pending_events_even_without_config_changes():
+    pending = [
+        {
+            "id": "delivery-1",
+            "event": "bridge.dashboard_message",
+            "payload": {"message_id": 1},
+        }
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "ok": True,
+                "changed": True,
+                "config_revision": "config-v1",
+                "token_revision": "token-v1",
+                "pending_events": pending,
+            },
+        )
+
+    client = UmbrellaCoreClient(
+        "https://core.example.com",
+        "test-key",
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = await client.get_bot_runtime_state(
+        config_revision="config-v1",
+        token_revision="token-v1",
+    )
+
+    assert result is not None
+    assert result["pending_events"] == pending
+
+
+@pytest.mark.asyncio
+async def test_register_bot_returns_callback_verification_result():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v1/bot/register"
+        assert json.loads(request.content) == {
+            "callback_url": "https://bot.example/webhook"
+        }
+        return httpx.Response(200, json={"callback_verified": True})
+
+    client = UmbrellaCoreClient(
+        "https://core.example.com",
+        "test-key",
+        transport=httpx.MockTransport(handler),
+    )
+    client._make_auth_headers_async = AsyncMock(return_value={})
+
+    assert await client.register_bot("https://bot.example/webhook") is True
+
+
+@pytest.mark.asyncio
+async def test_acknowledge_bot_event_reports_core_acknowledgement():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == "/api/v1/bot/events/delivery-1/ack"
+        return httpx.Response(200, json={"ok": True, "acknowledged": True})
+
+    client = UmbrellaCoreClient(
+        "https://core.example.com",
+        "test-key",
+        transport=httpx.MockTransport(handler),
+    )
+    client._make_auth_headers_async = AsyncMock(return_value={})
+
+    assert await client.acknowledge_bot_event("delivery-1") is True
 
 
 @pytest.mark.asyncio

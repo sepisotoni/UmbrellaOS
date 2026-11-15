@@ -1,30 +1,8 @@
 """
 bot/cogs/bridge_cog.py — Delivers dashboard chat-bridge broadcasts to
-Discord.
-
-AUDIT-2026-08-30: staff clicking "Dispatch Embed to Discord" on the
-dashboard's Discord Hub confirmed broken in live testing — the request
-reached core (api/routers/bridge.py::receive_bridge_message), which
-correctly persisted a ChatMessage row and computed forwarded=True,
-targets=["minecraft","discord"], but nothing ever actually delivered
-anything to Discord. Traced the whole pipeline: umbrella-core already
-has a real, working push mechanism (services/bot_push_service.py +
-bot/webhook_server.py, Phase 16B Task B) — it's just never used for
-this message type. staff.escalation.new (see notifications_cog.py) is
-the only event with a registered handler before this cog.
-
-Unlike escalations, the dashboard operator picks the target channel
-per-message (BridgeMessageRequest.channel_id) rather than posting to one
-fixed configured channel, so there's no fallback default here — if
-channel_id is missing or not a channel this bot can see, log and drop
-(same "can't do anything useful" guard as notifications_cog.py's
-channel-missing case).
-
-Delivery is a bounded best effort: Discord sends are retried three times,
-then the failure is logged and this handler returns. WebhookServer therefore
-responds 2xx, and umbrella-core's fire-and-forget push does not retry; a
-broadcast can be lost after all three send attempts fail. There is no durable
-bridge queue or polling fallback today.
+Discord. Core persists each broadcast in a short-lived outbox; this cog
+returns success only after Discord accepts the message so the webhook can
+acknowledge the queued event.
 """
 
 from __future__ import annotations
@@ -63,7 +41,7 @@ class BridgeCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    async def handle_dashboard_message_push(self, payload: dict[str, Any]) -> None:
+    async def handle_dashboard_message_push(self, payload: dict[str, Any]) -> bool:
         """Called by WebhookCog when core pushes a bridge.dashboard_message
         event. Posts the broadcast to the channel the operator selected."""
         channel_id_raw = payload.get("channel_id")
@@ -72,7 +50,7 @@ class BridgeCog(commands.Cog):
                 "Push: dashboard broadcast (message_id=%s) has no channel_id — nothing to post to.",
                 payload.get("message_id"),
             )
-            return
+            return False
 
         try:
             channel_id = int(channel_id_raw)
@@ -82,7 +60,7 @@ class BridgeCog(commands.Cog):
                 payload.get("message_id"),
                 channel_id_raw,
             )
-            return
+            return False
 
         channel = self.bot.get_channel(channel_id)
         if channel is None:
@@ -90,12 +68,12 @@ class BridgeCog(commands.Cog):
                 "Push: dashboard broadcast channel_id=%s isn't a channel this bot can see.",
                 channel_id,
             )
-            return
+            return False
 
         for attempt in range(len(_SEND_RETRY_DELAYS) + 1):
             try:
                 await channel.send(embed=self._format_broadcast(payload))
-                return
+                return True
             except discord.HTTPException:
                 if attempt < len(_SEND_RETRY_DELAYS):
                     delay = _SEND_RETRY_DELAYS[attempt]
@@ -115,6 +93,7 @@ class BridgeCog(commands.Cog):
                         payload.get("message_id"),
                         channel_id,
                     )
+        return False
 
     @staticmethod
     def _format_broadcast(payload: dict[str, Any]) -> discord.Embed:

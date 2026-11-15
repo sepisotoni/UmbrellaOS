@@ -180,9 +180,9 @@ class UmbrellaCoreClient:
 
         return response.json()
 
-    async def register_bot(self, callback_url: str) -> None:
+    async def register_bot(self, callback_url: str) -> bool:
         """Register this bot's webhook URL with umbrella-core so it can
-        receive push events (Phase 16B Task B). Called once on startup."""
+        receive push events and return the callback reachability result."""
         url = f"{self._base_url}/api/v1/bot/register"
         headers = await self._make_auth_headers_async()
 
@@ -201,6 +201,51 @@ class UmbrellaCoreClient:
                 f"Bot registration failed: {response.status_code}",
                 status_code=response.status_code,
             )
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise UmbrellaCoreError(
+                "umbrella-core returned an invalid bot registration response"
+            ) from exc
+        if not isinstance(payload, dict) or not isinstance(
+            payload.get("callback_verified"), bool
+        ):
+            raise UmbrellaCoreError(
+                "umbrella-core returned an invalid bot registration response"
+            )
+        return payload["callback_verified"]
+
+    async def acknowledge_bot_event(self, event_id: str) -> bool:
+        """Acknowledge a successfully delivered event in Core's outbox."""
+        url = f"{self._base_url}/api/v1/bot/events/{event_id}/ack"
+        headers = await self._make_auth_headers_async()
+        try:
+            async with httpx.AsyncClient(
+                timeout=self._timeout, transport=self._transport
+            ) as client:
+                response = await client.post(url, headers=headers)
+        except httpx.RequestError as exc:
+            raise UmbrellaCoreError(f"Could not reach umbrella-core: {exc}") from exc
+        if response.status_code >= 400:
+            message, code = self._parse_error(response)
+            raise UmbrellaCoreError(
+                f"Bot event acknowledgement failed: {message}",
+                status_code=response.status_code,
+                code=code,
+            )
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise UmbrellaCoreError(
+                "umbrella-core returned an invalid event acknowledgement"
+            ) from exc
+        if not isinstance(payload, dict) or not isinstance(
+            payload.get("acknowledged"), bool
+        ):
+            raise UmbrellaCoreError(
+                "umbrella-core returned an invalid event acknowledgement"
+            )
+        return payload["acknowledged"]
 
     async def push_command_manifest(self, commands: list[dict]) -> None:
         """POST /api/v1/bot/commands — push slash command manifest to core.
@@ -303,7 +348,12 @@ class UmbrellaCoreClient:
             raise UmbrellaCoreError(
                 "umbrella-core returned an invalid bot runtime state acknowledgement"
             )
-        if not payload["changed"]:
+        pending_events = payload.get("pending_events", [])
+        if not isinstance(pending_events, list):
+            raise UmbrellaCoreError(
+                "umbrella-core returned invalid pending bot events"
+            )
+        if not payload["changed"] and not pending_events:
             return None
         return payload
 

@@ -10,17 +10,13 @@ Lifecycle:
 
 Event routing:
   staff.escalation.new       → NotificationsCog.handle_escalation_push()
-  bridge.dashboard_message   → BridgeCog.handle_dashboard_message_push()
+  bridge.dashboard_message   → durable delivery through callback or runtime polling
   (others can be added here without touching WebhookServer or bot.py)
 
 The cog does NOT crash the bot if the server fails to start or if
 registration with core fails — it logs and continues. Registration retries
 with bounded backoff and repeats every five minutes after exhaustion. The
 fallback poll loop in NotificationsCog ensures escalations eventually surface.
-Bridge delivery has no such fallback: after its bounded send retries fail,
-BridgeCog logs and returns, so this endpoint replies 2xx and core's
-fire-and-forget sender does not retry. See BridgeCog's module docstring for
-that bounded-loss limitation.
 """
 
 from __future__ import annotations
@@ -57,6 +53,7 @@ class WebhookCog(commands.Cog):
         self._server.register_handler(
             "bridge.dashboard_message", self._on_bridge_message
         )
+        self._server.register_handler("bot.callback.test", self._on_callback_test)
 
         try:
             await self._server.start()
@@ -69,16 +66,18 @@ class WebhookCog(commands.Cog):
             return
 
         # Register this bot's public URL with umbrella-core.
-        callback_url = self.bot.remote.callback_url
+        callback_url = (
+            self.bot.settings.bot_callback_url or self.bot.remote.callback_url
+        )
         if not callback_url:
             logger.warning(
-                "BOT_CALLBACK_URL is not set — skipping registration with core. "
-                "Push events will not be delivered until the URL is configured."
+                "BOT_CALLBACK_URL is not set — webhook registration is skipped; "
+                "Core outbox polling remains enabled."
             )
             return
 
         self._registration_task = asyncio.create_task(
-            self._registration_worker(f"{callback_url.rstrip('/')}/webhook")
+            self._registration_worker(self._webhook_endpoint(callback_url))
         )
 
     async def cog_unload(self) -> None:
@@ -91,12 +90,23 @@ class WebhookCog(commands.Cog):
         if self._server:
             await self._server.stop()
 
+    @staticmethod
+    def _webhook_endpoint(callback_url: str) -> str:
+        normalized = callback_url.rstrip("/")
+        return normalized if normalized.endswith("/webhook") else f"{normalized}/webhook"
+
     async def _register_with_backoff(self, callback_url: str) -> bool:
         """Attempt webhook registration with bounded exponential backoff."""
         for attempt in range(len(_REGISTRATION_RETRY_DELAYS) + 1):
             try:
-                await self.bot.core.register_bot(callback_url)
-                logger.info("Registered bot webhook with umbrella-core.")
+                callback_verified = await self.bot.core.register_bot(callback_url)
+                if callback_verified:
+                    logger.info("Registered and verified bot webhook with umbrella-core.")
+                else:
+                    logger.warning(
+                        "Core accepted the callback URL but its webhook test failed; "
+                        "outbox polling remains enabled."
+                    )
                 return True
             except UmbrellaCoreError:
                 if attempt < len(_REGISTRATION_RETRY_DELAYS):
@@ -144,29 +154,64 @@ class WebhookCog(commands.Cog):
                 payload.get("id"),
             )
 
-    async def _on_bridge_message(self, payload: dict[str, Any]) -> None:
-        """Handle a bridge.dashboard_message push event from core — a
-        dashboard "Dispatch Embed to Discord" broadcast. Forwards to
-        BridgeCog if it's loaded; unlike escalations there's no poll
-        fallback for this event type (dashboard broadcasts are one-shot,
-        not a queryable list), so if BridgeCog isn't loaded the message
-        is simply dropped rather than delayed."""
+    async def _on_callback_test(self, payload: dict[str, Any]) -> bool:
+        logger.info("Received Core webhook reachability test.")
+        return True
+
+    async def _on_bridge_message(self, payload: dict[str, Any]) -> bool:
+        """Deliver a queued broadcast and acknowledge it only after Discord accepts it."""
         bridge_cog = self.bot.cogs.get("BridgeCog")
         if bridge_cog is None:
             logger.warning(
                 "Received bridge.dashboard_message push but BridgeCog is not loaded — "
-                "message %s will not be delivered.",
+                "message %s remains queued.",
                 payload.get("message_id"),
             )
-            return
+            return False
+
+        delivery_id = payload.get("delivery_id")
+        if not isinstance(delivery_id, str) or not delivery_id:
+            logger.warning(
+                "Received dashboard broadcast %s without an outbox delivery ID.",
+                payload.get("message_id"),
+            )
+            return False
 
         try:
-            await bridge_cog.handle_dashboard_message_push(payload)
+            delivered = await bridge_cog.handle_dashboard_message_push(payload)
         except Exception:
             logger.exception(
                 "BridgeCog.handle_dashboard_message_push raised for message %s",
                 payload.get("message_id"),
             )
+            return False
+        if not delivered:
+            return False
+
+        try:
+            return await self.bot.core.acknowledge_bot_event(delivery_id)
+        except UmbrellaCoreError:
+            logger.exception(
+                "Could not acknowledge dashboard broadcast %s in Core.",
+                payload.get("message_id"),
+            )
+            return False
+
+    async def process_pending_events(
+        self, events: list[dict[str, Any]]
+    ) -> None:
+        """Process leased outbox events returned by Core's runtime-state poll."""
+        for event in events:
+            event_id = event["id"]
+            if event["event"] != "bridge.dashboard_message":
+                logger.warning(
+                    "Core returned unsupported pending bot event %s (%s).",
+                    event_id,
+                    event["event"],
+                )
+                continue
+            payload = {**event["payload"], "delivery_id": event_id}
+            await self._on_bridge_message(payload)
 
 
 async def setup(bot: commands.Bot) -> None:

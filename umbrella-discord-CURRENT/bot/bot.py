@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import Any
 
 import discord
 from discord.ext import commands
@@ -108,6 +109,7 @@ class UmbrellaBot(commands.Bot):
         self.guild_configs = runtime_state.guild_configs or {}
         self._config_revision = runtime_state.config_revision
         self._token_revision = runtime_state.token_revision
+        self._initial_pending_events = runtime_state.pending_events
         self._token_watch_task: asyncio.Task[None] | None = None
 
     async def setup_hook(self) -> None:
@@ -203,6 +205,20 @@ class UmbrellaBot(commands.Bot):
                     return
             if state.guild_configs is not None:
                 self.guild_configs = state.guild_configs
+            if state.pending_events:
+                await self._process_pending_events(state.pending_events)
+
+    async def _process_pending_events(
+        self, events: list[dict[str, Any]]
+    ) -> None:
+        webhook_cog = self.cogs.get("WebhookCog")
+        if webhook_cog is None:
+            logger.warning(
+                "Core returned %d pending event(s), but WebhookCog is not loaded.",
+                len(events),
+            )
+            return
+        await webhook_cog.process_pending_events(events)
 
     async def _sync_guilds_with_core(self) -> None:
         """Publish all joined guilds and load each guild's saved configuration."""
@@ -299,6 +315,9 @@ class UmbrellaBot(commands.Bot):
         await self._sync_guilds_with_core()
         for guild in self.guilds:
             await self._sync_guild_commands(guild)
+        if self._initial_pending_events:
+            await self._process_pending_events(self._initial_pending_events)
+            self._initial_pending_events = []
 
     async def on_message(self, message: discord.Message) -> None:
         """Single global on_message — dispatches to cog listeners then

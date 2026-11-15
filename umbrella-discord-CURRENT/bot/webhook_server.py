@@ -34,7 +34,7 @@ from aiohttp import web
 
 logger = logging.getLogger(__name__)
 
-EventHandler = Callable[[dict[str, Any]], Awaitable[None]]
+EventHandler = Callable[[dict[str, Any]], Awaitable[bool | None]]
 
 
 class WebhookServer:
@@ -101,25 +101,30 @@ class WebhookServer:
             body = await request.json()
         except Exception:
             return web.Response(status=400, text="Invalid JSON")
+        if not isinstance(body, dict):
+            return web.Response(status=400, text="Expected a JSON object")
 
         event = body.get("event")
         payload = body.get("payload", {})
 
-        if not event:
+        if not isinstance(event, str) or not event:
             return web.Response(status=400, text="Missing 'event' field")
+        if not isinstance(payload, dict):
+            return web.Response(status=400, text="Event payload must be an object")
 
         handler = self._handlers.get(event)
         if handler is None:
-            logger.debug("No handler registered for event %s — ignoring", event)
-            return web.Response(status=200, text="OK (no handler)")
+            logger.warning("No handler registered for event %s.", event)
+            return web.Response(status=501, text="No handler registered")
 
         try:
-            await handler(payload)
+            handled = await handler(payload)
         except Exception:
             logger.exception("Handler for event %s raised an exception", event)
-            # Still return 200: core's fire-and-forget doesn't retry, so a
-            # 500 would just silence the error without helping anyone.
-            return web.Response(status=200, text="OK (handler error, check logs)")
+            return web.Response(status=503, text="Handler failed")
+
+        if handled is False:
+            return web.Response(status=503, text="Event was not acknowledged")
 
         return web.Response(status=200, text="OK")
 

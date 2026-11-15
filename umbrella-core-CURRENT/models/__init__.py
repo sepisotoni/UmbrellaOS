@@ -53,6 +53,7 @@ from .plugin_execution import PluginExecutionRecord  # noqa: F401
 from .feature_flag import FeatureFlag  # noqa: F401
 from .anticheat_violation import AnticheatViolation  # noqa: F401
 from .bot_registration import BotRegistration  # noqa: F401
+from .bot_pending_event import BotPendingEvent  # noqa: F401
 from .bot_command_manifest import BotCommandManifest  # noqa: F401
 from .bot_guild import BotGuild  # noqa: F401
 from .bot_guild_channels import BotGuildChannels  # noqa: F401
@@ -130,6 +131,7 @@ __all__ = [
     "FeatureFlag",
     "AnticheatViolation",
     "BotRegistration",
+    "BotPendingEvent",
     "BotCommandManifest",
     "BotGuild",
     "BotGuildChannels",

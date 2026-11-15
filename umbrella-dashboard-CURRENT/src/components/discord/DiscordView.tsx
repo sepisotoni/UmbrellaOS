@@ -74,6 +74,7 @@ function fullDate(value: string | null | undefined): string {
 
 const DEFAULT_BROADCAST_TITLE = '📢 Staff Broadcast';
 const DEFAULT_BROADCAST_COLOR = '#9B59B6';
+const PRESET_BROADCAST_EMOJIS = ['📢', '✅', '⚠️', '🚨', '🎉', '📅', '🛠️', '🎮'];
 
 function isHttpsUrl(value: string): boolean {
   if (!value.trim()) return true;
@@ -178,6 +179,7 @@ export const DiscordView: React.FC = () => {
   const [broadcastColor, setBroadcastColor] = useState(DEFAULT_BROADCAST_COLOR);
   const [broadcastIconUrl, setBroadcastIconUrl] = useState('');
   const [broadcastImageUrl, setBroadcastImageUrl] = useState('');
+  const [emojiTarget, setEmojiTarget] = useState<'title' | 'message'>('message');
   const [sending, setSending] = useState(false);
 
   const selectedGuild = guilds.find(
@@ -346,11 +348,20 @@ export const DiscordView: React.FC = () => {
         return;
       }
 
-      addToast({
-        type: 'success',
-        title: 'Broadcast sent',
-        message: `Delivered to #${channelById.get(targetChannelId)?.name ?? 'the selected channel'} in ${selectedGuild.name}.`,
-      });
+      if (result.delivery_status === 'queued') {
+        addToast({
+          type: 'warning',
+          title: 'Broadcast queued',
+          message:
+            'Core will retry delivery when the bot polls. Undelivered broadcasts expire after 24 hours.',
+        });
+      } else {
+        addToast({
+          type: 'success',
+          title: 'Broadcast sent',
+          message: `Delivered to #${channelById.get(targetChannelId)?.name ?? 'the selected channel'} in ${selectedGuild.name}.`,
+        });
+      }
       setBroadcastText('');
     } catch (error) {
       addToast({
@@ -801,6 +812,41 @@ export const DiscordView: React.FC = () => {
                     className="w-full rounded-lg border border-[#293252] bg-[#070b18] px-3 py-2 text-sm text-white outline-none placeholder:text-slate-600 focus:border-indigo-400"
                   />
                 </label>
+                <div className="space-y-2">
+                  <label className="flex items-center justify-between gap-3">
+                    <span className="text-xs text-slate-400">Preset emoji</span>
+                    <select
+                      value={emojiTarget}
+                      onChange={event =>
+                        setEmojiTarget(event.target.value as 'title' | 'message')
+                      }
+                      className="rounded-md border border-[#293252] bg-[#070b18] px-2 py-1 text-xs text-slate-200"
+                      aria-label="Insert emoji into"
+                    >
+                      <option value="message">Message</option>
+                      <option value="title">Title</option>
+                    </select>
+                  </label>
+                  <div className="flex flex-wrap gap-1.5" role="group" aria-label="Preset emojis">
+                    {PRESET_BROADCAST_EMOJIS.map(emoji => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        aria-label={`Insert ${emoji} emoji`}
+                        title={`Insert ${emoji}`}
+                        onClick={() => {
+                          const update = emojiTarget === 'title'
+                            ? setBroadcastTitle
+                            : setBroadcastText;
+                          update(current => current ? `${current} ${emoji}` : emoji);
+                        }}
+                        className="rounded-md border border-[#293252] bg-[#070b18] px-2 py-1 text-base transition hover:border-indigo-400 hover:bg-indigo-500/10"
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <label className="flex items-center justify-between gap-3">
                   <span className="text-xs text-slate-400">Accent color</span>
                   <span className="flex items-center gap-2">

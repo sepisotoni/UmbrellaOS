@@ -6,12 +6,9 @@ GET   /api/v1/bridge/messages   — List recent chat messages
 GET   /api/v1/bridge/settings   — Get bridge settings
 PATCH /api/v1/bridge/settings   — Update bridge settings
 
-FIX (FINDING-011): DASHBOARD source broadcasts were persisted but never
-forwarded (forwarded=False, targets=[]). Staff global broadcasts from the
-dashboard now forward to both minecraft and discord when bridge mode is
-'full', matching the intent of broadcastGlobalMessage(). Also:
-- ?source=DASHBOARD is now a valid filter in GET /messages.
-- body.scope is read (treated as a hint for full-mode broadcast direction).
+Dashboard announcements are routed to Discord independently of the global
+chat-bridge mode. Other sources still honor the configured bridge mode.
+?source=DASHBOARD is a valid filter in GET /messages.
 
 FIX (FINDING-012): bridge settings PATCH wrote boolean values as \"true\"/\"false\"
 strings via direct Setting upserts that bypassed SettingsService. Boolean
@@ -72,9 +69,10 @@ class BridgeMessageRequest(BaseModel):
 
 class BridgeMessageResponse(BaseModel):
     forwarded: bool
-    targets: list[str] = []
+    targets: list[str] = Field(default_factory=list)
     message_id: int
     translated_message: str | None = None
+    delivery_status: str | None = None
 
 
 class ChatMessageSchema(BaseModel):
@@ -148,6 +146,10 @@ async def receive_bridge_message(
         raise HTTPException(
             status_code=400, detail="discord_id required for discord messages"
         )
+    if body.source == "DASHBOARD" and not body.channel_id:
+        raise HTTPException(
+            status_code=422, detail="channel_id is required for dashboard broadcasts"
+        )
 
     mode_setting = await db.scalar(select(Setting).where(Setting.key == "bridge.mode"))
     bridge_mode = mode_setting.value if mode_setting else "off"
@@ -167,18 +169,17 @@ async def receive_bridge_message(
     targets: list[str] = []
     translated_message = None
 
-    if bridge_mode == "off":
+    if body.source == "DASHBOARD":
+        forwarded = True
+        targets = ["discord"]
+    elif bridge_mode == "off":
         pass
 
     elif bridge_mode == "partial":
-        # Partial: discord → minecraft only. DASHBOARD broadcasts go both ways.
+        # Partial mode forwards Discord messages to Minecraft only.
         if body.source == "discord":
             forwarded = True
             targets = ["minecraft"]
-        elif body.source == "DASHBOARD":
-            forwarded = True
-            targets = ["minecraft", "discord"]
-
     elif bridge_mode == "full":
         mc_to_discord_val = await db.scalar(
             select(Setting.value).where(Setting.key == "bridge.mc_to_discord")
@@ -210,25 +211,8 @@ async def receive_bridge_message(
             forwarded = True
             targets = ["minecraft"]
 
-        elif body.source == "DASHBOARD":
-            forwarded = True
-            targets = ["minecraft", "discord"]
-
-    await db.commit()
-    await db.refresh(chat_message)
-
-    # AUDIT-2026-08-30 fix: this endpoint computed forwarded/targets
-    # correctly but never actually delivered anything — confirmed broken
-    # in live testing (staff clicking "Dispatch Embed to Discord" got a
-    # success response with nothing ever posted to Discord). Uses the
-    # same push mechanism already proven for staff.escalation.new
-    # (services/bot_push_service.py); bot/cogs/bridge_cog.py handles
-    # bridge.dashboard_message on the receiving end. Fire-and-forget by
-    # design (see bot_push_service's own docstring) — a failed push here
-    # doesn't fail the request or roll back the already-committed
-    # ChatMessage row, matching how every other push in this codebase
-    # degrades.
-    if body.source == "DASHBOARD" and "discord" in targets:
+    delivery_status = None
+    if body.source == "DASHBOARD":
         push_payload = {
             "message_id": chat_message.id,
             "message": body.message,
@@ -239,13 +223,26 @@ async def receive_bridge_message(
             value = getattr(body, field)
             if value is not None:
                 push_payload[field] = value
-        await bot_push_service.push_event("bridge.dashboard_message", push_payload)
+        pending_event = await bot_push_service.enqueue_pending_event(
+            db, "bridge.dashboard_message", push_payload
+        )
+        await db.commit()
+        await db.refresh(chat_message)
+        push_payload["delivery_id"] = pending_event.id
+        delivered = await bot_push_service.push_event(
+            "bridge.dashboard_message", push_payload
+        )
+        delivery_status = "sent" if delivered else "queued"
+    else:
+        await db.commit()
+        await db.refresh(chat_message)
 
     return BridgeMessageResponse(
         forwarded=forwarded,
         targets=targets,
         message_id=chat_message.id,
         translated_message=chat_message.translated_message,
+        delivery_status=delivery_status,
     )
 
 

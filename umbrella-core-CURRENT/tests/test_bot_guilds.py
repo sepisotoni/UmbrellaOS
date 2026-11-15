@@ -1,10 +1,13 @@
 import hashlib
 import time
+from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock
 
 import pytest
 from sqlalchemy import select
 
 from models.bot_guild import BotGuild
+from models.bot_pending_event import BotPendingEvent
 from models.setting import Setting
 
 
@@ -205,3 +208,93 @@ async def test_bot_runtime_state_rejects_non_hmac_auth(client):
         "/api/v1/bot/runtime-state", headers=ADMIN_HEADERS
     )
     assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_bot_runtime_state_polls_and_acknowledges_pending_events(
+    client, db_session
+):
+    initial = await client.get("/api/v1/bot/runtime-state", headers=bot_headers())
+    revisions = {
+        "config_revision": initial.json()["config_revision"],
+        "token_revision": initial.json()["token_revision"],
+    }
+
+    async with db_session() as db:
+        event = BotPendingEvent(
+            event="bridge.dashboard_message",
+            payload={"message_id": 321, "message": "Hello", "channel_id": "555"},
+            created_at=datetime.now(timezone.utc),
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=24),
+        )
+        db.add(event)
+        await db.commit()
+        event_id = event.id
+
+    response = await client.get(
+        "/api/v1/bot/runtime-state", headers=bot_headers(), params=revisions
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["changed"] is True
+    assert payload["pending_events"] == [
+        {
+            "id": event_id,
+            "event": "bridge.dashboard_message",
+            "payload": {"message_id": 321, "message": "Hello", "channel_id": "555"},
+        }
+    ]
+
+    response = await client.post(
+        f"/api/v1/bot/events/{event_id}/ack", headers=bot_headers()
+    )
+    assert response.status_code == 200
+    assert response.json()["acknowledged"] is True
+
+    response = await client.get(
+        "/api/v1/bot/runtime-state", headers=bot_headers(), params=revisions
+    )
+    assert response.status_code == 200
+    assert response.json()["changed"] is False
+
+
+@pytest.mark.asyncio
+async def test_bot_runtime_state_purges_expired_pending_events(client, db_session):
+    async with db_session() as db:
+        event = BotPendingEvent(
+            event="bridge.dashboard_message",
+            payload={"message_id": 322},
+            created_at=datetime.now(timezone.utc) - timedelta(days=2),
+            expires_at=datetime.now(timezone.utc) - timedelta(seconds=1),
+        )
+        db.add(event)
+        await db.commit()
+        event_id = event.id
+
+    response = await client.get("/api/v1/bot/runtime-state", headers=bot_headers())
+    assert response.status_code == 200
+    assert "pending_events" not in response.json()
+    async with db_session() as db:
+        assert await db.get(BotPendingEvent, event_id) is None
+
+
+@pytest.mark.asyncio
+async def test_bot_registration_reports_callback_probe_result(client, monkeypatch):
+    import api.routers.bot_registration as bot_registration
+    import services.bot_push_service as bot_push_service
+
+    monkeypatch.setattr(bot_registration, "_validate_webhook_url", lambda url: None)
+    monkeypatch.setattr(
+        bot_push_service, "push_event", AsyncMock(return_value=True)
+    )
+
+    response = await client.post(
+        "/api/v1/bot/register",
+        headers=bot_headers(),
+        json={"callback_url": "https://bot.example/webhook"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["registered"] is True
+    assert response.json()["callback_verified"] is True
+    bot_push_service.push_event.assert_awaited_once_with("bot.callback.test", {})
